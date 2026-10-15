@@ -37,6 +37,14 @@ public sealed class AgentDefinition
     public string? AppId { get; set; }
     /// <summary>Start menu names to look for when Path and AppId aren't set.</summary>
     public List<string>? StartMenuNames { get; set; }
+
+    /// <summary>A copy with different arguments (presets can override them).</summary>
+    public AgentDefinition WithArguments(string? arguments)
+    {
+        var copy = (AgentDefinition)MemberwiseClone();
+        copy.Arguments = arguments;
+        return copy;
+    }
 }
 
 /// <summary>User-editable configuration (agents.json).</summary>
@@ -76,6 +84,24 @@ public sealed class DockSettings
     };
 }
 
+/// <summary>A command line agent pinned to a folder (presets.json), for work that comes up again and again.</summary>
+public sealed class Preset
+{
+    /// <summary>Shown in the flyout and used by the jump list; unique.</summary>
+    public string Name { get; set; } = "";
+    /// <summary>Id of a command line agent in agents.json.</summary>
+    public string Agent { get; set; } = "";
+    public string Folder { get; set; } = "";
+    /// <summary>Replaces the agent's own arguments when set (e.g. "--continue").</summary>
+    public string? Arguments { get; set; }
+}
+
+/// <summary>presets.json. Written by the app (so comments aren't kept), but fine to edit by hand.</summary>
+public sealed class PresetList
+{
+    public List<Preset> Presets { get; set; } = [];
+}
+
 /// <summary>App-managed state (state.json). Not meant for hand editing.</summary>
 public sealed class DockState
 {
@@ -97,4 +123,5 @@ public sealed class DockState
     UseStringEnumConverter = true)]
 [JsonSerializable(typeof(DockSettings))]
 [JsonSerializable(typeof(DockState))]
+[JsonSerializable(typeof(PresetList))]
 internal sealed partial class DockJsonContext : JsonSerializerContext;

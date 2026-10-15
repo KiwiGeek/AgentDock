@@ -33,6 +33,14 @@ public static class AgentCatalog
         };
     }
 
+    /// <summary>Turns presets into rows, using the already-resolved <paramref name="agents"/> they refer to.</summary>
+    public static List<AgentItem> ResolvePresets(IEnumerable<Preset> presets, IReadOnlyList<AgentItem> agents) =>
+        presets.Select(preset => new AgentItem(preset,
+                agents.FirstOrDefault(a => a.Definition.Id.Equals(preset.Agent, StringComparison.OrdinalIgnoreCase))
+                // Unknown id: a placeholder that shows as unavailable, so the preset can still be removed.
+                ?? new AgentItem(new AgentDefinition { Id = preset.Agent, Name = preset.Agent })))
+            .ToList();
+
     public static Func<AgentDefinition, string?> FromStartMenu(IReadOnlyDictionary<string, string> apps) =>
         def => (def.StartMenuNames ?? []).Select(name => apps.GetValueOrDefault(name)).FirstOrDefault(id => id is not null);
 }

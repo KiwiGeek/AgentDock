@@ -6,6 +6,7 @@ using AgentDock.Models;
 using AgentDock.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -32,6 +33,7 @@ public sealed partial class FlyoutWindow : Window
 
     private readonly SettingsStore _store;
     private readonly ShellIcons _icons = new();
+    private readonly ObservableCollection<AgentItem> _presets = [];
     private readonly ObservableCollection<AgentItem> _cli = [];
     private readonly ObservableCollection<AgentItem> _desktop = [];
     private readonly ObservableCollection<FolderItem> _folders = [];
@@ -42,6 +44,10 @@ public sealed partial class FlyoutWindow : Window
 
     private DockSettings _settings = new();
     private DockState _state = new();
+    private List<Preset> _presetList = [];
+    private string? _presetsError;
+    /// <summary>Every resolved agent, shown or not, from the last <see cref="ShowAgents"/>; presets refer to these.</summary>
+    private List<AgentItem> _agents = [];
     private POINT _anchor;
     private int _generation;
     private bool _prepared;
@@ -79,6 +85,7 @@ public sealed partial class FlyoutWindow : Window
         Activated += OnActivated;
         Root.Loaded += (_, _) => _rootLoaded.TrySetResult();
 
+        PresetList.ItemsSource = _presets;
         CliList.ItemsSource = _cli;
         DesktopList.ItemsSource = _desktop;
         FolderBox.ItemsSource = _folders;
@@ -91,7 +98,8 @@ public sealed partial class FlyoutWindow : Window
     }
 
     private string CurrentFolder => (FolderBox.SelectedItem as FolderItem)?.Path ?? DefaultFolder();
-    private IEnumerable<AgentItem> AllItems => _cli.Concat(_desktop);
+    private IEnumerable<AgentItem> AllItems => _presets.Concat(_cli).Concat(_desktop);
+    private ListView[] Lists => [PresetList, CliList, DesktopList];
 
     // ---------- Show / hide ----------
 
@@ -188,7 +196,7 @@ public sealed partial class FlyoutWindow : Window
 
     private void FocusFirstAgent()
     {
-        var first = (CliList.Items.Count > 0 ? CliList : DesktopList).ContainerFromIndex(0) as ListViewItem;
+        var first = Lists.FirstOrDefault(l => l.Items.Count > 0)?.ContainerFromIndex(0) as ListViewItem;
         first?.Focus(FocusState.Programmatic);
     }
 
@@ -198,7 +206,8 @@ public sealed partial class FlyoutWindow : Window
     {
         (_settings, var settingsError) = _store.LoadSettings();
         _state = _store.LoadState();
-        StatusText.Text = settingsError ?? "";
+        (_presetList, _presetsError) = _store.LoadPresets();
+        StatusText.Text = settingsError ?? _presetsError ?? "";
         Autostart.Apply(_settings.StartWithWindows);
 
         LoadFolders();
@@ -254,7 +263,7 @@ public sealed partial class FlyoutWindow : Window
                     item.Icon = _icons.Get(item.IconSource);
             }
 
-            JumpList.Update(AllItems, CurrentFolder);
+            JumpList.Update(_presets, _cli.Concat(_desktop), CurrentFolder);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -266,9 +275,19 @@ public sealed partial class FlyoutWindow : Window
 
     private void ShowAgents(IEnumerable<AgentItem> agents)
     {
+        _agents = agents.ToList();
+        _presets.Clear();
         _cli.Clear();
         _desktop.Clear();
-        foreach (var agent in agents.Where(IsShown))
+
+        // A preset whose folder is missing still shows (dimmed), so it can be fixed or removed.
+        foreach (var preset in AgentCatalog.ResolvePresets(_presetList, _agents)
+                     .Where(p => p.IsAgentAvailable || !_settings.HideUnavailable))
+        {
+            preset.Icon ??= _icons.Get(preset.IconSource);
+            _presets.Add(preset);
+        }
+        foreach (var agent in _agents.Where(IsShown))
         {
             agent.Icon ??= _icons.Get(agent.IconSource);
             (agent.IsCli ? _cli : _desktop).Add(agent);
@@ -278,11 +297,13 @@ public sealed partial class FlyoutWindow : Window
         foreach (var agent in AllItems)
             agent.Shortcut = agent.IsAvailable && shortcut <= 9 ? (shortcut++).ToString() : null;
 
+        PresetHeader.Visibility = _presets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        PresetList.Visibility = PresetHeader.Visibility;
         CliHeader.Visibility = _cli.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         CliList.Visibility = CliHeader.Visibility;
         DesktopHeader.Visibility = _desktop.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         DesktopList.Visibility = DesktopHeader.Visibility;
-        EmptyText.Visibility = _cli.Count + _desktop.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyText.Visibility = _presets.Count + _cli.Count + _desktop.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ---------- Folders ----------
@@ -320,7 +341,7 @@ public sealed partial class FlyoutWindow : Window
             .Take(Math.Max(1, _settings.MaxRecentFolders))
             .ToList();
         _store.SaveState(_state);
-        JumpList.Update(AllItems, path);
+        JumpList.Update(_presets, _cli.Concat(_desktop), path);
     }
 
     private void FolderBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -368,7 +389,7 @@ public sealed partial class FlyoutWindow : Window
 
     private void Launch(AgentItem item)
     {
-        if (Launcher.Launch(item, CurrentFolder, _settings) is { } error)
+        if (Launcher.Launch(item, item.Preset?.Folder ?? CurrentFolder, _settings) is { } error)
             SetStatus(error);
         else
             HideFlyout();
@@ -425,29 +446,196 @@ public sealed partial class FlyoutWindow : Window
         }
     }
 
-    /// <summary>Lets Up/Down arrows cross between the two lists.</summary>
+    /// <summary>Lets Up/Down arrows cross between the lists.</summary>
     private void List_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (sender is not ListView list || FocusManager.GetFocusedElement(Root.XamlRoot) is not ListViewItem focused)
             return;
 
         var index = list.IndexFromContainer(focused);
+        var lists = Lists.Where(l => l.Items.Count > 0).ToList();
+        var position = lists.IndexOf(list);
         var target = e.Key switch
         {
-            VirtualKey.Down when list == CliList && index == list.Items.Count - 1 => DesktopList,
-            VirtualKey.Up when list == DesktopList && index == 0 => CliList,
+            VirtualKey.Down when index == list.Items.Count - 1 && position < lists.Count - 1 => lists[position + 1],
+            VirtualKey.Up when index == 0 && position > 0 => lists[position - 1],
             _ => null
         };
-        if (target is null || target.Items.Count == 0)
+        if (target is null)
             return;
 
-        var targetIndex = target == DesktopList ? 0 : target.Items.Count - 1;
+        var targetIndex = e.Key == VirtualKey.Down ? 0 : target.Items.Count - 1;
         if (target.ContainerFromIndex(targetIndex) is ListViewItem container)
         {
             container.Focus(FocusState.Keyboard);
             e.Handled = true;
         }
     }
+
+    // ---------- Presets ----------
+
+    /// <summary>Right-click, Shift+F10 or the menu key on a row.</summary>
+    private void Agent_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
+    {
+        // From the mouse, OriginalSource is something inside the row; from the keyboard, the row itself.
+        if (sender is not ListView list || ContainerOf(e.OriginalSource as DependencyObject) is not { } anchor
+            || list.ItemFromContainer(anchor) is not AgentItem item)
+            return;
+
+        var menu = new MenuFlyout();
+        if (item.Preset is { } preset)
+        {
+            menu.Items.Add(MenuItem("Rename", "", () => StartRename(preset, anchor)));
+            menu.Items.Add(MenuItem("Remove", "", () => RemovePreset(preset)));
+        }
+        else if (item.IsCli)
+        {
+            var folder = CurrentFolder;
+            menu.Items.Add(MenuItem($"Save as preset for {new FolderItem(folder).Name}", "", () => SavePreset(item, folder)));
+        }
+        else
+        {
+            return; // Desktop apps don't open in a folder, so there's nothing to offer.
+        }
+
+        if (e.TryGetPosition(anchor, out var point))
+            menu.ShowAt(anchor, point);
+        else
+            menu.ShowAt(anchor);
+        e.Handled = true;
+    }
+
+    private static ListViewItem? ContainerOf(DependencyObject? element)
+    {
+        while (element is not null and not ListViewItem)
+            element = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(element);
+        return element as ListViewItem;
+    }
+
+    private MenuFlyoutItem MenuItem(string text, string glyph, Action action)
+    {
+        var menuItem = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph } };
+        // After the menu has closed, so a follow-up flyout (rename) can open.
+        menuItem.Click += (_, _) => DispatcherQueue.TryEnqueue(() => action());
+        return menuItem;
+    }
+
+    private void SavePreset(AgentItem agent, string folder)
+    {
+        if (_presetsError is not null)
+        {
+            SetStatus(_presetsError); // never overwrite a file the user is part-way through editing
+            return;
+        }
+
+        var existing = _presetList.FirstOrDefault(p =>
+            p.Agent.Equals(agent.Definition.Id, StringComparison.OrdinalIgnoreCase) && SamePath(p.Folder, folder));
+        if (existing is not null)
+        {
+            SetStatus($"That's already a preset: \"{existing.Name}\".");
+            return;
+        }
+
+        var preset = new Preset { Name = UniquePresetName(new FolderItem(folder).Name), Agent = agent.Definition.Id, Folder = folder };
+        _presetList.Add(preset);
+        SavePresetsAndRefresh($"Saved \"{preset.Name}\". Right-click it to rename it.");
+    }
+
+    private void RemovePreset(Preset preset)
+    {
+        if (_presetsError is not null)
+        {
+            SetStatus(_presetsError);
+            return;
+        }
+        _presetList.Remove(preset);
+        SavePresetsAndRefresh($"Removed \"{preset.Name}\".");
+    }
+
+    /// <summary>A small flyout with the name in a text box. Enter saves, Esc cancels.</summary>
+    private void StartRename(Preset preset, FrameworkElement anchor)
+    {
+        var box = new TextBox { Text = preset.Name, Width = 260 };
+        AutomationProperties.SetName(box, "Preset name");
+        var error = new TextBlock
+        {
+            Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap, MaxWidth = 260,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"]
+        };
+        var save = new Button
+        {
+            Content = "Rename", HorizontalAlignment = HorizontalAlignment.Right,
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"]
+        };
+        var flyout = new Flyout { Content = new StackPanel { Spacing = 8, Children = { box, error, save } } };
+
+        void Commit()
+        {
+            if (TryRenamePreset(preset, box.Text) is { } message)
+            {
+                error.Text = message;
+                error.Visibility = Visibility.Visible;
+                return;
+            }
+            flyout.Hide();
+        }
+
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == VirtualKey.Enter)
+            {
+                Commit();
+                e.Handled = true;
+            }
+        };
+        save.Click += (_, _) => Commit();
+        flyout.Opened += (_, _) =>
+        {
+            box.Focus(FocusState.Programmatic);
+            box.SelectAll();
+        };
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>Returns null on success, or why the name can't be used.</summary>
+    private string? TryRenamePreset(Preset preset, string newName)
+    {
+        if (_presetsError is not null)
+            return _presetsError;
+
+        // Quotes would break the jump list's --preset "<name>" argument.
+        var name = newName.Replace("\"", "").Trim();
+        if (name.Length == 0)
+            return "Enter a name.";
+        if (_presetList.Any(p => p != preset && p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            return "Another preset already has that name.";
+
+        preset.Name = name;
+        SavePresetsAndRefresh(null);
+        return null;
+    }
+
+    private void SavePresetsAndRefresh(string? status)
+    {
+        _store.SavePresets(_presetList);
+        ShowAgents(_agents);
+        StatusText.Text = status ?? "";
+        PlaceWindow();
+        JumpList.Update(_presets, _cli.Concat(_desktop), CurrentFolder);
+    }
+
+    private string UniquePresetName(string baseName)
+    {
+        baseName = baseName.Replace("\"", "").Trim();
+        var name = baseName;
+        for (var n = 2; _presetList.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)); n++)
+            name = $"{baseName} {n}";
+        return name;
+    }
+
+    private static bool SamePath(string a, string b) =>
+        string.Equals(Path.TrimEndingDirectorySeparator(a), Path.TrimEndingDirectorySeparator(b), StringComparison.OrdinalIgnoreCase);
 
     // ---------- Placement and motion ----------
 

@@ -47,7 +47,30 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Folder drop-down / folder button | Pick a recent folder or browse for a new one |
 | Terminal button (footer) | Plain shell in the working folder, no agent |
 | Pencil button (footer) | Opens `agents.json` |
+| Right-click a command line agent (or Shift+F10) | **Save as preset** for the current folder |
+| Right-click a preset | Rename or remove it |
 | Esc, click elsewhere, or click the taskbar icon again | Closes the flyout |
+
+### Presets
+
+A preset is a command line agent tied to a folder, for work you come back to again and again.
+Presets sit at the top of the flyout and in the taskbar icon's right-click menu, and always open
+in their own folder, whatever the working folder is set to. A preset's name starts as the folder
+name; right-click it to rename it.
+
+They're kept in `%APPDATA%\AgentDock\presets.json`. Agent Dock rewrites that file when you save,
+rename or remove a preset, so comments there aren't kept, but you can edit it by hand:
+
+```json
+{
+  "presets": [
+    { "name": "Agent Dock", "agent": "claude", "folder": "W:\\AgentDock", "arguments": "--continue" }
+  ]
+}
+```
+
+`agent` is an agent id from `agents.json`. `arguments` is optional and replaces that agent's own
+arguments. A preset whose folder has gone shows dimmed so you can remove it.
 
 CLI agents run inside a shell (`pwsh -NoExit -Command claude`, for example), so npm `.cmd`
 shims work and you land back at a prompt in the folder when the agent exits.

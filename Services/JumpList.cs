@@ -10,7 +10,7 @@ namespace AgentDock.Services;
 /// </summary>
 internal static class JumpList
 {
-    public static void Update(IEnumerable<AgentItem> agents, string folder)
+    public static void Update(IEnumerable<AgentItem> presets, IEnumerable<AgentItem> agents, string folder)
     {
         try
         {
@@ -21,6 +21,19 @@ internal static class JumpList
             list.BeginList(out _, ShellCom.IID_IObjectArray, out var removed);
             if (removed != 0)
                 Marshal.Release(removed);
+
+            var availablePresets = presets.Where(p => p.IsAvailable && p.Preset is not null).ToList();
+            if (availablePresets.Count > 0)
+            {
+                var items = NewCollection();
+                foreach (var preset in availablePresets)
+                {
+                    var icon = AgentIcons.JumpListIconFor(preset.IconSource) ?? self;
+                    items.AddObject(NewLink(self, $"--preset \"{preset.Name}\"", preset.Name,
+                        $"Open {preset.Definition.Name} in {preset.Preset!.Folder}", icon));
+                }
+                list.AppendCategory("Presets", items);
+            }
 
             var available = agents.Where(a => a.IsAvailable).ToList();
             foreach (var group in available.GroupBy(a => a.IsCli))

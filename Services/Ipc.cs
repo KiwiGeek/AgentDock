@@ -7,10 +7,12 @@ public enum DockCommandKind
 {
     Show,
     Launch,
+    LaunchPreset,
     Background,
     Quit
 }
 
+/// <param name="AgentId">The agent id for <c>Launch</c>, or the preset name for <c>LaunchPreset</c>.</param>
 public readonly record struct DockCommand(DockCommandKind Kind, string? AgentId = null)
 {
     public static DockCommand FromArgs(string[] args)
@@ -20,6 +22,7 @@ public readonly record struct DockCommand(DockCommandKind Kind, string? AgentId 
             switch (args[i].ToLowerInvariant())
             {
                 case "--launch" when i + 1 < args.Length: return new(DockCommandKind.Launch, args[i + 1]);
+                case "--preset" when i + 1 < args.Length: return new(DockCommandKind.LaunchPreset, args[i + 1]);
                 case "--background": return new(DockCommandKind.Background);
                 case "--quit": return new(DockCommandKind.Quit);
             }

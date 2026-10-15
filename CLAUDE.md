@@ -106,11 +106,12 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - Otherwise it becomes the resident instance: `RunResident` (marked `NoInlining` so WinUI assemblies
   load only on this path) starts the WinUI `Application`.
 - Pipe name: `AgentDock.{UserName}.{SessionId}`, `PipeOptions.CurrentUserOnly`.
-  Messages: `Show`, `Launch <agentId>`, `Background`, `Quit` (see `DockCommand` in `Services/Ipc.cs`).
+  Messages: `Show`, `Launch <agentId>`, `LaunchPreset <name>`, `Background`, `Quit` (see `DockCommand`
+  in `Services/Ipc.cs`; the name may contain spaces, since only the first space splits).
   The pipe is unbuffered, so a write blocks until the resident reads it. `Ipc.TrySend` gives up
   after 3 s so that a hung resident can't hang the sender too (it did before; found in testing).
-- Command-line: no args = Show; `--launch <id>` (jump list); `--background` (sign-in startup);
-  `--quit`.
+- Command-line: no args = Show; `--launch <id>` and `--preset "<name>"` (jump list);
+  `--background` (sign-in startup); `--quit`.
 - `--quit` (`Program.QuitResident`) sends `Quit`, then waits up to 3 s for the resident's mutex.
   A hung resident still accepts the connection, so a successful send proves nothing. If the
   mutex isn't released in time, or the send fails, it kills every other `AgentDock` process in
@@ -267,7 +268,7 @@ there degrade to a missing icon or entry, never an error.
 
 ## Planned work (agreed with the owner 2026-10-15)
 
-Order: icons (done), then presets, then Claude usage. Each is its own commit.
+Order: icons (done), then presets (built), then Claude usage. Each is its own commit.
 
 ### Done: agent icons
 
@@ -284,23 +285,40 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
   - `codex`: openai.com/apple-icon.png, the OpenAI mark (180 px). Codex has no logo of its own on
     any official page or in its repo, so it looks like ChatGPT's. Replace it if one appears.
 
-### 2. Presets (an agent pinned to a folder, for work that repeats)
+### Built: presets (an agent pinned to a folder, for work that repeats)
 
-- Stored in `%APPDATA%\AgentDock\presets.json`. It's separate from `agents.json` because the app
-  writes it, and rewriting `agents.json` would drop the user's comments. Hand edits are allowed.
-  Schema: `{ "presets": [ { "name": "Agent Dock", "agent": "claude", "folder": "W:\\AgentDock", "arguments": "--continue" } ] }`.
-  `agent` is an agent id. `arguments` is optional and replaces the agent's own arguments.
-  Names are unique, which is enforced on save. CLI agents only: desktop apps don't open in a folder.
-- Flyout: a "Presets" section above "Command line". Each row shows the agent's icon, the preset
-  name, and "Claude Code · W:\AgentDock" underneath. Number keys count presets first.
-  - A missing folder shows the row dimmed with "Folder not found".
+- **Storage:** `%APPDATA%\AgentDock\presets.json` (`PresetList` / `Preset` in `Models/Settings.cs`).
+  - It's separate from `agents.json` because the app writes it, and rewriting `agents.json` would
+    drop the user's comments. Hand edits are allowed.
+  - `agent` is an agent id. `arguments` is optional and replaces the agent's own arguments.
+  - Names are unique and can't contain `"` (it would break the jump list argument). Both are
+    enforced when saving and renaming.
+  - If the file is malformed, the footer says so and the app refuses to save, so hand edits are
+    never overwritten.
+- **Rows:** a preset is an `AgentItem` built by `AgentCatalog.ResolvePresets` from the resolved
+  agent, with `Preset` set.
+  - `Name` and `Subtitle` come from the preset. `IsAvailable` also requires a CLI agent and an
+    existing folder.
+  - An unknown agent id gets a placeholder definition, so the row still shows and can be removed.
+- **Flyout:** a "Presets" list above "Command line". Number keys count presets first; Up/Down
+  cross all three lists.
+  - A missing folder or an unknown agent shows the row dimmed, with the reason underneath.
   - A preset whose agent isn't installed follows `hideUnavailable`.
-- Creating and editing:
-  - Right-click a CLI agent (or press Shift+F10 / the menu key) and choose "Save as preset for
-    <folder>". The name defaults to the folder name.
-  - Right-click a preset for "Rename" and "Remove".
-- Jump list: a "Presets" category first. New command `--preset "<name>"` → `DockCommand` `LaunchPreset`.
-- New serialised types go in `DockJsonContext`. Update `README.md` (schema and usage).
+- **Editing:** `Agent_ContextRequested` (right-click, Shift+F10, the menu key) builds a `MenuFlyout`.
+  - CLI agents get "Save as preset for <folder>". The name defaults to the folder name, with
+    " 2", " 3" added if taken. Saving the same agent and folder twice is refused.
+  - Presets get "Rename" (a `Flyout` with a text box: Enter saves, light dismiss cancels) and "Remove".
+- **Jump list:** a "Presets" category first, available presets only, running `--preset "<name>"`.
+  `App.LaunchPreset` shows the flyout with a message if the preset is unknown or can't launch.
+- **Verified 2026-10-15:**
+  - Rows render for a valid preset, a missing folder and an unknown agent, with renumbered keys.
+  - A malformed file shows its error and hides presets.
+  - The jump list has the Presets category with the right icon.
+  - `--preset` with an unknown name, and with a missing folder, shows the message.
+  - The owner confirmed right-click save, rename and remove by hand.
+- **Not yet verified:** Shift+F10 / the menu key (a synthetic Shift+F10 opened nothing in one
+  automated try, before `ContainerOf` replaced the `DataContext` lookup), and actually launching a
+  preset into a terminal.
 
 ### 3. Claude usage limits in the flyout (replaces the owner's dead WaifuOps status line)
 

@@ -20,6 +20,7 @@ public sealed class SettingsStore
 
     public string SettingsPath => Path.Combine(DataFolder, "agents.json");
     private string StatePath => Path.Combine(DataFolder, "state.json");
+    private string PresetsPath => Path.Combine(DataFolder, "presets.json");
 
     /// <summary>
     /// Loads agents.json, creating it with defaults on first run. If the file is malformed the
@@ -65,6 +66,34 @@ public sealed class SettingsStore
         }
         return new DockState();
     }
+
+    /// <summary>
+    /// Loads presets.json (absent means no presets). If it's malformed, <c>Error</c> says so, and
+    /// <see cref="SavePresets"/> must not be called, or the user's hand edits would be lost.
+    /// </summary>
+    public (List<Preset> Presets, string? Error) LoadPresets()
+    {
+        if (!File.Exists(PresetsPath))
+            return ([], null);
+        try
+        {
+            var list = JsonSerializer.Deserialize(File.ReadAllText(PresetsPath), DockJsonContext.Default.PresetList)?.Presets ?? [];
+            list.RemoveAll(p => string.IsNullOrWhiteSpace(p.Name) || string.IsNullOrWhiteSpace(p.Agent) || string.IsNullOrWhiteSpace(p.Folder));
+            return (list, null);
+        }
+        catch (JsonException ex)
+        {
+            var where = ex.LineNumber is { } line ? $" (line {line + 1})" : "";
+            return ([], $"presets.json couldn't be read{where}. Fix it to see your presets.");
+        }
+        catch (IOException ex)
+        {
+            return ([], $"presets.json couldn't be opened: {ex.Message}");
+        }
+    }
+
+    public void SavePresets(List<Preset> presets) =>
+        TryWrite(PresetsPath, JsonSerializer.Serialize(new PresetList { Presets = presets }, DockJsonContext.Default.PresetList));
 
     public void SaveState(DockState state) =>
         TryWrite(StatePath, JsonSerializer.Serialize(state, DockJsonContext.Default.DockState));

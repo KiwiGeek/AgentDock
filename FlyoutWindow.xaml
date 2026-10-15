@@ -94,9 +94,19 @@
         <!-- Agents -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Padding="0,0,0,8">
+                <TextBlock x:Name="PresetHeader" Text="Presets" Style="{StaticResource SectionHeaderStyle}" />
+                <ListView x:Name="PresetList" Margin="4,0" SelectionMode="None" IsItemClickEnabled="True"
+                          ItemClick="Agent_ItemClick" PreviewKeyDown="List_PreviewKeyDown"
+                          ContextRequested="Agent_ContextRequested"
+                          ItemTemplate="{StaticResource AgentTemplate}"
+                          ScrollViewer.VerticalScrollMode="Disabled"
+                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                          AutomationProperties.Name="Presets" />
+
                 <TextBlock x:Name="CliHeader" Text="Command line" Style="{StaticResource SectionHeaderStyle}" />
                 <ListView x:Name="CliList" Margin="4,0" SelectionMode="None" IsItemClickEnabled="True"
                           ItemClick="Agent_ItemClick" PreviewKeyDown="List_PreviewKeyDown"
+                          ContextRequested="Agent_ContextRequested"
                           ItemTemplate="{StaticResource AgentTemplate}"
                           ScrollViewer.VerticalScrollMode="Disabled"
                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
@@ -105,6 +115,7 @@
                 <TextBlock x:Name="DesktopHeader" Text="Desktop apps" Style="{StaticResource SectionHeaderStyle}" />
                 <ListView x:Name="DesktopList" Margin="4,0" SelectionMode="None" IsItemClickEnabled="True"
                           ItemClick="Agent_ItemClick" PreviewKeyDown="List_PreviewKeyDown"
+                          ContextRequested="Agent_ContextRequested"
                           ItemTemplate="{StaticResource AgentTemplate}"
                           ScrollViewer.VerticalScrollMode="Disabled"
                           ScrollViewer.VerticalScrollBarVisibility="Disabled"

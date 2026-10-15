@@ -67,6 +67,9 @@ public partial class App : Application
             case DockCommandKind.Launch when command.AgentId is not null:
                 LaunchById(command.AgentId);
                 break;
+            case DockCommandKind.LaunchPreset when command.AgentId is not null:
+                LaunchPreset(command.AgentId);
+                break;
             case DockCommandKind.Quit:
                 Quit();
                 break;
@@ -81,6 +84,24 @@ public partial class App : Application
         _shutdown.Cancel();
         _flyout?.Close();
         Exit();
+    }
+
+    /// <summary>A preset from the jump list: launches straight into its folder.</summary>
+    private void LaunchPreset(string name)
+    {
+        var (presets, presetsError) = Store.LoadPresets();
+        var preset = presets.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (preset is null)
+        {
+            _flyout?.ShowFlyout(presetsError ?? $"There's no preset called \"{name}\".");
+            return;
+        }
+
+        var (settings, _) = Store.LoadSettings();
+        var agents = AgentCatalog.Resolve(settings, _ => null); // presets are CLI only; no Start menu lookup needed
+        var item = AgentCatalog.ResolvePresets([preset], agents)[0];
+        if (Launcher.Launch(item, preset.Folder, settings) is { } error)
+            _flyout?.ShowFlyout(error);
     }
 
     /// <summary>Jump list entries launch directly, without showing the flyout unless something goes wrong.</summary>

@@ -21,7 +21,7 @@ public static class Launcher
 
                 var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments }
                     .Where(s => !string.IsNullOrWhiteSpace(s)));
-                StartInTerminal(item.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal);
+                StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal);
             }
             else if (item.ExecutablePath is not null)
             {
