@@ -35,11 +35,11 @@ public sealed partial class AgentItem : INotifyPropertyChanged
             ? string.Join(' ', new[] { Definition.Command, Definition.Arguments }.Where(s => !string.IsNullOrWhiteSpace(s)))
             : "Desktop app";
 
-    /// <summary>Parsing name handed to the shell to extract an icon.</summary>
-    public string? IconSource =>
-        ExecutablePath is { } p && p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? p
-        : AppId is not null ? $@"shell:AppsFolder\{AppId}"
-        : null;
+    /// <summary>
+    /// Where the icon comes from: an image file, a compiled-in icon, or a shell parsing name to
+    /// extract one from. Null shows the glyph. See <see cref="Services.AgentIcons"/>.
+    /// </summary>
+    public string? IconSource { get; init; }
 
     public ImageSource? Icon
     {

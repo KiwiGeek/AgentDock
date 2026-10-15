@@ -16,6 +16,12 @@ public sealed class AgentDefinition
     public string Name { get; set; } = "";
     public AgentKind Kind { get; set; } = AgentKind.Cli;
 
+    /// <summary>
+    /// Optional icon: a .png, .ico, .jpg or .bmp image, or an .exe/.dll to take the icon from.
+    /// Relative paths are relative to the folder agents.json is in. Environment variables are expanded.
+    /// </summary>
+    public string? Icon { get; set; }
+
     // CLI agents
     /// <summary>Command to run, resolved against PATH (e.g. "claude").</summary>
     public string? Command { get; set; }

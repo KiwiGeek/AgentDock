@@ -26,20 +26,20 @@ internal sealed class ShellIcons
 
     public bool Has(string? source) => source is not null && _memory.ContainsKey(source);
 
-    public static bool IsOnDisk(string source) => File.Exists(CachePathFor(source));
+    /// <summary>True if the icon can be loaded without asking the shell (compiled in, an image file, or cached).</summary>
+    public static bool IsOnDisk(string source) => AgentIcons.IsBundled(source) || File.Exists(DiskPathFor(source));
 
-    /// <summary>Loads an icon from the disk cache. UI thread.</summary>
+    /// <summary>Loads a compiled-in icon, an image file, or an icon from the disk cache. UI thread.</summary>
     public async Task<ImageSource?> LoadFromDiskAsync(string source)
     {
         if (_memory.TryGetValue(source, out var existing))
             return existing;
 
-        var path = CachePathFor(source);
-        if (!File.Exists(path))
-            return null;
         try
         {
-            using var stream = await FileRandomAccessStream.OpenAsync(path, FileAccessMode.Read);
+            using var stream = await OpenAsync(source);
+            if (stream is null)
+                return null;
             var image = new BitmapImage();
             await image.SetSourceAsync(stream);
             _memory[source] = image;
@@ -56,7 +56,7 @@ internal sealed class ShellIcons
     {
         try
         {
-            using (var stream = await FileRandomAccessStream.OpenAsync(CachePathFor(source), FileAccessMode.ReadWrite))
+            using (var stream = await FileRandomAccessStream.OpenAsync(DiskPathFor(source), FileAccessMode.ReadWrite))
             {
                 stream.Size = 0;
                 var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
@@ -73,8 +73,21 @@ internal sealed class ShellIcons
         }
     }
 
-    private static string CachePathFor(string source)
+    private static async Task<IRandomAccessStream?> OpenAsync(string source)
     {
+        if (AgentIcons.IsBundled(source))
+            return AgentIcons.OpenBundled(source)?.AsRandomAccessStream();
+
+        var path = DiskPathFor(source);
+        return File.Exists(path) ? await FileRandomAccessStream.OpenAsync(path, FileAccessMode.Read) : null;
+    }
+
+    /// <summary>Configured image files are used as they are; everything else goes through the PNG cache.</summary>
+    private static string DiskPathFor(string source)
+    {
+        if (AgentIcons.IsImageFile(source))
+            return source;
+
         var hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(source.ToLowerInvariant())))[..16];
         return Path.Combine(SettingsStore.IconCacheFolder, hash + ".png");
     }

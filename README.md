@@ -87,6 +87,8 @@ Agents that aren't installed are hidden unless you set `hideUnavailable` to `fal
     { "id": "claude", "name": "Claude Code", "command": "claude" },
     { "id": "claude-resume", "name": "Claude Code (continue)", "command": "claude", "arguments": "--continue" },
     { "id": "codex-cmd", "name": "Codex", "command": "codex", "shell": "cmd" },
+    // Your own icon: .png, .ico, .jpg, .bmp, or an .exe to take it from (relative to this folder)
+    { "id": "aider", "name": "Aider", "command": "aider", "icon": "icons/aider.png" },
 
     // Desktop: found by Start menu name...
     { "id": "claude-desktop", "name": "Claude", "kind": "desktop", "startMenuNames": ["Claude"] },
@@ -101,8 +103,16 @@ Agents that aren't installed are hidden unless you set `hideUnavailable` to `fal
 Changes take effect the next time the flyout opens; no restart needed. Ids must be unique;
 the jump list uses them.
 
-`state.json` in the same folder holds recent folders and cached app ids. Icons are cached under
-`%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's icon changes.
+### Icons
+
+Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,
+`codex`, `gemini`, `copilot`, `opencode`, `claude-desktop`, `chatgpt-desktop`, `copilot-desktop`,
+`perplexity`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
+under any id. An `icon` setting overrides that. Desktop apps without either use the icon the Start
+menu shows. Anything else gets a plain terminal or app symbol.
+
+`state.json` in the same folder holds recent folders and cached app ids. Start menu icons are
+cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's icon changes.
 
 ## How it's put together
 
@@ -126,3 +136,4 @@ the jump list uses them.
 | `Models` | Config/state classes, JSON context, and the `AgentItem` view model |
 | `Services` | Settings I/O, PATH lookup, launching, agent resolution, IPC, autostart, jump list |
 | `Interop` | Win32 and shell COM declarations, icon extraction, Start menu enumeration |
+| `Assets/Agents` | Built-in agent icons, compiled into the exe as resources |

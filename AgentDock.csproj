@@ -32,6 +32,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Agent icons, compiled into the exe. Named "AgentIcons.<agent id>.png"; see Services/AgentIcons.cs. -->
+    <EmbeddedResource Include="Assets\Agents\*.png" LogicalName="AgentIcons.%(Filename)%(Extension)" />
+    <!-- The Windows App SDK would otherwise also copy them next to the exe as loose files. -->
+    <Content Remove="Assets\Agents\*.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
   </ItemGroup>

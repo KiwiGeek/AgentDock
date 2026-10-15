@@ -28,7 +28,7 @@ internal static class JumpList
                 var items = NewCollection();
                 foreach (var agent in group)
                 {
-                    var icon = agent.ExecutablePath is { } exe && exe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? exe : self;
+                    var icon = AgentIcons.JumpListIconFor(agent.IconSource) ?? self;
                     var description = agent.IsCli ? $"Open {agent.Name} in {folder}" : $"Open {agent.Name}";
                     items.AddObject(NewLink(self, $"--launch \"{agent.Definition.Id}\"", agent.Name, description, icon));
                 }

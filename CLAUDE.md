@@ -173,10 +173,23 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - Start menu enumeration: `SHCreateItemFromParsingName("shell:AppsFolder")` →
   `BindToHandler(BHID_EnumItems)` → `IEnumShellItems`. Name = `SIGDN_NORMALDISPLAY`,
   launch id = `SIGDN_PARENTRELATIVEPARSING`.
-- Icons: `IShellItemImageFactory.GetImage` (64 px, icon only) → `GetDIBits` into a top-down 32-bit
-  buffer (keeps alpha; legacy all-zero-alpha icons are made opaque) → PNG via WinRT `BitmapEncoder`
-  into `%LOCALAPPDATA%\AgentDock\Icons\<sha1-prefix>.png` → `BitmapImage`. Held in memory for
-  the life of the process.
+- Icon source, decided by `Services/AgentIcons.cs`, in order:
+  1. The agent's `icon` setting (an image file, or an exe/dll).
+  2. A compiled-in icon. `Assets/Agents/<name>.png` files are `EmbeddedResource`s named
+     `AgentIcons.<name>.png`, with `Content Remove` so no loose copies ship. They match by agent id,
+     or for CLI agents by command name. The source string is `bundled:<name>`.
+  3. Desktop apps only: the Start menu (`shell:AppsFolder\<id>`) or the configured exe.
+  4. Otherwise null, which shows the glyph.
+  - CLI exes are deliberately **not** used: npm shims have none, scoop shims have none, and some
+    real exes carry the wrong icon (OpenCode's is the Bun runtime's mascot). The owner asked for
+    compiled-in icons instead.
+- Shell icon extraction (desktop fallback only): `IShellItemImageFactory.GetImage` (64 px, icon only)
+  → `GetDIBits` into a top-down 32-bit buffer (keeps alpha; legacy all-zero-alpha icons are made
+  opaque) → PNG via WinRT `BitmapEncoder` into `%LOCALAPPDATA%\AgentDock\Icons\<sha1-prefix>.png`
+  → `BitmapImage`. Image files and compiled-in icons skip the cache and load directly.
+  Everything is held in memory for the life of the process.
+- The jump list only takes `.exe`/`.dll`/`.ico`, so compiled-in PNGs are written out as
+  `Icons\<name>.ico` (an ICO can wrap a PNG as-is). They're rewritten when the size no longer matches.
 - Jump list: WinUI has no jump list API for unpackaged apps, so `Services/JumpList.cs` drives
   `ICustomDestinationList` directly. Entry text comes from the link's `PKEY_Title` property.
   `AppendCategory` can fail when the user has disabled recent items; that failure is ignored by design.
@@ -227,7 +240,9 @@ there degrade to a missing icon or entry, never an error.
 | `Interop/Win32.cs` | Win32 P/Invoke and structs |
 | `Interop/ShellCom.cs` | Shell COM interfaces, GUIDs, constants |
 | `Interop/StartMenuApps.cs` | All-apps enumeration; `RunOnStaThread` helper |
-| `Interop/ShellIcons.cs` | Icon extraction and caching |
+| `Interop/ShellIcons.cs` | Icon loading: compiled-in, image files, and shell extraction with a PNG cache |
+| `Services/AgentIcons.cs` | Which icon an agent gets; compiled-in icon lookup; .ico files for the jump list |
+| `Assets/Agents/*.png` | Built-in agent icons, compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
@@ -249,6 +264,71 @@ there degrade to a missing icon or entry, never an error.
   and SDK build tools.
 - Bump `<Version>` in the `.csproj` only as part of a release (see `RELEASING.md`).
 - When behaviour changes, update `README.md` and this file in the same commit.
+
+## Planned work (agreed with the owner 2026-10-15)
+
+Order: icons (done), then presets, then Claude usage. Each is its own commit.
+
+### Done: agent icons
+
+Built-in icons are compiled in (see "Shell interop"). Where each one came from (2026-10-15):
+
+- **From installed apps:** `claude`, `copilot`, `claude-desktop` and `chatgpt-desktop`, exported
+  at 256 px through the shell.
+- **Downloaded from official sites, with the owner's OK:**
+  - `gemini`: geminicli.com/icon.png
+  - `opencode`: opencode.ai/web-app-manifest-512x512.png
+  - `perplexity`: perplexity.ai/apple-touch-icon.png (180 px)
+  - `copilot-desktop`: the copilot.com favicon, Microsoft's CDN. Its largest frame is 48 px, so it
+    is slightly soft at 200% scaling.
+  - `codex`: openai.com/apple-icon.png, the OpenAI mark (180 px). Codex has no logo of its own on
+    any official page or in its repo, so it looks like ChatGPT's. Replace it if one appears.
+
+### 2. Presets (an agent pinned to a folder, for work that repeats)
+
+- Stored in `%APPDATA%\AgentDock\presets.json`. It's separate from `agents.json` because the app
+  writes it, and rewriting `agents.json` would drop the user's comments. Hand edits are allowed.
+  Schema: `{ "presets": [ { "name": "Agent Dock", "agent": "claude", "folder": "W:\\AgentDock", "arguments": "--continue" } ] }`.
+  `agent` is an agent id. `arguments` is optional and replaces the agent's own arguments.
+  Names are unique, which is enforced on save. CLI agents only: desktop apps don't open in a folder.
+- Flyout: a "Presets" section above "Command line". Each row shows the agent's icon, the preset
+  name, and "Claude Code · W:\AgentDock" underneath. Number keys count presets first.
+  - A missing folder shows the row dimmed with "Folder not found".
+  - A preset whose agent isn't installed follows `hideUnavailable`.
+- Creating and editing:
+  - Right-click a CLI agent (or press Shift+F10 / the menu key) and choose "Save as preset for
+    <folder>". The name defaults to the folder name.
+  - Right-click a preset for "Rename" and "Remove".
+- Jump list: a "Presets" category first. New command `--preset "<name>"` → `DockCommand` `LaunchPreset`.
+- New serialised types go in `DockJsonContext`. Update `README.md` (schema and usage).
+
+### 3. Claude usage limits in the flyout (replaces the owner's dead WaifuOps status line)
+
+- **The only official source** is Claude Code's status-line input (https://code.claude.com/docs/en/statusline):
+  - `rate_limits.five_hour.used_percentage` and `.resets_at` (Unix seconds).
+  - The same pair under `rate_limits.seven_day`.
+  - Present only for claude.ai Pro/Max, and only after a session's first response. Either window can be missing.
+- **Ruled out:** there's no CLI command, documented file or endpoint for these numbers. `/usage`
+  doesn't work with `-p`. The Admin API is organisation-only. Reading `.credentials.json` to call
+  an internal endpoint is against Anthropic's terms for third-party apps.
+- **Bridge:** `AgentDock.exe --statusline`, handled in `Program.Main` before the mutex. It stays
+  WinUI-free, and Native AOT keeps it fast, which matters because Claude Code runs it often.
+  - It reads the stdin JSON and writes `rate_limits` plus the time to
+    `%LOCALAPPDATA%\AgentDock\claude-usage.json` (atomic write).
+  - It prints the status line `Opus 5.5 | 5h 10% | 7d 2%`.
+  - If the user had a different status-line command before, it runs that with the same input
+    and prints that output instead, so nothing else changes.
+- **Setup is one-time and asks first:** a "Show Claude usage" prompt in the flyout.
+  - It backs up `~/.claude/settings.json`, then sets `statusLine` to `"<exe>" --statusline`.
+  - It edits with `JsonNode` so every other key is preserved.
+  - If the exe moves, it detects the stale path and offers to fix it.
+- **Display:** two thin bars under the Claude Code row (and under its presets).
+  - "Session 10% · resets 3:00 pm" and "Week 2% · resets Thu".
+  - Shows "Updated 12 min ago" when the data is old.
+  - Once `resets_at` has passed, the bar drops to 0% and is labelled reset.
+  - Hidden when there's no data.
+- **Limitation, to state in the README:** the numbers update only while a Claude Code session is
+  running, because the status line isn't run on a timer.
 
 ## Possible next steps (none requested yet; ask before starting)
 
