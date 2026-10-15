@@ -24,7 +24,9 @@
             </Style>
 
             <DataTemplate x:Key="AgentTemplate" x:DataType="models:AgentItem">
-                <Grid Padding="0,6" ColumnSpacing="12" Opacity="{x:Bind ItemOpacity}">
+                <!-- Transparent background so the whole row reports the pointer (for the hover background). -->
+                <Grid Padding="0,6" ColumnSpacing="12" Opacity="{x:Bind ItemOpacity}" Background="Transparent"
+                      PointerEntered="AgentRow_PointerEntered" PointerExited="AgentRow_PointerExited">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="28" />
                         <ColumnDefinition Width="*" />
@@ -61,6 +63,19 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <!-- Agents; keep in step with FlyoutWindow.ListWidthDip -->
+            <ColumnDefinition Width="380" />
+            <!-- Claude usage, when shown; keep in step with FlyoutWindow.UsageWidthDip -->
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <!-- An agent's "background" image, faded in while the pointer is over that agent. -->
+        <Border x:Name="HoverBackdrop" Grid.RowSpan="3" Grid.ColumnSpan="2" Opacity="0" IsHitTestVisible="False">
+            <Border.Background>
+                <ImageBrush x:Name="HoverBrush" Stretch="UniformToFill" AlignmentX="Right" />
+            </Border.Background>
+        </Border>
 
         <!-- Working folder -->
         <StackPanel Margin="16,16,16,8" Spacing="6">
@@ -127,8 +142,37 @@
             </StackPanel>
         </ScrollViewer>
 
+        <!-- Claude plan usage, a column to the right of the agents (see Services/ClaudeStatusLine.cs) -->
+        <StackPanel x:Name="UsagePanel" Grid.Column="1" Grid.RowSpan="2" Width="232" Padding="16,16,16,12" Spacing="4"
+                    Visibility="Collapsed" BorderThickness="1,0,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+            <TextBlock Text="Claude usage" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <StackPanel x:Name="UsageRows" Spacing="4" Margin="0,8,0,0">
+                <TextBlock Text="Session" />
+                <ProgressBar x:Name="SessionBar" Maximum="100" AutomationProperties.Name="Session usage" />
+                <TextBlock x:Name="SessionText" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock Text="Week" Margin="0,12,0,0" />
+                <ProgressBar x:Name="WeekBar" Maximum="100" AutomationProperties.Name="Weekly usage" />
+                <TextBlock x:Name="WeekText" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock x:Name="UsageUpdatedText" Margin="0,12,0,0" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+            </StackPanel>
+            <TextBlock x:Name="UsageNote" Visibility="Collapsed" Margin="0,8,0,0" TextWrapping="Wrap"
+                       Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+
+        <InfoBar x:Name="UsageOffer" Grid.Column="1" Grid.RowSpan="2" Width="232" Margin="0,12,8,8"
+                 VerticalAlignment="Top" IsOpen="False" Title="Claude usage"
+                 CloseButtonClick="UsageOffer_CloseButtonClick">
+            <InfoBar.ActionButton>
+                <Button x:Name="UsageOfferButton" Click="UsageOfferButton_Click" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+
         <!-- Footer -->
-        <Border Grid.Row="2" Padding="16,6,8,6" BorderThickness="0,1,0,0"
+        <Border Grid.Row="2" Grid.ColumnSpan="2" Padding="16,6,8,6" BorderThickness="0,1,0,0"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}">
             <Grid ColumnSpacing="4">

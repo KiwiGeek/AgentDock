@@ -63,6 +63,9 @@ public sealed partial class AgentItem : INotifyPropertyChanged
     /// </summary>
     public string? IconSource { get; init; }
 
+    /// <summary>The agent's "background" image, if set and the file exists.</summary>
+    public string? BackgroundPath => Services.AgentIcons.ExistingFile(Definition.Background);
+
     private string PresetSubtitle =>
         !IsCli ? "Presets only work with command line agents"
         : !IsAgentAvailable ? (string.IsNullOrEmpty(Definition.Command) ? $"There's no agent \"{Preset!.Agent}\"" : $"{Definition.Command} not found on PATH")

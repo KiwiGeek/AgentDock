@@ -73,13 +73,19 @@ public static class AgentIcons
     private static string? CommandName(string? command) =>
         string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"'));
 
-    private static string? Configured(AgentDefinition definition)
+    private static string? Configured(AgentDefinition definition) => ExistingFile(definition.Icon);
+
+    /// <summary>
+    /// A path from agents.json, if that file exists. Relative paths are relative to the folder
+    /// agents.json is in; environment variables are expanded.
+    /// </summary>
+    public static string? ExistingFile(string? configured)
     {
-        if (string.IsNullOrWhiteSpace(definition.Icon))
+        if (string.IsNullOrWhiteSpace(configured))
             return null;
         try
         {
-            var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(definition.Icon.Trim().Trim('"')),
+            var path = Path.GetFullPath(Environment.ExpandEnvironmentVariables(configured.Trim().Trim('"')),
                 SettingsStore.DataFolder);
             return File.Exists(path) ? path : null;
         }

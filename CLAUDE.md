@@ -243,6 +243,7 @@ there degrade to a missing icon or entry, never an error.
 | `Interop/StartMenuApps.cs` | All-apps enumeration; `RunOnStaThread` helper |
 | `Interop/ShellIcons.cs` | Icon loading: compiled-in, image files, and shell extraction with a PNG cache |
 | `Services/AgentIcons.cs` | Which icon an agent gets; compiled-in icon lookup; .ico files for the jump list |
+| `Services/ClaudeStatusLine.cs` | `--statusline` mode, saved Claude usage, and setting up Claude Code's status line |
 | `Assets/Agents/*.png` | Built-in agent icons, compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
@@ -268,7 +269,7 @@ there degrade to a missing icon or entry, never an error.
 
 ## Planned work (agreed with the owner 2026-10-15)
 
-Order: icons (done), then presets (built), then Claude usage. Each is its own commit.
+Order: icons (done), then presets (done), then Claude usage (built). Each is its own commit.
 
 ### Done: agent icons
 
@@ -320,33 +321,64 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
   automated try, before `ContainerOf` replaced the `DataContext` lookup), and actually launching a
   preset into a terminal.
 
-### 3. Claude usage limits in the flyout (replaces the owner's dead WaifuOps status line)
+### Built: Claude usage limits (replaces the owner's dead WaifuOps status line)
+
+All in `Services/ClaudeStatusLine.cs`, plus the usage column in `FlyoutWindow`.
 
 - **The only official source** is Claude Code's status-line input (https://code.claude.com/docs/en/statusline):
   - `rate_limits.five_hour.used_percentage` and `.resets_at` (Unix seconds).
   - The same pair under `rate_limits.seven_day`.
-  - Present only for claude.ai Pro/Max, and only after a session's first response. Either window can be missing.
+  - Present only for claude.ai Pro/Max, and only after a session's first response. Either window
+    can be missing, and Claude Code drops a window once it has reset.
 - **Ruled out:** there's no CLI command, documented file or endpoint for these numbers. `/usage`
   doesn't work with `-p`. The Admin API is organisation-only. Reading `.credentials.json` to call
   an internal endpoint is against Anthropic's terms for third-party apps.
-- **Bridge:** `AgentDock.exe --statusline`, handled in `Program.Main` before the mutex. It stays
-  WinUI-free, and Native AOT keeps it fast, which matters because Claude Code runs it often.
-  - It reads the stdin JSON and writes `rate_limits` plus the time to
-    `%LOCALAPPDATA%\AgentDock\claude-usage.json` (atomic write).
-  - It prints the status line `Opus 5.5 | 5h 10% | 7d 2%`.
-  - If the user had a different status-line command before, it runs that with the same input
-    and prints that output instead, so nothing else changes.
-- **Setup is one-time and asks first:** a "Show Claude usage" prompt in the flyout.
-  - It backs up `~/.claude/settings.json`, then sets `statusLine` to `"<exe>" --statusline`.
-  - It edits with `JsonNode` so every other key is preserved.
-  - If the exe moves, it detects the stale path and offers to fix it.
-- **Display:** two thin bars under the Claude Code row (and under its presets).
-  - "Session 10% · resets 3:00 pm" and "Week 2% · resets Thu".
-  - Shows "Updated 12 min ago" when the data is old.
-  - Once `resets_at` has passed, the bar drops to 0% and is labelled reset.
-  - Hidden when there's no data.
-- **Limitation, to state in the README:** the numbers update only while a Claude Code session is
-  running, because the status line isn't run on a timer.
+- **Bridge:** `AgentDock.exe --statusline`, the first thing `Program.Main` checks (before the
+  mutex). It stays WinUI-free, and Native AOT keeps it fast, which matters because Claude Code runs it often.
+  - It parses stdin with `JsonDocument` and saves `ClaudeUsage` to
+    `%LOCALAPPDATA%\AgentDock\claude-usage.json`. The temp file name includes the PID, since
+    sessions can refresh at the same moment.
+  - A missing window keeps its previous value. Input with no `rate_limits` leaves the file alone.
+  - It prints `Opus 5.5 | 5h 37% | 7d 12%`. Bad input still prints a line and exits 0.
+  - **It doesn't chain to a previous status line.** The owner wanted it to replace WaifuOps.
+- **Setup:** an `InfoBar` in the usage column, shown only when Claude Code is installed.
+  - "Set up" names the status line it will replace. It backs up `settings.json` to
+    `settings.json.agentdock-<timestamp>.bak`, then sets `statusLine` to `"<exe with forward
+    slashes>" --statusline`.
+  - It edits with `JsonNode`, so every other key is preserved, and writes with relaxed escaping,
+    so quotes don't become `"`.
+  - Closing the offer sets `DockState.ClaudeUsageOfferDismissed`.
+  - If the command runs a *different* AgentDock.exe, a warning offers "Update". It can't be
+    dismissed, because usage would silently stop updating.
+  - `CLAUDE_CONFIG_DIR` is honoured, the same as Claude Code. Testing used it to point at a
+    scratch copy, so the owner's real settings were never touched.
+- **Display:** a 240 DIP column to the right of the agents (the owner asked for a column).
+  - Session and Week bars, each with "37% · resets 16:08" (or "Mon 1:58", or a date).
+  - "Updated N min ago" underneath, because Claude Code only refreshes the status line while a
+    session is running.
+  - Bars use `ShowPaused` from 75% and `ShowError` from 90% (Windows' warning and error colours).
+  - A window whose `resets_at` has passed shows "0% · reset".
+  - Before any data arrives, a note says it appears after the next reply.
+  - `PlaceWindow` adds the column's width only when the column is showing.
+  - Format gotcha: `"ddd t"` in a custom format means "day plus the first letter of AM/PM", so the
+    time is formatted separately.
+- **Verified 2026-10-15:**
+  - Piped samples: full input, partial input, no `rate_limits`, garbage and empty input.
+  - Setup against a scratch copy: only `statusLine` changes, other keys stay identical, and the
+    backup matches the original.
+  - The offer text, the usage column, and the "different copy" warning with Update.
+- **Not yet verified:** a real Claude Code session driving the status line, the published Native
+  AOT build, and the owner's real settings (the owner clicks Set up themselves).
+
+### Hover background (owner's request)
+
+- Optional `background` per agent in `agents.json`: an image path, resolved like `icon`
+  (`AgentIcons.ExistingFile`). Presets inherit it from their agent.
+- `HoverBackdrop` is a `Border` behind all content with an `ImageBrush` (`UniformToFill`, aligned
+  right). `AgentRow_PointerEntered`/`Exited` on the row template fade it to 0.3 opacity over 900 ms, and back out over 600 ms (tuned with the owner).
+  Images are cached per path; the fade is skipped when Windows animations are off; hiding the
+  flyout resets it.
+- The image is a local setting, not compiled in or committed.
 
 ## Possible next steps (none requested yet; ask before starting)
 

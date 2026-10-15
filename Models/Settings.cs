@@ -22,6 +22,12 @@ public sealed class AgentDefinition
     /// </summary>
     public string? Icon { get; set; }
 
+    /// <summary>
+    /// Optional image faded in behind the flyout while the pointer is over this agent (and its
+    /// presets). Same path rules as <see cref="Icon"/>.
+    /// </summary>
+    public string? Background { get; set; }
+
     // CLI agents
     /// <summary>Command to run, resolved against PATH (e.g. "claude").</summary>
     public string? Command { get; set; }
@@ -102,6 +108,28 @@ public sealed class PresetList
     public List<Preset> Presets { get; set; } = [];
 }
 
+/// <summary>One Claude plan limit window, as Claude Code reports it to its status line.</summary>
+public sealed class UsageWindow
+{
+    /// <summary>0 to 100.</summary>
+    public double UsedPercentage { get; set; }
+    /// <summary>Unix seconds.</summary>
+    public long ResetsAt { get; set; }
+}
+
+/// <summary>
+/// %LOCALAPPDATA%\AgentDock\claude-usage.json, written by <c>AgentDock.exe --statusline</c>
+/// each time Claude Code refreshes its status line.
+/// </summary>
+public sealed class ClaudeUsage
+{
+    /// <summary>Unix seconds.</summary>
+    public long UpdatedAt { get; set; }
+    public string? Model { get; set; }
+    public UsageWindow? FiveHour { get; set; }
+    public UsageWindow? SevenDay { get; set; }
+}
+
 /// <summary>App-managed state (state.json). Not meant for hand editing.</summary>
 public sealed class DockState
 {
@@ -110,6 +138,9 @@ public sealed class DockState
 
     /// <summary>Last known shell:AppsFolder id per desktop agent, so the menu can show them instantly.</summary>
     public Dictionary<string, string> DesktopApps { get; set; } = [];
+
+    /// <summary>The user closed the "show Claude usage" offer.</summary>
+    public bool ClaudeUsageOfferDismissed { get; set; }
 }
 
 /// <summary>Source-generated serializers (no reflection, so Native AOT is happy).</summary>
@@ -124,4 +155,5 @@ public sealed class DockState
 [JsonSerializable(typeof(DockSettings))]
 [JsonSerializable(typeof(DockState))]
 [JsonSerializable(typeof(PresetList))]
+[JsonSerializable(typeof(ClaudeUsage))]
 internal sealed partial class DockJsonContext : JsonSerializerContext;

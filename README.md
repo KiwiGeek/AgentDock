@@ -112,6 +112,8 @@ Agents that aren't installed are hidden unless you set `hideUnavailable` to `fal
     { "id": "codex-cmd", "name": "Codex", "command": "codex", "shell": "cmd" },
     // Your own icon: .png, .ico, .jpg, .bmp, or an .exe to take it from (relative to this folder)
     { "id": "aider", "name": "Aider", "command": "aider", "icon": "icons/aider.png" },
+    // A picture that fades in behind the flyout while the pointer is over this agent (and its presets)
+    { "id": "claude", "name": "Claude Code", "command": "claude", "background": "claude-background.png" },
 
     // Desktop: found by Start menu name...
     { "id": "claude-desktop", "name": "Claude", "kind": "desktop", "startMenuNames": ["Claude"] },
@@ -125,6 +127,19 @@ Agents that aren't installed are hidden unless you set `hideUnavailable` to `fal
 
 Changes take effect the next time the flyout opens; no restart needed. Ids must be unique;
 the jump list uses them.
+
+### Claude usage limits
+
+If you use Claude Code with a Pro or Max plan, the flyout can show how much of your 5-hour session
+and weekly limits you've used, and when each resets, in a column beside the agents. Click
+**Set up** the first time. Agent Dock then becomes Claude Code's status line, which is the only
+supported way to get these numbers. It reads only what Claude Code passes to its status line,
+never your login. The status line itself shows something like `Opus 5.5 | 5h 37% | 7d 12%`.
+
+Setting up replaces any status line you already had, and backs up Claude Code's `settings.json`
+first, next to the original (`settings.json.agentdock-<date>.bak`). Claude Code only refreshes
+its status line while a session is running, so the flyout says how old the numbers are. If you
+move Agent Dock, the flyout notices and offers to update the path.
 
 ### Icons
 

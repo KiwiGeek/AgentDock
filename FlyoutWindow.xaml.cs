@@ -24,7 +24,10 @@ namespace AgentDock;
 /// </summary>
 public sealed partial class FlyoutWindow : Window
 {
-    private const double WidthDip = 380;
+    /// <summary>Width of the agent column (matches the XAML), plus the usage column when it's shown.</summary>
+    private const double ListWidthDip = 380;
+    private const double UsageWidthDip = 240;
+    private const double HoverBackdropOpacity = 0.3;
     private const double MaxHeightDip = 640;
 
     /// <summary>A click on the taskbar icon hides the open flyout on mouse-down and relaunches on mouse-up; ignore that relaunch.</summary>
@@ -173,6 +176,7 @@ public sealed partial class FlyoutWindow : Window
         _hiddenByDeactivation = byDeactivation;
         _sinceHide.Restart();
         AppWindow.Hide();
+        FadeBackdrop(null); // don't reopen with the last hover's image showing
     }
 
     private void BringToFront()
@@ -213,6 +217,7 @@ public sealed partial class FlyoutWindow : Window
         LoadFolders();
         // Fast pass: PATH lookups plus whatever desktop apps were found last time.
         ShowAgents(AgentCatalog.Resolve(_settings, def => _state.DesktopApps.GetValueOrDefault(def.Id)));
+        UpdateUsage();
     }
 
     /// <summary>Slow pass: read the Start menu and extract missing icons on a background STA thread.</summary>
@@ -637,6 +642,194 @@ public sealed partial class FlyoutWindow : Window
     private static bool SamePath(string a, string b) =>
         string.Equals(Path.TrimEndingDirectorySeparator(a), Path.TrimEndingDirectorySeparator(b), StringComparison.OrdinalIgnoreCase);
 
+    // ---------- Claude usage ----------
+
+    /// <summary>
+    /// Shows the saved Claude plan usage, or offers to set Agent Dock up as Claude Code's status
+    /// line (the only supported way to get those numbers). Only when Claude Code is installed.
+    /// </summary>
+    private void UpdateUsage()
+    {
+        UsagePanel.Visibility = Visibility.Collapsed;
+        UsageOffer.IsOpen = false;
+        if (!_agents.Any(a => a.IsCli && a.IsAvailable && IsClaudeCode(a.Definition.Command)))
+            return;
+
+        var setup = ClaudeStatusLine.CheckSetup(Environment.ProcessPath!);
+        switch (setup.State)
+        {
+            case ClaudeStatusLine.SetupState.Installed:
+                ShowUsage(ClaudeStatusLine.Load());
+                break;
+            case ClaudeStatusLine.SetupState.OtherCopy:
+                // Not dismissable: usage here has silently stopped updating.
+                OfferUsage(InfoBarSeverity.Warning, "Update",
+                    "Claude Code's status line runs a different copy of Agent Dock, so usage here won't update.", closable: false);
+                break;
+            case ClaudeStatusLine.SetupState.NotInstalled when !_state.ClaudeUsageOfferDismissed:
+                OfferUsage(InfoBarSeverity.Informational, "Set up", setup.CurrentCommand is null
+                    ? "See your plan's usage limits here. Agent Dock becomes Claude Code's status line to read them."
+                    : $"See your plan's usage limits here. Agent Dock replaces Claude Code's status line ({DescribeCommand(setup.CurrentCommand)}). Its settings are backed up first.",
+                    closable: true);
+                break;
+        }
+    }
+
+    private void OfferUsage(InfoBarSeverity severity, string button, string message, bool closable)
+    {
+        UsageOffer.Severity = severity;
+        UsageOffer.Message = message;
+        UsageOffer.IsClosable = closable;
+        UsageOfferButton.Content = button;
+        UsageOffer.IsOpen = true;
+    }
+
+    private void ShowUsage(ClaudeUsage? usage)
+    {
+        UsagePanel.Visibility = Visibility.Visible;
+        var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
+        UsageRows.Visibility = hasData ? Visibility.Visible : Visibility.Collapsed;
+        UsageNote.Visibility = hasData ? Visibility.Collapsed : Visibility.Visible;
+        UsageNote.Text = "Your limits appear here after your next Claude Code reply.";
+        UsageUpdatedText.Text = "";
+        if (!hasData)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        ShowWindow(SessionBar, SessionText, usage!.FiveHour, now);
+        ShowWindow(WeekBar, WeekText, usage.SevenDay, now);
+        // Claude Code only refreshes its status line while a session is running, so say how old this is.
+        UsageUpdatedText.Text = UpdatedAgo(DateTimeOffset.FromUnixTimeSeconds(usage.UpdatedAt), now);
+    }
+
+    private static void ShowWindow(ProgressBar bar, TextBlock text, UsageWindow? window, DateTimeOffset now)
+    {
+        bar.ShowError = bar.ShowPaused = false;
+        if (window is null)
+        {
+            bar.Value = 0;
+            text.Text = "No data yet";
+            return;
+        }
+
+        var resetsAt = DateTimeOffset.FromUnixTimeSeconds(window.ResetsAt);
+        if (window.ResetsAt > 0 && resetsAt <= now)
+        {
+            bar.Value = 0;
+            text.Text = "0% · reset";
+            return;
+        }
+
+        var used = Math.Clamp(window.UsedPercentage, 0, 100);
+        bar.Value = used;
+        // Windows' own warning and error colours for the bar.
+        bar.ShowError = used >= 90;
+        bar.ShowPaused = used is >= 75 and < 90;
+        text.Text = window.ResetsAt > 0 ? $"{Math.Round(used)}% · resets {ResetTime(resetsAt)}" : $"{Math.Round(used)}%";
+    }
+
+    private static string ResetTime(DateTimeOffset when)
+    {
+        var local = when.ToLocalTime();
+        var days = (local.Date - DateTime.Today).Days;
+        // "t" is the short time only as a standard format on its own; inside "ddd t" it means "A"/"P".
+        return days == 0 ? local.ToString("t") : days < 7 ? $"{local:ddd} {local:t}" : local.ToString("MMM d");
+    }
+
+    private static string UpdatedAgo(DateTimeOffset when, DateTimeOffset now)
+    {
+        var age = now - when;
+        return age.TotalMinutes < 1 ? "Updated just now"
+            : age.TotalHours < 1 ? $"Updated {(int)age.TotalMinutes} min ago"
+            : age.TotalDays < 1 ? $"Updated {(int)age.TotalHours} hr ago"
+            : $"Updated {when.ToLocalTime():MMM d}";
+    }
+
+    private static bool IsClaudeCode(string? command) =>
+        !string.IsNullOrWhiteSpace(command)
+        && Path.GetFileNameWithoutExtension(command.Trim().Trim('"')).Equals("claude", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The script or program a status line command runs, e.g. "waifuops-statusline.ps1".</summary>
+    private static string DescribeCommand(string command)
+    {
+        var script = command.Split([' ', '"', '\''], StringSplitOptions.RemoveEmptyEntries)
+            .LastOrDefault(t => Path.GetExtension(t).ToLowerInvariant() is ".ps1" or ".sh" or ".js" or ".mjs" or ".py" or ".exe" or ".cmd" or ".bat");
+        return script is not null ? Path.GetFileName(script.Replace('/', '\\'))
+            : command.Length <= 40 ? command : command[..39] + "…";
+    }
+
+    private void UsageOfferButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ClaudeStatusLine.Install(Environment.ProcessPath!) is { } error)
+        {
+            SetStatus(error);
+            return;
+        }
+        UpdateUsage();
+        StatusText.Text = "Claude Code now uses Agent Dock as its status line.";
+        PlaceWindow();
+    }
+
+    private void UsageOffer_CloseButtonClick(InfoBar sender, object args)
+    {
+        _state.ClaudeUsageOfferDismissed = true;
+        _store.SaveState(_state);
+        DispatcherQueue.TryEnqueue(PlaceWindow); // once the bar has collapsed
+    }
+
+    // ---------- Hover background ----------
+
+    private readonly Dictionary<string, Microsoft.UI.Xaml.Media.ImageSource> _backdrops = new(StringComparer.OrdinalIgnoreCase);
+    private Storyboard? _backdropFade;
+
+    private void AgentRow_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+        FadeBackdrop(((FrameworkElement)sender).DataContext is AgentItem { BackgroundPath: { } path } ? path : null);
+
+    private void AgentRow_PointerExited(object sender, PointerRoutedEventArgs e) => FadeBackdrop(null);
+
+    /// <summary>Fades the given image in behind the flyout, or fades out when <paramref name="path"/> is null.</summary>
+    private void FadeBackdrop(string? path)
+    {
+        if (path is not null)
+        {
+            if (!_backdrops.TryGetValue(path, out var image))
+            {
+                try
+                {
+                    _backdrops[path] = image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(path));
+                }
+                catch (Exception ex) when (ex is UriFormatException or ArgumentException)
+                {
+                    return;
+                }
+            }
+            HoverBrush.ImageSource = image;
+        }
+
+        var target = path is null ? 0 : HoverBackdropOpacity;
+        // Stopping a storyboard snaps back to the value before it ran, so carry the current one over.
+        var current = HoverBackdrop.Opacity;
+        _backdropFade?.Stop();
+        HoverBackdrop.Opacity = current;
+        if (!new Windows.UI.ViewManagement.UISettings().AnimationsEnabled || !AppWindow.IsVisible)
+        {
+            HoverBackdrop.Opacity = target;
+            return;
+        }
+
+        var fade = new DoubleAnimation
+        {
+            From = current,
+            To = target,
+            Duration = new Duration(TimeSpan.FromMilliseconds(path is null ? 600 : 900)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(fade, HoverBackdrop);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        _backdropFade = new Storyboard { Children = { fade } };
+        _backdropFade.Begin();
+    }
+
     // ---------- Placement and motion ----------
 
     /// <summary>
@@ -653,7 +846,8 @@ public sealed partial class FlyoutWindow : Window
         var work = info.rcWork;
         var gap = (int)Math.Round(12 * scale);
 
-        Root.Measure(new Windows.Foundation.Size(WidthDip, double.PositiveInfinity));
+        var widthDip = ListWidthDip + (UsagePanel.Visibility == Visibility.Visible || UsageOffer.IsOpen ? UsageWidthDip : 0);
+        Root.Measure(new Windows.Foundation.Size(widthDip, double.PositiveInfinity));
         var maxHeightDip = Math.Min(MaxHeightDip, (work.Height - 2 * gap) / scale);
         var heightDip = Root.DesiredSize.Height > 1
             ? Math.Min(Root.DesiredSize.Height, maxHeightDip)
@@ -662,7 +856,7 @@ public sealed partial class FlyoutWindow : Window
         // Window size includes the thin border around the client area.
         var borderW = AppWindow.Size.Width - AppWindow.ClientSize.Width;
         var borderH = AppWindow.Size.Height - AppWindow.ClientSize.Height;
-        var w = (int)Math.Ceiling(WidthDip * scale) + borderW;
+        var w = (int)Math.Ceiling(widthDip * scale) + borderW;
         var h = (int)Math.Ceiling(heightDip * scale) + borderH;
 
         int x, y;

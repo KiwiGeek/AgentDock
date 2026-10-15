@@ -20,6 +20,10 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Claude Code's status line: no mutex, no pipe, no window.
+        if (args.Length > 0 && args[0].Equals(ClaudeStatusLine.Argument, StringComparison.OrdinalIgnoreCase))
+            return ClaudeStatusLine.Run();
+
         var command = DockCommand.FromArgs(args);
 
         using var mutex = new Mutex(initiallyOwned: true, ResidentMutexName, out var isFirstInstance);
