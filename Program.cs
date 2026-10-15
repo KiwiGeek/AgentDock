@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using AgentDock.Interop;
 using AgentDock.Services;
@@ -13,6 +15,7 @@ namespace AgentDock;
 internal static class Program
 {
     private const string ResidentMutexName = @"Local\AgentDock.Resident";
+    private static readonly TimeSpan QuitTimeout = TimeSpan.FromSeconds(3);
 
     [STAThread]
     private static int Main(string[] args)
@@ -24,6 +27,8 @@ internal static class Program
         {
             if (command.Kind == DockCommandKind.Background)
                 return 0; // Already running.
+            if (command.Kind == DockCommandKind.Quit)
+                return QuitResident(command, mutex);
 
             // Let the background instance bring its window to the front; we got foreground
             // rights from the click, and it otherwise wouldn't be allowed to.
@@ -37,6 +42,57 @@ internal static class Program
         RunResident(command);
         GC.KeepAlive(mutex);
         return 0;
+    }
+
+    /// <summary>
+    /// Asks the running instance to quit, and force-closes every Agent Dock process if it hasn't
+    /// exited in time. A hung instance still accepts the pipe connection (the kernel completes it),
+    /// so a successful send proves nothing; its mutex being released does.
+    /// </summary>
+    private static int QuitResident(DockCommand quit, Mutex residentMutex)
+    {
+        if (Ipc.TrySend(quit.ToMessage()) && HasExited(residentMutex, QuitTimeout))
+            return 0;
+
+        ForceCloseOthers();
+        return 0;
+    }
+
+    private static bool HasExited(Mutex residentMutex, TimeSpan timeout)
+    {
+        try
+        {
+            if (!residentMutex.WaitOne(timeout))
+                return false;
+        }
+        catch (AbandonedMutexException)
+        {
+            // The resident exited without releasing it, which is how it normally ends. We own it now.
+        }
+        residentMutex.ReleaseMutex();
+        return true;
+    }
+
+    private static void ForceCloseOthers()
+    {
+        using var self = Process.GetCurrentProcess();
+        foreach (var process in Process.GetProcessesByName(self.ProcessName))
+        {
+            using (process)
+            {
+                try
+                {
+                    if (process.Id == self.Id || process.SessionId != self.SessionId)
+                        continue;
+                    process.Kill();
+                    process.WaitForExit(2000);
+                }
+                catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+                {
+                    // Already gone, or not ours to close.
+                }
+            }
+        }
     }
 
     /// <summary>Kept separate so WinUI is only initialised on this path.</summary>

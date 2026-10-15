@@ -45,6 +45,14 @@ public partial class App : Application
 
     private async Task StartAsync()
     {
+        if (!await PinPromptWindow.EnsurePinnedAsync())
+        {
+            // Declined: don't come back at every sign-in to ask again.
+            Autostart.Apply(false);
+            Quit();
+            return;
+        }
+
         await _flyout!.PrepareAsync();
         Handle(_initial);
     }

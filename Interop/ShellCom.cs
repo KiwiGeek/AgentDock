@@ -83,6 +83,15 @@ internal partial interface IShellLinkW
     void SetPath(string path);
 }
 
+[GeneratedComInterface(StringMarshalling = StringMarshalling.Utf16), Guid("0000010b-0000-0000-c000-000000000046")]
+internal partial interface IPersistFile
+{
+    void GetClassID(out Guid clsid);
+    [PreserveSig]
+    int IsDirty();
+    void Load(string fileName, uint mode);
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal struct PROPERTYKEY
 {
@@ -132,6 +141,7 @@ internal static partial class ShellCom
     public const int SIIGBF_BIGGERSIZEOK = 0x1, SIIGBF_ICONONLY = 0x4;
     public const uint CLSCTX_INPROC_SERVER = 1;
     public const ushort VT_LPWSTR = 31;
+    public const uint STGM_READ = 0;
 
     [LibraryImport("shell32.dll", StringMarshalling = StringMarshalling.Utf16)]
     public static partial int SHCreateItemFromParsingName(string path, nint bindContext, in Guid riid, out IShellItem item);

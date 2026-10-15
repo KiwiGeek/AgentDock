@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Text;
 
 namespace AgentDock.Services;
 
@@ -49,15 +50,18 @@ public static class Ipc
     {
         try
         {
-            using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out, PipeOptions.CurrentUserOnly);
+            using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
             // Generous timeout: the running instance may itself still be starting up.
             client.Connect(5000);
-            using var writer = new StreamWriter(client);
-            writer.WriteLine(message);
-            writer.Flush();
+
+            // The pipe is unbuffered, so a write waits until the other side reads. A hung instance
+            // never reads, and without this timeout the sender would hang with it.
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            client.WriteAsync(Encoding.UTF8.GetBytes(message + "\n"), timeout.Token).AsTask().GetAwaiter().GetResult();
             return true;
         }
-        catch (Exception ex) when (ex is TimeoutException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is TimeoutException or IOException or UnauthorizedAccessException or OperationCanceledException)
         {
             return false;
         }

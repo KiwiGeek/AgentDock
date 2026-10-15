@@ -23,9 +23,14 @@ The Windows App SDK runtime is bundled into the output, so nothing else needs in
 dotnet publish -c Release -r win-x64 -o C:\Tools\AgentDock
 ```
 
-Use `-r win-arm64` on an ARM PC. In File Explorer, right-click `C:\Tools\AgentDock\AgentDock.exe`,
-choose **Show more options**, then **Pin to taskbar**. The flyout has no taskbar button of its own,
-like Windows' own flyouts, so it can't be pinned from a running window.
+Use `-r win-arm64` on an ARM PC. Then run `C:\Tools\AgentDock\AgentDock.exe`. If it isn't pinned
+yet, it asks you to pin it: right-click its icon on the taskbar and choose **Pin to taskbar**, and
+the window closes by itself. (Windows doesn't let apps pin themselves, so this step is yours.)
+Choosing **Quit** instead closes Agent Dock and removes its sign-in entry, since it can't be opened
+without the pin. It asks again whenever it starts unpinned.
+
+You can also pin it before running it: in File Explorer, right-click the exe, choose
+**Show more options**, then **Pin to taskbar**.
 
 ### Upgrading from the WPF version
 
@@ -61,7 +66,9 @@ the first click of the day is fast. Turn that off with `"startWithWindows": fals
 ### Quitting (needed before re-publishing over the exe)
 
 Right-click the taskbar icon and choose **Quit Agent Dock**, or run `AgentDock.exe --quit`.
-The exe is locked while the background instance is running.
+The exe is locked while the background instance is running. If Agent Dock has stopped responding,
+Quit force-closes it after about three seconds. The next click starts it from cold, which takes a
+moment longer.
 
 ## Configuration
 

@@ -13,7 +13,8 @@ just above the taskbar button, listing AI agents:
   in Windows Terminal, in a working folder chosen from a recent-folders drop-down or a folder picker.
 - **Desktop agents** (Claude, ChatGPT, Copilot, Perplexity by default) launch directly.
 
-Agents that aren't installed are hidden. The list is user-editable in `agents.json`. Right-clicking
+Agents that aren't installed are hidden. On startup, if the exe isn't pinned to the taskbar,
+it asks the user to pin it and quits if they decline (see "Pin prompt" below). The list is user-editable in `agents.json`. Right-clicking
 the taskbar icon shows the same agents as a jump list. The two goals that drive most decisions:
 **looks native to Windows 11**, and **opens fast**.
 
@@ -35,28 +36,36 @@ Repo: `KiwiGeek/AgentDock` on GitHub. The `.csproj` is at the repo root (CI depe
 | --- | --- |
 | C# | Type-checks with zero warnings, including Native AOT and CsWinRT analyzers |
 | XAML | Compiled on the owner's machine after one fix (a field name clashed with XAML-generated `_contentLoaded`). Confirm with a clean build |
-| Runtime | **Never run yet.** Everything in "Verify first" below is untested |
-| CI | Workflow written, not yet run |
+| Runtime | Partly run (2026-10-15). See "Verify first" for what passed |
+| CI | **Missing.** `.github/workflows/build.yml` and `RELEASING.md` are referenced here but were never committed; neither is in git history |
 
 History: first built as WPF, then rewritten in WinUI 3 at the owner's request for a more native look.
 Data files (`agents.json`, `state.json`, icon cache) are compatible across both versions.
 
 ## Verify first
 
-On the first session with the code, build and run, then check these in order. Fix what fails
-before starting new work.
+Build and run, then check these in order. Results from the first run (2026-10-15, Debug build,
+4-monitor setup) are marked ✅ passed or ⚠️ problem found; unmarked items are not yet tested.
 
-1. `dotnet build` succeeds from a clean state (delete `bin/` and `obj/` first).
-2. `dotnet run` shows the flyout centred on screen, with acrylic, rounded corners, and no title bar.
-3. The flyout **takes keyboard focus** when it appears: arrow keys move through agents, Esc hides it.
-4. Clicking elsewhere hides it; running `dotnet run` again shows it again (single-instance hand-off).
+1. ✅ `dotnet build` succeeds from a clean state (delete `bin/` and `obj/` first). Zero warnings.
+2. ⚠️ `dotnet run` shows the flyout centred on screen, with acrylic, rounded corners, and no title bar.
+   Centred, rounded and borderless all pass. Problem: the window never gets `WS_EX_TOPMOST`
+   (exstyle is `0x100`) despite `IsAlwaysOnTop = true`, so without foreground it sits behind
+   other windows.
+3. ⚠️ The flyout **takes keyboard focus** when it appears: arrow keys move through agents, Esc hides it.
+   Through the pipe hand-off (with foreground rights, as a taskbar click gives) it takes focus,
+   and Down crosses from the CLI list into the desktop list. A direct first launch without
+   foreground rights leaves it visible, unfocused and behind other windows. Esc not yet confirmed.
+4. ✅ Clicking elsewhere hides it; running `dotnet run` again shows it again (single-instance hand-off).
+   It also follows the cursor to whichever monitor it's on.
 5. Height fits the content: no clipped footer, no large empty area. Status messages that wrap
-   (e.g. a launch error) grow the window.
+   (e.g. a launch error) grow the window. The normal list fits exactly; wrapping not yet tested.
+   The off-screen warm-up in `PrepareAsync` worked: the first show was fully rendered.
 6. Published and pinned: the flyout appears above the clicked taskbar button, on the right monitor,
    at 100% and 150%+ scaling.
 7. Clicking the pinned icon while the flyout is open closes it (doesn't close-and-reopen).
 8. CLI agent opens Windows Terminal in the selected folder; desktop agent launches.
-9. Desktop agents show their real icons (Start menu lookup and icon extraction work).
+9. ✅ Desktop agents show their real icons (Start menu lookup and icon extraction work).
 10. Jump list shows agents under "Command line" / "Desktop apps" plus "Quit Agent Dock", and entries launch.
 11. Folder picker opens, and picking a folder doesn't hide the flyout.
 12. `dotnet publish -c Release -r win-x64` succeeds with Native AOT.
@@ -71,6 +80,7 @@ there's a 2-second timeout fallback).
 ```powershell
 dotnet run                                   # Debug, JIT, centred on screen
 dotnet run -- --quit                         # stop the background instance
+$env:AGENTDOCK_PIN_CHECK = "1"; dotnet run   # Debug with the pin prompt (skipped in Debug otherwise)
 dotnet publish -c Release -r win-x64 -o C:\Tools\AgentDock   # Native AOT
 ```
 
@@ -97,8 +107,14 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   load only on this path) starts the WinUI `Application`.
 - Pipe name: `AgentDock.{UserName}.{SessionId}`, `PipeOptions.CurrentUserOnly`.
   Messages: `Show`, `Launch <agentId>`, `Background`, `Quit` (see `DockCommand` in `Services/Ipc.cs`).
+  The pipe is unbuffered, so a write blocks until the resident reads it. `Ipc.TrySend` gives up
+  after 3 s so that a hung resident can't hang the sender too (it did before; found in testing).
 - Command-line: no args = Show; `--launch <id>` (jump list); `--background` (sign-in startup);
   `--quit`.
+- `--quit` (`Program.QuitResident`) sends `Quit`, then waits up to 3 s for the resident's mutex.
+  A hung resident still accepts the connection, so a successful send proves nothing. If the
+  mutex isn't released in time, or the send fails, it kills every other `AgentDock` process in
+  the session. Verified against a responsive copy (~0.2 s) and a suspended one (~3.2 s).
 - `App.PrepareAsync` path: the flyout is built at startup, rendered once off-screen, then hidden.
   After that it is only ever shown and hidden, never recreated. `Alt+F4` and `AppWindow.Closing`
   are intercepted to hide; only `Quit` closes it (`App.IsExiting`).
@@ -122,6 +138,23 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   A generation counter discards results from an earlier show.
 - Number keys 1–9 launch the corresponding available agent. Up/Down cross between the two lists.
 - Open animation: 250 ms slide + fade, skipped when Windows animations are off.
+
+### Pin prompt (`PinPromptWindow.xaml(.cs)`, `Interop/TaskbarPins.cs`)
+
+- The taskbar icon is the only way to open the flyout, so `App.StartAsync` calls
+  `PinPromptWindow.EnsurePinnedAsync()` before building the flyout. Declining (the Quit button or
+  closing the window) removes the Run key and quits, so it doesn't ask again at every sign-in.
+- **Windows won't let an unpackaged app pin itself.** `TaskbarManager.RequestPinCurrentAppAsync`
+  needs package identity plus a limited access feature granted by Microsoft, and the old "pin"
+  shell verb is gone. So the prompt is an ordinary window *with* a taskbar button, and asks the
+  user to right-click that button and choose Pin to taskbar. Windows then creates a shortcut to
+  the exe with no arguments (verified).
+- Detection: every desktop-app taskbar pin is a `.lnk` in
+  `%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar`. `TaskbarPins.IsPinned`
+  resolves each with `IShellLinkW` + `IPersistFile` and compares it to `Environment.ProcessPath`.
+  The prompt polls once a second and closes itself when the pin appears.
+- Debug builds skip the check unless `AGENTDOCK_PIN_CHECK=1`, so `dotnet run` doesn't need its own pin.
+- Verified: pinning closes the prompt and opens the flyout; Quit and closing the window both exit.
 
 ### Agents
 
@@ -157,11 +190,11 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - COM via `[GeneratedComInterface]` + `[LibraryImport]` only, never `[ComImport]`/`DllImport`.
   In COM interface declarations, every vtable slot before the last one used must be declared, in order.
 - XAML bindings via `x:Bind` only, never `{Binding}`.
-- Classes crossing into WinRT (view models, `FlyoutWindow`, `App`) are `partial`.
+- Classes crossing into WinRT (view models, `FlyoutWindow`, `PinPromptWindow`, `App`) are `partial`.
 
 **Don't name members anything the XAML compiler generates.** It adds `_contentLoaded`,
 `InitializeComponent`, `Connect`, `GetBindingConnector`, `Bindings`, and one field per `x:Name`
-to `App` and `FlyoutWindow`. A clash breaks the temporary compile, after which the XAML compiler
+to `App`, `FlyoutWindow` and `PinPromptWindow`. A clash breaks the temporary compile, after which the XAML compiler
 also reports misleading "Cannot resolve DataType" errors (WMC0909) and WMC1509 "No LocalAssembly".
 Fix the clash first; those follow.
 
@@ -181,6 +214,7 @@ there degrade to a missing icon or entry, never an error.
 | `Program.cs` | Entry point: hand-off or become resident |
 | `App.xaml(.cs)` | Resident instance; dispatches `DockCommand`s; jump-list launches |
 | `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard |
+| `PinPromptWindow.xaml(.cs)` | Startup prompt asking the user to pin Agent Dock; waits for the pin |
 | `Models/Settings.cs` | `AgentDefinition`, `DockSettings` (+ defaults), `DockState`, `DockJsonContext` |
 | `Models/AgentItem.cs` | View model for an agent row (`INotifyPropertyChanged`); `FolderItem` |
 | `Services/SettingsStore.cs` | `%APPDATA%\AgentDock\agents.json` and `state.json`; atomic writes via temp file |
@@ -194,6 +228,7 @@ there degrade to a missing icon or entry, never an error.
 | `Interop/ShellCom.cs` | Shell COM interfaces, GUIDs, constants |
 | `Interop/StartMenuApps.cs` | All-apps enumeration; `RunOnStaThread` helper |
 | `Interop/ShellIcons.cs` | Icon extraction and caching |
+| `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
 
