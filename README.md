@@ -142,6 +142,14 @@ first, next to the original (`settings.json.agentdock-<date>.bak`). Claude Code 
 its status line while a session is running, so the flyout says how old the numbers are. If you
 move Agent Dock, the flyout notices and offers to update the path.
 
+### Codex usage limits
+
+Codex gets the same drawer while the pointer is over it, with nothing to set up: Codex records
+your 5-hour and weekly limits in its own session logs (`~/.codex/sessions`, or under `CODEX_HOME`),
+and Agent Dock reads the latest. It never reads Codex's login. Codex only records them during a
+session, so the drawer says how old they are. The log format isn't documented by OpenAI, so if a
+Codex update changes it, the drawer just shows no data.
+
 ### Icons
 
 Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,

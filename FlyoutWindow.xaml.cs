@@ -28,6 +28,11 @@ public sealed partial class FlyoutWindow : Window
     private const double ListWidthDip = 380;
     /// <summary>The drawer's width; matches DrawerContent in the XAML.</summary>
     private const double DrawerWidthDip = 240;
+    /// <summary>
+    /// How far the drawer tucks under the flyout's edge. It covers the flyout's rounded corners on that
+    /// side (which otherwise leave a notch at each end of the seam) and is only empty padding there.
+    /// </summary>
+    private const double DrawerOverlapDip = 8;
     private const double HoverBackdropOpacity = 0.3;
     private const double MaxHeightDip = 640;
 
@@ -220,7 +225,7 @@ public sealed partial class FlyoutWindow : Window
         LoadFolders();
         // Fast pass: PATH lookups plus whatever desktop apps were found last time.
         ShowAgents(AgentCatalog.Resolve(_settings, def => _state.DesktopApps.GetValueOrDefault(def.Id)));
-        UpdateUsage();
+        ClearUsageCache();
     }
 
     /// <summary>Slow pass: read the Start menu and extract missing icons on a background STA thread.</summary>
@@ -645,24 +650,67 @@ public sealed partial class FlyoutWindow : Window
     private static bool SamePath(string a, string b) =>
         string.Equals(Path.TrimEndingDirectorySeparator(a), Path.TrimEndingDirectorySeparator(b), StringComparison.OrdinalIgnoreCase);
 
-    // ---------- Claude usage ----------
+    // ---------- Plan usage (drawer content) ----------
+
+    // Loaded on the first hover after each show (ReloadData clears them), so opening stays fast.
+    private ClaudeStatusLine.Setup? _claudeSetup;
+    private PlanUsage? _claudeUsage;
+    private PlanUsage? _codexUsage;
+    private bool _codexUsageLoaded;
+    /// <summary>The row whose content the drawer is showing.</summary>
+    private AgentItem? _drawerItem;
+
+    private void ClearUsageCache()
+    {
+        _claudeSetup = null;
+        _claudeUsage = _codexUsage = null;
+        _codexUsageLoaded = false;
+    }
 
     /// <summary>
-    /// Shows the saved Claude plan usage, or offers to set Agent Dock up as Claude Code's status
-    /// line (the only supported way to get those numbers). Only when Claude Code is installed.
+    /// Fills the drawer for <paramref name="item"/>. Returns false, leaving the drawer as it is, if
+    /// that agent has nothing to show: so far only Claude Code and Codex (and their presets) do.
     /// </summary>
-    private void UpdateUsage()
+    private bool PrepareDrawer(AgentItem item)
     {
-        UsagePanel.Visibility = Visibility.Collapsed;
-        UsageOffer.IsOpen = false;
-        if (!_agents.Any(a => a.IsCli && a.IsAvailable && IsClaudeCode(a.Definition.Command)))
-            return;
+        if (!item.IsCli || !item.IsAgentAvailable)
+            return false;
 
-        var setup = ClaudeStatusLine.CheckSetup(Environment.ProcessPath!);
+        switch (CommandName(item.Definition.Command))
+        {
+            case "claude":
+                return PrepareClaudeDrawer(item);
+            case "codex":
+                if (!_codexUsageLoaded)
+                {
+                    _codexUsage = CodexUsage.Load();
+                    _codexUsageLoaded = true;
+                }
+                _drawerItem = item;
+                UsageOffer.IsOpen = false;
+                // Codex writes its usage to its session logs only while a session runs.
+                ShowUsage("Codex usage", _codexUsage, "Your limits appear here after your next Codex reply.");
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Claude Code's saved usage, or the offer to set Agent Dock up as its status line (the only
+    /// supported way to get those numbers).
+    /// </summary>
+    private bool PrepareClaudeDrawer(AgentItem item)
+    {
+        _claudeSetup ??= ClaudeStatusLine.CheckSetup(Environment.ProcessPath!);
+        var setup = _claudeSetup.Value;
         switch (setup.State)
         {
             case ClaudeStatusLine.SetupState.Installed:
-                ShowUsage(ClaudeStatusLine.Load());
+                _claudeUsage ??= ClaudeStatusLine.Load();
+                UsageOffer.IsOpen = false;
+                // Claude Code only refreshes its status line while a session is running.
+                ShowUsage("Claude usage", _claudeUsage, "Your limits appear here after your next Claude Code reply.");
                 break;
             case ClaudeStatusLine.SetupState.OtherCopy:
                 // Not dismissable: usage here has silently stopped updating.
@@ -675,11 +723,16 @@ public sealed partial class FlyoutWindow : Window
                     : $"See your plan's usage limits here. Agent Dock replaces Claude Code's status line ({DescribeCommand(setup.CurrentCommand)}). Its settings are backed up first.",
                     closable: true);
                 break;
+            default:
+                return false;
         }
+        _drawerItem = item;
+        return true;
     }
 
     private void OfferUsage(InfoBarSeverity severity, string button, string message, bool closable)
     {
+        UsagePanel.Visibility = Visibility.Collapsed;
         UsageOffer.Severity = severity;
         UsageOffer.Message = message;
         UsageOffer.IsClosable = closable;
@@ -687,13 +740,14 @@ public sealed partial class FlyoutWindow : Window
         UsageOffer.IsOpen = true;
     }
 
-    private void ShowUsage(ClaudeUsage? usage)
+    private void ShowUsage(string title, PlanUsage? usage, string emptyNote)
     {
+        UsageTitle.Text = title;
         UsagePanel.Visibility = Visibility.Visible;
         var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
         UsageRows.Visibility = hasData ? Visibility.Visible : Visibility.Collapsed;
         UsageNote.Visibility = hasData ? Visibility.Collapsed : Visibility.Visible;
-        UsageNote.Text = "Your limits appear here after your next Claude Code reply.";
+        UsageNote.Text = emptyNote;
         UsageUpdatedText.Text = "";
         if (!hasData)
             return;
@@ -701,7 +755,7 @@ public sealed partial class FlyoutWindow : Window
         var now = DateTimeOffset.UtcNow;
         ShowWindow(SessionBar, SessionText, usage!.FiveHour, now);
         ShowWindow(WeekBar, WeekText, usage.SevenDay, now);
-        // Claude Code only refreshes its status line while a session is running, so say how old this is.
+        // Both agents only record usage while a session runs, so say how old this is.
         UsageUpdatedText.Text = UpdatedAgo(DateTimeOffset.FromUnixTimeSeconds(usage.UpdatedAt), now);
     }
 
@@ -748,9 +802,9 @@ public sealed partial class FlyoutWindow : Window
             : $"Updated {when.ToLocalTime():MMM d}";
     }
 
-    private static bool IsClaudeCode(string? command) =>
-        !string.IsNullOrWhiteSpace(command)
-        && Path.GetFileNameWithoutExtension(command.Trim().Trim('"')).Equals("claude", StringComparison.OrdinalIgnoreCase);
+    /// <summary>"claude" for "claude", "claude.exe" or a quoted full path to it.</summary>
+    private static string? CommandName(string? command) =>
+        string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"')).ToLowerInvariant();
 
     /// <summary>The script or program a status line command runs, e.g. "waifuops-statusline.ps1".</summary>
     private static string DescribeCommand(string command)
@@ -768,7 +822,9 @@ public sealed partial class FlyoutWindow : Window
             SetStatus(error);
             return;
         }
-        UpdateUsage();
+        ClearUsageCache();
+        if (_drawerItem is not null)
+            PrepareDrawer(_drawerItem);
         StatusText.Text = "Claude Code now uses Agent Dock as its status line.";
         PlaceWindow(); // the footer message may wrap
     }
@@ -782,15 +838,36 @@ public sealed partial class FlyoutWindow : Window
 
     // ---------- Hover background ----------
 
+    /// <summary>
+    /// One agent's picture: its slice in the flyout and its slice in the drawer. There are two
+    /// layers, so that moving from one agent to another cross-fades instead of swapping.
+    /// </summary>
+    private sealed class BackdropLayer(Image flyout, Image drawer)
+    {
+        public Image Flyout { get; } = flyout;
+        public Image Drawer { get; } = drawer;
+        public string? Path { get; set; }
+        /// <summary>Laid out across the flyout and drawer together.</summary>
+        public bool SpansDrawer { get; set; }
+    }
+
     private readonly Dictionary<string, BitmapImage> _backdrops = new(StringComparer.OrdinalIgnoreCase);
+    private BackdropLayer[]? _layers;
+    private int _activeLayer;
     private Storyboard? _backdropFade;
-    /// <summary>The current hover image is laid out across the flyout and the drawer together.</summary>
-    private bool _backdropSpansDrawer;
+
+    private BackdropLayer[] Layers => _layers ??=
+        [new BackdropLayer(HoverImageA, DrawerImageA), new BackdropLayer(HoverImageB, DrawerImageB)];
 
     private void AgentRow_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         var item = ((FrameworkElement)sender).DataContext as AgentItem;
-        var drawer = item is not null && HasDrawer(item);
+        var previous = Drawer.IsOpen && !_drawerClosing ? _drawerItem : null;
+        var drawer = item is not null && PrepareDrawer(item);
+        // Switching an open drawer to another agent: fade its new content in rather than swapping it.
+        if (drawer && previous is not null
+            && CommandName(previous.Definition.Command) != CommandName(item!.Definition.Command))
+            FadeInDrawerContent();
         // The drawer first: the image layout depends on which side it opens.
         if (drawer)
             OpenDrawer();
@@ -806,11 +883,12 @@ public sealed partial class FlyoutWindow : Window
     }
 
     /// <summary>
-    /// Fades the given image in behind the flyout (and the drawer, when <paramref name="spansDrawer"/>),
-    /// or fades out when <paramref name="path"/> is null.
+    /// Fades the given picture in behind the flyout (and the drawer, when <paramref name="spansDrawer"/>),
+    /// cross-fading from whatever picture was showing, or fades out when <paramref name="path"/> is null.
     /// </summary>
     private void FadeBackdrop(string? path, bool spansDrawer)
     {
+        var layers = Layers;
         if (path is not null)
         {
             if (!_backdrops.TryGetValue(path, out var image))
@@ -818,62 +896,113 @@ public sealed partial class FlyoutWindow : Window
                 try
                 {
                     _backdrops[path] = image = new BitmapImage(new Uri(path));
-                    // The layout needs the image's proportions, which are known once it has loaded.
-                    image.ImageOpened += (_, _) => LayoutBackdrop();
+                    // The layout needs the picture's proportions, which are known once it has loaded.
+                    image.ImageOpened += (_, _) =>
+                    {
+                        foreach (var layer in Layers.Where(l => l.Flyout.Source == image))
+                            LayoutBackdrop(layer);
+                    };
                 }
                 catch (Exception ex) when (ex is UriFormatException or ArgumentException)
                 {
                     return;
                 }
             }
-            HoverImage.Source = DrawerImage.Source = image;
-            _backdropSpansDrawer = spansDrawer;
-            LayoutBackdrop();
+
+            // Moving back onto the agent already showing (its fade-out not finished) fades the same
+            // layer back in; a different agent's picture goes on the other layer.
+            if (!string.Equals(layers[_activeLayer].Path, path, StringComparison.OrdinalIgnoreCase))
+            {
+                _activeLayer = 1 - _activeLayer;
+                var incoming = layers[_activeLayer];
+                incoming.Path = path;
+                incoming.Flyout.Source = incoming.Drawer.Source = image;
+            }
+            layers[_activeLayer].SpansDrawer = spansDrawer;
+            LayoutBackdrop(layers[_activeLayer]);
         }
 
-        var target = path is null ? 0 : HoverBackdropOpacity;
-        // Stopping a storyboard snaps back to the value before it ran, so carry the current one over.
-        var current = HoverBackdrop.Opacity;
+        // Targets: the active layer to the picture's opacity (or 0), the other always to 0.
+        var targets = layers.Select((layer, i) => (Layer: layer, To: path is not null && i == _activeLayer ? HoverBackdropOpacity : 0)).ToList();
+
+        // Stopping a storyboard snaps back to the values before it ran, so carry the current ones over.
+        var current = targets.Select(t => t.Layer.Flyout.Opacity).ToList();
         _backdropFade?.Stop();
-        HoverBackdrop.Opacity = DrawerImage.Opacity = current;
+        for (var i = 0; i < targets.Count; i++)
+            targets[i].Layer.Flyout.Opacity = targets[i].Layer.Drawer.Opacity = current[i];
+
         if (!new Windows.UI.ViewManagement.UISettings().AnimationsEnabled || !AppWindow.IsVisible)
         {
-            HoverBackdrop.Opacity = DrawerImage.Opacity = target;
+            foreach (var (layer, to) in targets)
+                layer.Flyout.Opacity = layer.Drawer.Opacity = to;
             return;
         }
 
-        var duration = new Duration(TimeSpan.FromMilliseconds(path is null ? 600 : 900));
         var storyboard = new Storyboard();
-        foreach (var element in new UIElement[] { HoverBackdrop, DrawerImage })
+        for (var i = 0; i < targets.Count; i++)
         {
-            var fade = new DoubleAnimation
+            var (layer, to) = targets[i];
+            // Fading in is slower than fading out (tuned with the owner).
+            var duration = new Duration(TimeSpan.FromMilliseconds(to > current[i] ? 900 : 600));
+            foreach (var element in new UIElement[] { layer.Flyout, layer.Drawer })
             {
-                From = current, To = target, Duration = duration,
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-            };
-            Storyboard.SetTarget(fade, element);
-            Storyboard.SetTargetProperty(fade, "Opacity");
-            storyboard.Children.Add(fade);
+                var fade = new DoubleAnimation
+                {
+                    From = current[i], To = to, Duration = duration,
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Storyboard.SetTarget(fade, element);
+                Storyboard.SetTargetProperty(fade, "Opacity");
+                storyboard.Children.Add(fade);
+            }
         }
         _backdropFade = storyboard;
         storyboard.Begin();
     }
 
-    /// <summary>
-    /// Sizes the hover image to fill the flyout (or, with the drawer, the flyout and drawer side by
-    /// side), keeping its right edge in view, then gives each panel its own slice so they line up.
-    /// </summary>
+    private Storyboard? _drawerContentFade;
+
+    private void FadeInDrawerContent()
+    {
+        _drawerContentFade?.Stop();
+        if (!new Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+        {
+            DrawerPanel.Opacity = 1;
+            return;
+        }
+        var fade = new DoubleAnimation
+        {
+            From = 0, To = 1, Duration = new Duration(TimeSpan.FromMilliseconds(300)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(fade, DrawerPanel);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        _drawerContentFade = new Storyboard { Children = { fade } };
+        _drawerContentFade.Begin();
+    }
+
+    /// <summary>Lays out every layer again, e.g. when the drawer opens on a different side.</summary>
     private void LayoutBackdrop()
     {
-        if (HoverImage.Source is not BitmapImage { PixelWidth: > 0, PixelHeight: > 0 } image)
+        foreach (var layer in Layers)
+            LayoutBackdrop(layer);
+    }
+
+    /// <summary>
+    /// Sizes a picture to fill the flyout (or, with the drawer, the flyout and drawer side by side),
+    /// keeping its right edge in view, then gives each panel its own slice so they line up.
+    /// </summary>
+    private void LayoutBackdrop(BackdropLayer layer)
+    {
+        if (layer.Flyout.Source is not BitmapImage { PixelWidth: > 0, PixelHeight: > 0 } image)
             return;
 
         var flyoutWidth = Root.ActualWidth;
         var height = Root.ActualHeight;
-        var canvasWidth = flyoutWidth + (_backdropSpansDrawer ? DrawerWidthDip : 0);
+        var canvasWidth = flyoutWidth + (layer.SpansDrawer ? DrawerWidthDip : 0);
         // Where each panel sits on that shared canvas.
-        var flyoutLeft = _backdropSpansDrawer && _drawerSide < 0 ? DrawerWidthDip : 0;
-        var drawerLeft = _drawerSide > 0 ? flyoutWidth : 0;
+        var flyoutLeft = layer.SpansDrawer && _drawerSide < 0 ? DrawerWidthDip : 0;
+        var drawerLeft = _drawerSide > 0 ? flyoutWidth - DrawerOverlapDip : 0;
 
         var scale = Math.Max(canvasWidth / image.PixelWidth, height / image.PixelHeight);
         var width = image.PixelWidth * scale;
@@ -881,15 +1010,16 @@ public sealed partial class FlyoutWindow : Window
         var left = canvasWidth - width;          // right-aligned
         var top = (height - imageHeight) / 2;    // vertically centred
 
-        Size(HoverImage);
-        HoverImage.Margin = new Thickness(left - flyoutLeft, top, 0, 0);
+        Size(layer.Flyout);
+        layer.Flyout.Margin = new Thickness(left - flyoutLeft, top, 0, 0);
 
         // The drawer's slice is anchored to the edge touching the flyout, which doesn't move while
         // the drawer grows: its left edge on the right side, its right edge on the left side.
-        Size(DrawerImage);
-        DrawerImage.Margin = _drawerSide > 0
+        Size(layer.Drawer);
+        layer.Drawer.HorizontalAlignment = _drawerSide > 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        layer.Drawer.Margin = _drawerSide > 0
             ? new Thickness(left - drawerLeft, top, 0, 0)
-            : new Thickness(0, top, DrawerWidthDip - (left + width), 0);
+            : new Thickness(0, top, DrawerWidthDip + DrawerOverlapDip - (left + width), 0);
 
         void Size(Image element)
         {
@@ -909,20 +1039,15 @@ public sealed partial class FlyoutWindow : Window
     /// <summary>+1 when the drawer opens to the right of the flyout, -1 to the left.</summary>
     private int _drawerSide = 1;
 
-    /// <summary>Only Claude Code (and its presets) has a drawer so far: its plan usage, or the setup offer.</summary>
-    private bool HasDrawer(AgentItem item) =>
-        item.IsCli && IsClaudeCode(item.Definition.Command)
-        && (UsagePanel.Visibility == Visibility.Visible || UsageOffer.IsOpen);
-
     private void Drawer_PointerEntered(object sender, PointerRoutedEventArgs e) => _drawerCloseTimer?.Stop();
 
     private void Drawer_PointerExited(object sender, PointerRoutedEventArgs e) => ScheduleDrawerClose();
 
-    /// <summary>On the left, the drawer grows leftwards: keep its right edge on the flyout's left edge.</summary>
+    /// <summary>On the left, the drawer grows leftwards: keep its right edge just inside the flyout's left edge.</summary>
     private void DrawerContent_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (_drawerSide < 0)
-            Drawer.HorizontalOffset = -e.NewSize.Width;
+            Drawer.HorizontalOffset = DrawerOverlapDip - e.NewSize.Width;
     }
 
     /// <summary>
@@ -962,18 +1087,17 @@ public sealed partial class FlyoutWindow : Window
             DrawerContent.CornerRadius = onRight ? new CornerRadius(0, 8, 8, 0) : new CornerRadius(8, 0, 0, 8);
             DrawerContent.BorderThickness = onRight ? new Thickness(0, 1, 1, 1) : new Thickness(1, 1, 0, 1);
             DrawerContent.Height = Root.ActualHeight;
-            // The image stays with the flyout; the content travels with the drawer's outer edge.
-            DrawerImage.HorizontalAlignment = onRight ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+            // The pictures stay with the flyout (LayoutBackdrop); the content travels with the outer edge.
             DrawerPanel.HorizontalAlignment = onRight ? HorizontalAlignment.Right : HorizontalAlignment.Left;
             LayoutBackdrop();
 
             DrawerContent.Width = DrawerClosedWidthDip;
-            Drawer.HorizontalOffset = onRight ? Root.ActualWidth : -DrawerClosedWidthDip;
+            Drawer.HorizontalOffset = onRight ? Root.ActualWidth - DrawerOverlapDip : DrawerOverlapDip - DrawerClosedWidthDip;
             Drawer.VerticalOffset = 0;
             Drawer.IsOpen = true;
         }
         _drawerClosing = false;
-        SlideDrawer(DrawerWidthDip, null);
+        SlideDrawer(DrawerWidthDip + DrawerOverlapDip, null);
     }
 
     private void CloseDrawer(bool animate)

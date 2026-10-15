@@ -244,6 +244,7 @@ there degrade to a missing icon or entry, never an error.
 | `Interop/ShellIcons.cs` | Icon loading: compiled-in, image files, and shell extraction with a PNG cache |
 | `Services/AgentIcons.cs` | Which icon an agent gets; compiled-in icon lookup; .ico files for the jump list |
 | `Services/ClaudeStatusLine.cs` | `--statusline` mode, saved Claude usage, and setting up Claude Code's status line |
+| `Services/CodexUsage.cs` | Codex plan usage, read from Codex's own session logs |
 | `Assets/Agents/*.png` | Built-in agent icons, compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
@@ -368,9 +369,9 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
   - The offer text, the usage display (then a column), and the "different copy" warning with Update.
   - The owner clicked Set up for real at 14:44: their status line now runs the bin\Debug exe, and
     the backup is `settings.json.agentdock-20261015-144457.bak`.
-- **Not yet verified:** real usage numbers from a Claude Code session. The desktop app's Code tab
-  doesn't seem to run the status line; the terminal CLI should. Also not verified: the published
-  Native AOT build.
+- **Verified:** real usage numbers from a Claude Code session reached the drawer (48% session,
+  21% week, in the owner's screenshot).
+- **Not yet verified:** the published Native AOT build.
 - **Dev gotcha:** with the status line pointing at bin\Debug, every Claude Code refresh briefly
   runs that exe. A build can hit a short lock (MSBuild retries), and while the exe is mid-rebuild
   the status line may be blank for a moment.
@@ -379,43 +380,75 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 
 - A windowed `Popup` (`ShouldConstrainToRootBounds=False`) with its own `DesktopAcrylicBackdrop`,
   beside the flyout. The flyout window itself stays 380 DIP wide.
-- `AgentRow_PointerEntered` opens it when `HasDrawer(item)` is true. Today that means Claude Code
-  or its presets, with usage or the setup offer to show. Leaving the row or the drawer starts a
-  250 ms close timer, so the pointer can move into the drawer to click Set up.
-- Placement: flush against the flyout (no gap, per the owner), on the right if it fits in the
-  monitor's work area, otherwise on the left. The touching side has square corners and no border.
-  Its height matches the flyout.
-- **Opening animates `DrawerContent.Width`** from 1 to 240 DIP (250 ms ease-out), and closing goes
-  back (200 ms ease-in), with `EnableDependentAnimation`. The popup window grows and shrinks with
-  it, acrylic and all. On the left side, `DrawerContent_SizeChanged` keeps
-  `HorizontalOffset = -width`, so the drawer grows leftwards.
+- `AgentRow_PointerEntered` opens it when `PrepareDrawer(item)` returns true. That method also
+  fills the drawer, and leaves it untouched for agents with nothing to show, so a closing drawer
+  doesn't go blank.
+  - Today: Claude Code (usage, or the setup or update offer) and Codex (usage), plus their presets,
+    matched by command name (`CommandName`).
+  - Moving between two drawer agents swaps the content in place.
+  - Usage is loaded on the first hover after each show and cached until the next show
+    (`ClearUsageCache` in `ReloadData`), so opening stays fast.
+  - Add new agents in `PrepareDrawer`.
+- Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
+  drawer to click Set up.
+- Placement: no gap (per the owner), on the right if it fits in the monitor's work area, otherwise
+  on the left. The touching side has square corners and no border. Its height matches the flyout.
+  - It tucks `DrawerOverlapDip` (8) under the flyout's edge. The flyout window keeps DWM's rounded
+    corners, which left a notch at each end of the seam (owner's screenshot); the overlap covers them.
+    That strip of the flyout is only padding.
+  - Changing the flyout's DWM corner preference instead would have squared its outer corners too.
+- **Opening animates `DrawerContent.Width`** from 1 to 248 DIP (240 plus the overlap; 250 ms
+  ease-out), and closing goes back (200 ms ease-in), with `EnableDependentAnimation`. The popup
+  window grows and shrinks with it, acrylic and all. On the left side, `DrawerContent_SizeChanged`
+  keeps `HorizontalOffset = overlap - width`, so the drawer grows leftwards.
   - **Don't slide the content with a RenderTransform.** That was the first version: the windowed
     popup grows its HWND to cover the transformed bounds, so mid-slide the drawer's window sat
     *over* the flyout and clipped its list. The owner's screen recording showed it.
   - `DrawerPanel` (the content, fixed width) is anchored to the outer edge, so it slides out with it.
 - **Shared hover image:** while the hovered agent has a drawer, `LayoutBackdrop` sizes the
   background image across the flyout and drawer together (UniformToFill, right-aligned, vertically
-  centred). `HoverImage` (flyout) and `DrawerImage` (drawer) each get a negative margin for their
-  slice, so the two halves line up.
-  - `DrawerImage` is anchored to the drawer edge that touches the flyout, which doesn't move. So
-    the image stays lined up and is uncovered as the drawer grows.
+  centred). Each layer's flyout and drawer images get a negative margin for their slice, so the
+  two halves line up (allowing for the overlap).
+  - The drawer images are anchored to the drawer edge that touches the flyout, which doesn't move.
+    So the picture stays lined up and is uncovered as the drawer grows.
   - Agents without a drawer keep the flyout-only layout.
   - Layout needs the image's pixel size, so it reruns on `ImageOpened` the first time.
 - Hiding the flyout closes it at once.
-- The owner plans similar drawers for other agents, so `HasDrawer` and the drawer's content are
-  where per-agent content goes.
+- Switching an open drawer to another agent fades the new content in (`FadeInDrawerContent`,
+  `DrawerPanel` opacity 0 to 1 over 300 ms).
 - **Verified by the owner:** the drawer opens on hover without hiding the flyout, with acrylic and
   rounded corners (screenshot, 2026-10-15). A recording then confirmed no gap and the shared image,
   but showed the overlap while sliding. That was fixed by animating the width, and the owner
   confirmed it opens and closes well.
 
+### Codex usage (`Services/CodexUsage.cs`)
+
+- **Source:** Codex writes `token_count` events into its session logs,
+  `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (`CODEX_HOME` moves the folder).
+  - Each has `payload.rate_limits.primary` / `.secondary` with `used_percent`, `window_minutes`
+    (300 and 10080 seen) and `resets_at` (Unix seconds). Older versions had `resets_in_seconds`,
+    which is also handled. The line's `timestamp` is the "updated" time.
+  - Seen with codex-cli 0.162.1. **Undocumented**, so every failure path returns null (no data).
+    Never read `auth.json`.
+- **Reading:** only the newest 3 day folders, newest log first, up to 10 logs. A session that got
+  no reply has no `rate_limits`.
+  - Only the last 512 KB of each log is read, scanning backwards for the last `"rate_limits"` line.
+  - Windows are assigned by length (a day or less is the session window), not by primary/secondary.
+- **Verified by the owner (2026-10-15):** the Codex picture, drawer, cross-fade between agents, and
+  the seam overlap.
+
 ### Hover background (owner's request)
 
 - Optional `background` per agent in `agents.json`: an image path, resolved like `icon`
   (`AgentIcons.ExistingFile`). Presets inherit it from their agent.
-- `HoverBackdrop` is a `Border` behind all content, holding `HoverImage` (sized by `LayoutBackdrop`;
-  see Drawer). `AgentRow_PointerEntered`/`Exited` on the row template fade it, and `DrawerImage`, to
-  0.3 opacity over 900 ms, and back out over 600 ms (tuned with the owner).
+- **Two layers** (`BackdropLayer`): `HoverImageA`/`B` in `HoverBackdrop`, behind all content, and
+  `DrawerImageA`/`B` in the drawer.
+  - Moving to another agent puts its picture on the inactive layer and cross-fades: the new layer
+    to 0.3 over 900 ms, the old to 0 over 600 ms (owner asked for "a fade between the two agents";
+    timings tuned with the owner).
+  - Moving back onto the agent whose picture is still fading out fades that same layer back in.
+  - Leaving a row fades both layers out.
+  - Each layer's sizing is done by `LayoutBackdrop(layer)` (see Drawer).
   Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
 - The image is a local setting, not compiled in or committed.

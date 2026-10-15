@@ -108,7 +108,7 @@ public sealed class PresetList
     public List<Preset> Presets { get; set; } = [];
 }
 
-/// <summary>One Claude plan limit window, as Claude Code reports it to its status line.</summary>
+/// <summary>One plan limit window: the 5-hour session or the week.</summary>
 public sealed class UsageWindow
 {
     /// <summary>0 to 100.</summary>
@@ -118,10 +118,11 @@ public sealed class UsageWindow
 }
 
 /// <summary>
-/// %LOCALAPPDATA%\AgentDock\claude-usage.json, written by <c>AgentDock.exe --statusline</c>
-/// each time Claude Code refreshes its status line.
+/// An agent's subscription usage, as shown in its drawer. For Claude Code this is also
+/// %LOCALAPPDATA%\AgentDock\claude-usage.json, written by <c>AgentDock.exe --statusline</c>;
+/// for Codex it's read from Codex's own session logs (<see cref="Services.CodexUsage"/>).
 /// </summary>
-public sealed class ClaudeUsage
+public sealed class PlanUsage
 {
     /// <summary>Unix seconds.</summary>
     public long UpdatedAt { get; set; }
@@ -155,5 +156,5 @@ public sealed class DockState
 [JsonSerializable(typeof(DockSettings))]
 [JsonSerializable(typeof(DockState))]
 [JsonSerializable(typeof(PresetList))]
-[JsonSerializable(typeof(ClaudeUsage))]
+[JsonSerializable(typeof(PlanUsage))]
 internal sealed partial class DockJsonContext : JsonSerializerContext;

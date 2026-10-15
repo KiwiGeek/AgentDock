@@ -94,7 +94,7 @@ public static class ClaudeStatusLine
     private static void Save(string? model, UsageWindow? fiveHour, UsageWindow? sevenDay)
     {
         var previous = Load();
-        var usage = new ClaudeUsage
+        var usage = new PlanUsage
         {
             UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             Model = model ?? previous?.Model,
@@ -105,17 +105,17 @@ public static class ClaudeStatusLine
         Directory.CreateDirectory(Path.GetDirectoryName(UsagePath)!);
         // Unique temp name: two Claude Code sessions can refresh at the same moment.
         var temp = $"{UsagePath}.{Environment.ProcessId}.tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(usage, DockJsonContext.Default.ClaudeUsage));
+        File.WriteAllText(temp, JsonSerializer.Serialize(usage, DockJsonContext.Default.PlanUsage));
         File.Move(temp, UsagePath, overwrite: true);
     }
 
     /// <summary>The last saved usage, or null if there's none yet.</summary>
-    public static ClaudeUsage? Load()
+    public static PlanUsage? Load()
     {
         try
         {
             return File.Exists(UsagePath)
-                ? JsonSerializer.Deserialize(File.ReadAllText(UsagePath), DockJsonContext.Default.ClaudeUsage)
+                ? JsonSerializer.Deserialize(File.ReadAllText(UsagePath), DockJsonContext.Default.PlanUsage)
                 : null;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)

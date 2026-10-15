@@ -64,12 +64,14 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <!--
-            An agent's "background" image, faded in while the pointer is over that agent. Size and offset
-            are set in code (LayoutBackdrop) so that, with the drawer open, one image spans both panels.
+            An agent's "background" picture, faded in while the pointer is over that agent. Two layers, so
+            moving between agents cross-fades. Size and offset are set in code (LayoutBackdrop) so that,
+            with the drawer open, one picture spans both panels.
         -->
-        <Border x:Name="HoverBackdrop" Grid.RowSpan="3" Opacity="0" IsHitTestVisible="False">
-            <Image x:Name="HoverImage" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
-        </Border>
+        <Grid x:Name="HoverBackdrop" Grid.RowSpan="3" IsHitTestVisible="False">
+            <Image x:Name="HoverImageA" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
+            <Image x:Name="HoverImageB" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
+        </Grid>
 
         <!-- Working folder -->
         <StackPanel Margin="16,16,16,8" Spacing="6">
@@ -155,16 +157,18 @@
                     BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" SizeChanged="DrawerContent_SizeChanged"
                     PointerEntered="Drawer_PointerEntered" PointerExited="Drawer_PointerExited">
                 <Grid>
-                    <!-- The drawer's slice of the hover image, anchored to the flyout's edge so it lines up with
-                         the flyout's half and is uncovered as the drawer grows. -->
-                    <Image x:Name="DrawerImage" Opacity="0" IsHitTestVisible="False"
+                    <!-- The drawer's slices of the two hover picture layers, anchored to the flyout's edge so they
+                         line up with the flyout's half and are uncovered as the drawer grows. -->
+                    <Image x:Name="DrawerImageA" Opacity="0" IsHitTestVisible="False"
+                           HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
+                    <Image x:Name="DrawerImageB" Opacity="0" IsHitTestVisible="False"
                            HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
 
                     <!-- Full-width content, anchored to the drawer's outer edge so it slides out with it. -->
                     <Grid x:Name="DrawerPanel" Width="238" HorizontalAlignment="Right">
-                    <!-- Claude plan usage (see Services/ClaudeStatusLine.cs) -->
+                    <!-- Plan usage for the hovered agent (Services/ClaudeStatusLine.cs, Services/CodexUsage.cs) -->
                     <StackPanel x:Name="UsagePanel" Padding="16,16,16,12" Spacing="4" Visibility="Collapsed">
-                        <TextBlock Text="Claude usage" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
+                        <TextBlock x:Name="UsageTitle" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <StackPanel x:Name="UsageRows" Spacing="2" Margin="0,8,0,0">
                             <TextBlock Text="Session" />
