@@ -245,7 +245,8 @@ there degrade to a missing icon or entry, never an error.
 | `Services/AgentIcons.cs` | Which icon an agent gets; compiled-in icon lookup; .ico files for the jump list |
 | `Services/ClaudeStatusLine.cs` | `--statusline` mode, saved Claude usage, and setting up Claude Code's status line |
 | `Services/CodexUsage.cs` | Codex plan usage, read from Codex's own session logs |
-| `Assets/Agents/*.png` | Built-in agent icons, compiled in as resources |
+| `Services/CopilotUsage.cs` | GitHub Copilot premium requests this month, via `gh api` (billing API) |
+| `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
@@ -383,8 +384,8 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 - `AgentRow_PointerEntered` opens it when `PrepareDrawer(item)` returns true. That method also
   fills the drawer, and leaves it untouched for agents with nothing to show, so a closing drawer
   doesn't go blank.
-  - Today: Claude Code (usage, or the setup or update offer) and Codex (usage), plus their presets,
-    matched by command name (`CommandName`).
+  - Today: Claude Code (usage, or the setup or update offer), Codex (usage) and GitHub Copilot
+    (premium requests), plus their presets, matched by command name (`CommandName`).
   - Moving between two drawer agents swaps the content in place.
   - Usage is loaded on the first hover after each show and cached until the next show
     (`ClearUsageCache` in `ReloadData`), so opening stays fast.
@@ -437,10 +438,49 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 - **Verified by the owner (2026-10-15):** the Codex picture, drawer, cross-fade between agents, and
   the seam overlap.
 
+### GitHub Copilot usage (`Services/CopilotUsage.cs`)
+
+- **No local source:** Copilot CLI (1.0.95) keeps no quota. `~/.copilot/logs` have nothing, and
+  `data.db` only has `session_context_usage` (context window). `data.db`'s `accounts` table holds
+  the access token: never read it.
+- **Source:** GitHub's documented billing API,
+  `GET users/{login}/settings/billing/premium_request/usage` (current month by default). The used
+  count is the sum of `usageItems[].grossQuantity`.
+  - It's run through `gh api` (no window, 15 s timeout, `GH_PROMPT_DISABLED`), so gh's own sign-in
+    is used and Agent Dock never handles a token.
+  - Needs gh's **`user` scope**. The owner runs `gh auth refresh -h github.com -s user` themselves:
+    widening a token's access is their call. Until then the drawer shows that command.
+  - 404 without a scope message means a plan provided by an organisation; the API only covers plans
+    the user pays for themselves.
+  - Don't pass a leading slash to `gh api` from Git Bash, which rewrites it into a file path.
+- **Allowance:** the API has no allowance field, so `AgentDefinition.MonthlyAllowance` (agents.json
+  `"monthlyAllowance"`) gives a bar ("42 of 300"). Without it the drawer shows a count only.
+- **Display:** one row ("Premium requests"), resetting at 00:00 UTC on the 1st (`WeekGroup`
+  hidden). Fetched in the background on hover and cached 5 minutes across shows; the drawer shows
+  "Checking GitHub…" and fills in when the result arrives.
+- **OPEN ISSUE (end of 2026-10-15): the owner reports it "did not work".** At that point
+  `gh auth status` still listed only `gist, read:org, repo, workflow`, with no `user`, so the refresh
+  apparently hadn't gone through, and the drawer would show the permission message.
+  - Next session, check in order: did `gh auth refresh -h github.com -s user` finish (browser device
+    flow)? Then `gh api users/KiwiGeek/settings/billing/premium_request/usage`.
+  - Then check what the drawer actually shows. Is the message clear? Does the background fetch
+    complete? It's unverified in-app.
+  - If the API is still 404 with the scope, the plan may be provided by an organisation, or the
+    endpoint may need `X-GitHub-Api-Version`.
+  - The owner is on Copilot Pro: `"monthlyAllowance": 300` is set in their agents.json.
+
 ### Hover background (owner's request)
 
-- Optional `background` per agent in `agents.json`: an image path, resolved like `icon`
-  (`AgentIcons.ExistingFile`). Presets inherit it from their agent.
+- **Compiled in** (owner's decision, 2026-10-15): `Assets/Agents/<agent id>-background.png` are
+  `EmbeddedResource`s named `AgentBackgrounds.<id>-background.png`. The csproj excludes
+  `*-background.png` from the icon glob, so they never count as icons.
+  - Source string `bundled-background:<id>`, matched by agent id or CLI command name
+    (`AgentIcons.FindBackground`). Loaded with `BitmapImage.SetSourceAsync` from the resource stream.
+  - About 19 MB of PNGs, which is why the DLL is about 20 MB.
+  - Two files were renamed to match ids: `github-copilot-background` became `copilot-background`,
+    and `grok-backgorund` became `grok-background`.
+- An optional `background` per agent in `agents.json` overrides the built-in one: an image path,
+  resolved like `icon` (`AgentIcons.ExistingFile`). Presets inherit it from their agent.
 - **Two layers** (`BackdropLayer`): `HoverImageA`/`B` in `HoverBackdrop`, behind all content, and
   `DrawerImageA`/`B` in the drawer.
   - Moving to another agent puts its picture on the inactive layer and cross-fades: the new layer
@@ -451,7 +491,8 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
   - Each layer's sizing is done by `LayoutBackdrop(layer)` (see Drawer).
   Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
-- The image is a local setting, not compiled in or committed.
+- **Not yet verified in-app:** loading from the embedded resources. The build embeds all 10, but
+  nobody has hovered since.
 
 ## Possible next steps (none requested yet; ask before starting)
 

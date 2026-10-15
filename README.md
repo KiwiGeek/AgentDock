@@ -112,8 +112,9 @@ Agents that aren't installed are hidden unless you set `hideUnavailable` to `fal
     { "id": "codex-cmd", "name": "Codex", "command": "codex", "shell": "cmd" },
     // Your own icon: .png, .ico, .jpg, .bmp, or an .exe to take it from (relative to this folder)
     { "id": "aider", "name": "Aider", "command": "aider", "icon": "icons/aider.png" },
-    // A picture that fades in behind the flyout while the pointer is over this agent (and its presets)
-    { "id": "claude", "name": "Claude Code", "command": "claude", "background": "claude-background.png" },
+    // Your own picture to fade in behind the flyout while the pointer is over this agent (and its
+    // presets), instead of the built-in one
+    { "id": "aider", "name": "Aider", "command": "aider", "background": "my-aider.png" },
 
     // Desktop: found by Start menu name...
     { "id": "claude-desktop", "name": "Claude", "kind": "desktop", "startMenuNames": ["Claude"] },
@@ -150,6 +151,22 @@ and Agent Dock reads the latest. It never reads Codex's login. Codex only record
 session, so the drawer says how old they are. The log format isn't documented by OpenAI, so if a
 Codex update changes it, the drawer just shows no data.
 
+### GitHub Copilot usage
+
+Copilot's drawer shows the premium requests you've used this month, which reset at 00:00 UTC on
+the 1st. Copilot keeps no copy of that on your PC, so Agent Dock asks GitHub's billing API through
+the GitHub CLI (`gh`), using gh's own sign-in. That API needs one extra permission, which you grant
+once:
+
+```powershell
+gh auth refresh -h github.com -s user
+```
+
+GitHub reports only how many requests you've used, not your plan's allowance. To get a bar instead
+of a count, add your plan's monthly allowance to Copilot's entry in `agents.json`, for example
+`"monthlyAllowance": 300` for Copilot Pro. It only works for plans you pay for yourself; usage of a
+plan provided by an organisation isn't available this way. Results are cached for five minutes.
+
 ### Icons
 
 Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,
@@ -157,6 +174,10 @@ Icons for the built-in agents are compiled into Agent Dock. They match by agent 
 `perplexity`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
 under any id. An `icon` setting overrides that. Desktop apps without either use the icon the Start
 menu shows. Anything else gets a plain terminal or app symbol.
+
+Hover pictures are built in the same way, as `Assets\Agents\<agent id>-background.png` (currently
+Aider, Claude Code, Codex, Copilot, DeepSeek, Gemini, Grok, OpenCode, Perplexity and Qwen), matched
+by agent id or command name. A `background` setting overrides one.
 
 `state.json` in the same folder holds recent folders and cached app ids. Start menu icons are
 cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's icon changes.

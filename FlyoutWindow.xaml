@@ -166,19 +166,22 @@
 
                     <!-- Full-width content, anchored to the drawer's outer edge so it slides out with it. -->
                     <Grid x:Name="DrawerPanel" Width="238" HorizontalAlignment="Right">
-                    <!-- Plan usage for the hovered agent (Services/ClaudeStatusLine.cs, Services/CodexUsage.cs) -->
+                    <!-- Plan usage for the hovered agent (Services/ClaudeStatusLine.cs, CodexUsage.cs, CopilotUsage.cs) -->
                     <StackPanel x:Name="UsagePanel" Padding="16,16,16,12" Spacing="4" Visibility="Collapsed">
                         <TextBlock x:Name="UsageTitle" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <StackPanel x:Name="UsageRows" Spacing="2" Margin="0,8,0,0">
-                            <TextBlock Text="Session" />
+                            <!-- "Session" and "Week" for Claude Code and Codex; Copilot uses only the first row. -->
+                            <TextBlock x:Name="SessionLabel" Text="Session" />
                             <ProgressBar x:Name="SessionBar" Maximum="100" AutomationProperties.Name="Session usage" />
                             <TextBlock x:Name="SessionText" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock Text="Week" Margin="0,6,0,0" />
-                            <ProgressBar x:Name="WeekBar" Maximum="100" AutomationProperties.Name="Weekly usage" />
-                            <TextBlock x:Name="WeekText" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <StackPanel x:Name="WeekGroup" Spacing="2" Margin="0,6,0,0">
+                                <TextBlock Text="Week" />
+                                <ProgressBar x:Name="WeekBar" Maximum="100" AutomationProperties.Name="Weekly usage" />
+                                <TextBlock x:Name="WeekText" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
                             <TextBlock x:Name="UsageUpdatedText" Margin="0,8,0,0" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                         </StackPanel>

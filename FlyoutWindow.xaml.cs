@@ -657,6 +657,10 @@ public sealed partial class FlyoutWindow : Window
     private PlanUsage? _claudeUsage;
     private PlanUsage? _codexUsage;
     private bool _codexUsageLoaded;
+    // Copilot's comes over the network, so it's fetched in the background and kept across shows.
+    private static readonly TimeSpan CopilotUsageMaxAge = TimeSpan.FromMinutes(5);
+    private CopilotUsageResult? _copilotUsage;
+    private bool _copilotFetching;
     /// <summary>The row whose content the drawer is showing.</summary>
     private AgentItem? _drawerItem;
 
@@ -669,7 +673,7 @@ public sealed partial class FlyoutWindow : Window
 
     /// <summary>
     /// Fills the drawer for <paramref name="item"/>. Returns false, leaving the drawer as it is, if
-    /// that agent has nothing to show: so far only Claude Code and Codex (and their presets) do.
+    /// that agent has nothing to show: so far Claude Code, Codex and GitHub Copilot (and their presets).
     /// </summary>
     private bool PrepareDrawer(AgentItem item)
     {
@@ -690,6 +694,13 @@ public sealed partial class FlyoutWindow : Window
                 UsageOffer.IsOpen = false;
                 // Codex writes its usage to its session logs only while a session runs.
                 ShowUsage("Codex usage", _codexUsage, "Your limits appear here after your next Codex reply.");
+                return true;
+            case "copilot":
+                _drawerItem = item;
+                UsageOffer.IsOpen = false;
+                if (!_copilotFetching && (_copilotUsage is null || DateTimeOffset.UtcNow - _copilotUsage.FetchedAt > CopilotUsageMaxAge))
+                    _ = FetchCopilotUsageAsync();
+                ShowCopilotUsage(item);
                 return true;
             default:
                 return false;
@@ -730,6 +741,60 @@ public sealed partial class FlyoutWindow : Window
         return true;
     }
 
+    private async Task FetchCopilotUsageAsync()
+    {
+        _copilotFetching = true;
+        try
+        {
+            _copilotUsage = await CopilotUsage.FetchAsync(); // resumes on the UI thread
+        }
+        finally
+        {
+            _copilotFetching = false;
+        }
+        // Still showing Copilot? Fill in what arrived.
+        if (Drawer.IsOpen && !_drawerClosing && _drawerItem is { } item && CommandName(item.Definition.Command) == "copilot")
+            ShowCopilotUsage(item);
+    }
+
+    /// <summary>
+    /// Copilot's single monthly window: premium requests used, as a bar when the plan's allowance is
+    /// known ("monthlyAllowance"), otherwise just the count. It resets at 00:00 UTC on the 1st.
+    /// </summary>
+    private void ShowCopilotUsage(AgentItem item)
+    {
+        UsageTitle.Text = "Copilot usage";
+        UsagePanel.Visibility = Visibility.Visible;
+        WeekGroup.Visibility = Visibility.Collapsed;
+        SessionLabel.Text = "Premium requests";
+
+        var usage = _copilotUsage;
+        var hasData = usage?.Used is not null;
+        UsageRows.Visibility = hasData ? Visibility.Visible : Visibility.Collapsed;
+        UsageNote.Visibility = hasData ? Visibility.Collapsed : Visibility.Visible;
+        UsageNote.Text = usage?.Problem ?? "Checking GitHub…";
+        UsageUpdatedText.Text = "";
+        if (!hasData)
+            return;
+
+        var now = DateTimeOffset.UtcNow;
+        var reset = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
+        var used = usage!.Used!.Value;
+        if (item.Definition.MonthlyAllowance is > 0 and var allowance)
+        {
+            SessionBar.Visibility = Visibility.Visible;
+            ShowWindow(SessionBar, SessionText,
+                new UsageWindow { UsedPercentage = used * 100 / allowance, ResetsAt = reset.ToUnixTimeSeconds() }, now);
+            SessionText.Text = $"{used:0} of {allowance} · resets {ResetTime(reset)}";
+        }
+        else
+        {
+            SessionBar.Visibility = Visibility.Collapsed;
+            SessionText.Text = $"{used:0} used · resets {ResetTime(reset)}";
+        }
+        UsageUpdatedText.Text = UpdatedAgo(usage.FetchedAt, now);
+    }
+
     private void OfferUsage(InfoBarSeverity severity, string button, string message, bool closable)
     {
         UsagePanel.Visibility = Visibility.Collapsed;
@@ -744,6 +809,8 @@ public sealed partial class FlyoutWindow : Window
     {
         UsageTitle.Text = title;
         UsagePanel.Visibility = Visibility.Visible;
+        SessionLabel.Text = "Session";
+        SessionBar.Visibility = WeekGroup.Visibility = Visibility.Visible;
         var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
         UsageRows.Visibility = hasData ? Visibility.Visible : Visibility.Collapsed;
         UsageNote.Visibility = hasData ? Visibility.Collapsed : Visibility.Visible;
@@ -873,7 +940,7 @@ public sealed partial class FlyoutWindow : Window
             OpenDrawer();
         else
             ScheduleDrawerClose();
-        FadeBackdrop(item?.BackgroundPath, spansDrawer: drawer);
+        FadeBackdrop(item?.BackgroundSource, spansDrawer: drawer);
     }
 
     private void AgentRow_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -895,13 +962,13 @@ public sealed partial class FlyoutWindow : Window
             {
                 try
                 {
-                    _backdrops[path] = image = new BitmapImage(new Uri(path));
+                    _backdrops[path] = image = new BitmapImage();
                     // The layout needs the picture's proportions, which are known once it has loaded.
-                    image.ImageOpened += (_, _) =>
-                    {
-                        foreach (var layer in Layers.Where(l => l.Flyout.Source == image))
-                            LayoutBackdrop(layer);
-                    };
+                    image.ImageOpened += (_, _) => LayoutLayersShowing(image);
+                    if (AgentIcons.IsBundledBackground(path))
+                        _ = LoadBundledBackgroundAsync(image, path);
+                    else
+                        image.UriSource = new Uri(path);
                 }
                 catch (Exception ex) when (ex is UriFormatException or ArgumentException)
                 {
@@ -979,6 +1046,29 @@ public sealed partial class FlyoutWindow : Window
         Storyboard.SetTargetProperty(fade, "Opacity");
         _drawerContentFade = new Storyboard { Children = { fade } };
         _drawerContentFade.Begin();
+    }
+
+    /// <summary>A compiled-in background, decoded from the exe's resources.</summary>
+    private async Task LoadBundledBackgroundAsync(BitmapImage image, string source)
+    {
+        try
+        {
+            using var stream = AgentIcons.OpenBundledBackground(source);
+            if (stream is null)
+                return;
+            await image.SetSourceAsync(stream.AsRandomAccessStream());
+            LayoutLayersShowing(image);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // A missing picture just means no background.
+        }
+    }
+
+    private void LayoutLayersShowing(BitmapImage image)
+    {
+        foreach (var layer in Layers.Where(l => l.Flyout.Source == image))
+            LayoutBackdrop(layer);
     }
 
     /// <summary>Lays out every layer again, e.g. when the drawer opens on a different side.</summary>

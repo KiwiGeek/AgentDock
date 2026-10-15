@@ -32,8 +32,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Agent icons, compiled into the exe. Named "AgentIcons.<agent id>.png"; see Services/AgentIcons.cs. -->
-    <EmbeddedResource Include="Assets\Agents\*.png" LogicalName="AgentIcons.%(Filename)%(Extension)" />
+    <!--
+      Agent icons and hover backgrounds, compiled into the exe; see Services/AgentIcons.cs.
+      Icons: Assets\Agents\<agent id>.png, named "AgentIcons.<agent id>.png".
+      Backgrounds: Assets\Agents\<agent id>-background.png, named "AgentBackgrounds.<agent id>-background.png".
+    -->
+    <EmbeddedResource Include="Assets\Agents\*.png" Exclude="Assets\Agents\*-background.png"
+                      LogicalName="AgentIcons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Agents\*-background.png" LogicalName="AgentBackgrounds.%(Filename)%(Extension)" />
     <!-- The Windows App SDK would otherwise also copy them next to the exe as loose files. -->
     <Content Remove="Assets\Agents\*.png" />
   </ItemGroup>

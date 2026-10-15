@@ -6,12 +6,17 @@ namespace AgentDock.Services;
 /// Decides where an agent's icon comes from. In order: the agent's own "icon" setting, then an icon
 /// compiled into Agent Dock (Assets\Agents\&lt;id&gt;.png, matched by agent id or CLI command name),
 /// then, for desktop apps only, the icon the Start menu shows. Otherwise the flyout shows a glyph.
+/// Hover backgrounds work the same way: the "background" setting, then a compiled-in
+/// Assets\Agents\&lt;id&gt;-background.png.
 /// </summary>
 public static class AgentIcons
 {
     /// <summary>Icon sources starting with this refer to a compiled-in icon rather than a file.</summary>
     private const string BundledPrefix = "bundled:";
     private const string ResourcePrefix = "AgentIcons.";
+    private const string BackgroundPrefix = "bundled-background:";
+    private const string BackgroundResourcePrefix = "AgentBackgrounds.";
+    private const string BackgroundSuffix = "-background.png";
     private const int IcoHeaderSize = 6 + 16;
 
     private static readonly string[] ImageExtensions = [".png", ".ico", ".jpg", ".jpeg", ".bmp"];
@@ -20,6 +25,25 @@ public static class AgentIcons
         .Where(n => n.StartsWith(ResourcePrefix, StringComparison.Ordinal) && n.EndsWith(".png", StringComparison.Ordinal))
         .Select(n => n[ResourcePrefix.Length..^".png".Length])
         .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> BundledBackgroundNames = typeof(AgentIcons).Assembly.GetManifestResourceNames()
+        .Where(n => n.StartsWith(BackgroundResourcePrefix, StringComparison.Ordinal) && n.EndsWith(BackgroundSuffix, StringComparison.Ordinal))
+        .Select(n => n[BackgroundResourcePrefix.Length..^BackgroundSuffix.Length])
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The agent's hover background: its "background" setting, else a compiled-in one, else null.</summary>
+    public static string? FindBackground(AgentDefinition definition) =>
+        ExistingFile(definition.Background)
+        ?? BundledBackground(definition.Id)
+        ?? (definition.Kind == AgentKind.Cli ? BundledBackground(CommandName(definition.Command)) : null);
+
+    public static bool IsBundledBackground(string source) => source.StartsWith(BackgroundPrefix, StringComparison.Ordinal);
+
+    public static Stream? OpenBundledBackground(string source) =>
+        typeof(AgentIcons).Assembly.GetManifestResourceStream(BackgroundResourcePrefix + source[BackgroundPrefix.Length..] + BackgroundSuffix);
+
+    private static string? BundledBackground(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && BundledBackgroundNames.Contains(name) ? BackgroundPrefix + name.ToLowerInvariant() : null;
 
     /// <summary>The configured or compiled-in icon for an agent, or null if it has neither.</summary>
     public static string? Find(AgentDefinition definition) =>

@@ -63,8 +63,8 @@ public sealed partial class AgentItem : INotifyPropertyChanged
     /// </summary>
     public string? IconSource { get; init; }
 
-    /// <summary>The agent's "background" image, if set and the file exists.</summary>
-    public string? BackgroundPath => Services.AgentIcons.ExistingFile(Definition.Background);
+    /// <summary>The agent's hover background: its "background" image file, or a compiled-in one.</summary>
+    public string? BackgroundSource => Services.AgentIcons.FindBackground(Definition);
 
     private string PresetSubtitle =>
         !IsCli ? "Presets only work with command line agents"
