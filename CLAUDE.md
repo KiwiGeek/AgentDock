@@ -323,7 +323,7 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
 
 ### Built: Claude usage limits (replaces the owner's dead WaifuOps status line)
 
-All in `Services/ClaudeStatusLine.cs`, plus the usage column in `FlyoutWindow`.
+All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 
 - **The only official source** is Claude Code's status-line input (https://code.claude.com/docs/en/statusline):
   - `rate_limits.five_hour.used_percentage` and `.resets_at` (Unix seconds).
@@ -341,41 +341,81 @@ All in `Services/ClaudeStatusLine.cs`, plus the usage column in `FlyoutWindow`.
   - A missing window keeps its previous value. Input with no `rate_limits` leaves the file alone.
   - It prints `Opus 5.5 | 5h 37% | 7d 12%`. Bad input still prints a line and exits 0.
   - **It doesn't chain to a previous status line.** The owner wanted it to replace WaifuOps.
-- **Setup:** an `InfoBar` in the usage column, shown only when Claude Code is installed.
+- **Setup:** an `InfoBar` in the drawer, shown only when Claude Code is installed.
   - "Set up" names the status line it will replace. It backs up `settings.json` to
     `settings.json.agentdock-<timestamp>.bak`, then sets `statusLine` to `"<exe with forward
     slashes>" --statusline`.
-  - It edits with `JsonNode`, so every other key is preserved, and writes with relaxed escaping,
-    so quotes don't become `"`.
+  - It edits with `JsonNode`, so every other key is preserved, and writes with relaxed escaping
+    (`UnsafeRelaxedJsonEscaping`), so quotes stay as `\"` rather than six-character unicode escapes.
   - Closing the offer sets `DockState.ClaudeUsageOfferDismissed`.
   - If the command runs a *different* AgentDock.exe, a warning offers "Update". It can't be
     dismissed, because usage would silently stop updating.
   - `CLAUDE_CONFIG_DIR` is honoured, the same as Claude Code. Testing used it to point at a
     scratch copy, so the owner's real settings were never touched.
-- **Display:** a 240 DIP column to the right of the agents (the owner asked for a column).
+- **Display:** in the drawer (see below), shown while the pointer is over Claude Code or its presets.
   - Session and Week bars, each with "37% · resets 16:08" (or "Mon 1:58", or a date).
   - "Updated N min ago" underneath, because Claude Code only refreshes the status line while a
     session is running.
   - Bars use `ShowPaused` from 75% and `ShowError` from 90% (Windows' warning and error colours).
   - A window whose `resets_at` has passed shows "0% · reset".
   - Before any data arrives, a note says it appears after the next reply.
-  - `PlaceWindow` adds the column's width only when the column is showing.
   - Format gotcha: `"ddd t"` in a custom format means "day plus the first letter of AM/PM", so the
     time is formatted separately.
 - **Verified 2026-10-15:**
   - Piped samples: full input, partial input, no `rate_limits`, garbage and empty input.
   - Setup against a scratch copy: only `statusLine` changes, other keys stay identical, and the
     backup matches the original.
-  - The offer text, the usage column, and the "different copy" warning with Update.
-- **Not yet verified:** a real Claude Code session driving the status line, the published Native
-  AOT build, and the owner's real settings (the owner clicks Set up themselves).
+  - The offer text, the usage display (then a column), and the "different copy" warning with Update.
+  - The owner clicked Set up for real at 14:44: their status line now runs the bin\Debug exe, and
+    the backup is `settings.json.agentdock-20261015-144457.bak`.
+- **Not yet verified:** real usage numbers from a Claude Code session. The desktop app's Code tab
+  doesn't seem to run the status line; the terminal CLI should. Also not verified: the published
+  Native AOT build.
+- **Dev gotcha:** with the status line pointing at bin\Debug, every Claude Code refresh briefly
+  runs that exe. A build can hit a short lock (MSBuild retries), and while the exe is mid-rebuild
+  the status line may be blank for a moment.
+
+### Drawer (owner's request: "only appear when Claude CLI is moused over")
+
+- A windowed `Popup` (`ShouldConstrainToRootBounds=False`) with its own `DesktopAcrylicBackdrop`,
+  beside the flyout. The flyout window itself stays 380 DIP wide.
+- `AgentRow_PointerEntered` opens it when `HasDrawer(item)` is true. Today that means Claude Code
+  or its presets, with usage or the setup offer to show. Leaving the row or the drawer starts a
+  250 ms close timer, so the pointer can move into the drawer to click Set up.
+- Placement: flush against the flyout (no gap, per the owner), on the right if it fits in the
+  monitor's work area, otherwise on the left. The touching side has square corners and no border.
+  Its height matches the flyout.
+- **Opening animates `DrawerContent.Width`** from 1 to 240 DIP (250 ms ease-out), and closing goes
+  back (200 ms ease-in), with `EnableDependentAnimation`. The popup window grows and shrinks with
+  it, acrylic and all. On the left side, `DrawerContent_SizeChanged` keeps
+  `HorizontalOffset = -width`, so the drawer grows leftwards.
+  - **Don't slide the content with a RenderTransform.** That was the first version: the windowed
+    popup grows its HWND to cover the transformed bounds, so mid-slide the drawer's window sat
+    *over* the flyout and clipped its list. The owner's screen recording showed it.
+  - `DrawerPanel` (the content, fixed width) is anchored to the outer edge, so it slides out with it.
+- **Shared hover image:** while the hovered agent has a drawer, `LayoutBackdrop` sizes the
+  background image across the flyout and drawer together (UniformToFill, right-aligned, vertically
+  centred). `HoverImage` (flyout) and `DrawerImage` (drawer) each get a negative margin for their
+  slice, so the two halves line up.
+  - `DrawerImage` is anchored to the drawer edge that touches the flyout, which doesn't move. So
+    the image stays lined up and is uncovered as the drawer grows.
+  - Agents without a drawer keep the flyout-only layout.
+  - Layout needs the image's pixel size, so it reruns on `ImageOpened` the first time.
+- Hiding the flyout closes it at once.
+- The owner plans similar drawers for other agents, so `HasDrawer` and the drawer's content are
+  where per-agent content goes.
+- **Verified by the owner:** the drawer opens on hover without hiding the flyout, with acrylic and
+  rounded corners (screenshot, 2026-10-15). A recording then confirmed no gap and the shared image,
+  but showed the overlap while sliding. That was fixed by animating the width, and the owner
+  confirmed it opens and closes well.
 
 ### Hover background (owner's request)
 
 - Optional `background` per agent in `agents.json`: an image path, resolved like `icon`
   (`AgentIcons.ExistingFile`). Presets inherit it from their agent.
-- `HoverBackdrop` is a `Border` behind all content with an `ImageBrush` (`UniformToFill`, aligned
-  right). `AgentRow_PointerEntered`/`Exited` on the row template fade it to 0.3 opacity over 900 ms, and back out over 600 ms (tuned with the owner).
+- `HoverBackdrop` is a `Border` behind all content, holding `HoverImage` (sized by `LayoutBackdrop`;
+  see Drawer). `AgentRow_PointerEntered`/`Exited` on the row template fade it, and `DrawerImage`, to
+  0.3 opacity over 900 ms, and back out over 600 ms (tuned with the owner).
   Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
 - The image is a local setting, not compiled in or committed.

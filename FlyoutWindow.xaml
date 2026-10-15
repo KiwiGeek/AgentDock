@@ -63,18 +63,12 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <!-- Agents; keep in step with FlyoutWindow.ListWidthDip -->
-            <ColumnDefinition Width="380" />
-            <!-- Claude usage, when shown; keep in step with FlyoutWindow.UsageWidthDip -->
-            <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
-
-        <!-- An agent's "background" image, faded in while the pointer is over that agent. -->
-        <Border x:Name="HoverBackdrop" Grid.RowSpan="3" Grid.ColumnSpan="2" Opacity="0" IsHitTestVisible="False">
-            <Border.Background>
-                <ImageBrush x:Name="HoverBrush" Stretch="UniformToFill" AlignmentX="Right" />
-            </Border.Background>
+        <!--
+            An agent's "background" image, faded in while the pointer is over that agent. Size and offset
+            are set in code (LayoutBackdrop) so that, with the drawer open, one image spans both panels.
+        -->
+        <Border x:Name="HoverBackdrop" Grid.RowSpan="3" Opacity="0" IsHitTestVisible="False">
+            <Image x:Name="HoverImage" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
         </Border>
 
         <!-- Working folder -->
@@ -142,37 +136,65 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Claude plan usage, a column to the right of the agents (see Services/ClaudeStatusLine.cs) -->
-        <StackPanel x:Name="UsagePanel" Grid.Column="1" Grid.RowSpan="2" Width="232" Padding="16,16,16,12" Spacing="4"
-                    Visibility="Collapsed" BorderThickness="1,0,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
-            <TextBlock Text="Claude usage" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            <StackPanel x:Name="UsageRows" Spacing="4" Margin="0,8,0,0">
-                <TextBlock Text="Session" />
-                <ProgressBar x:Name="SessionBar" Maximum="100" AutomationProperties.Name="Session usage" />
-                <TextBlock x:Name="SessionText" Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock Text="Week" Margin="0,12,0,0" />
-                <ProgressBar x:Name="WeekBar" Maximum="100" AutomationProperties.Name="Weekly usage" />
-                <TextBlock x:Name="WeekText" Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <TextBlock x:Name="UsageUpdatedText" Margin="0,12,0,0" Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-            </StackPanel>
-            <TextBlock x:Name="UsageNote" Visibility="Collapsed" Margin="0,8,0,0" TextWrapping="Wrap"
-                       Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        </StackPanel>
+        <!--
+            The drawer: a separate, windowed popup beside the flyout that slides out while the pointer is
+            over an agent with something to show (for now, Claude Code's plan usage). Offsets and height
+            are set in code when it opens.
+        -->
+        <Popup x:Name="Drawer" Grid.RowSpan="3" ShouldConstrainToRootBounds="False" IsLightDismissEnabled="False">
+            <Popup.SystemBackdrop>
+                <DesktopAcrylicBackdrop />
+            </Popup.SystemBackdrop>
+            <!--
+                The drawer opens by animating this border's Width from 1 to 240, growing outwards from the
+                flyout's edge. (Moving the content with a transform instead makes the popup window grow to
+                cover it, which put the drawer over the flyout.) Corners and border on the side touching the
+                flyout, and the alignments below, are set in code (OpenDrawer) for the side it opens on.
+            -->
+            <Border x:Name="DrawerContent" Width="240" Background="Transparent" CornerRadius="8" BorderThickness="1"
+                    BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" SizeChanged="DrawerContent_SizeChanged"
+                    PointerEntered="Drawer_PointerEntered" PointerExited="Drawer_PointerExited">
+                <Grid>
+                    <!-- The drawer's slice of the hover image, anchored to the flyout's edge so it lines up with
+                         the flyout's half and is uncovered as the drawer grows. -->
+                    <Image x:Name="DrawerImage" Opacity="0" IsHitTestVisible="False"
+                           HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
 
-        <InfoBar x:Name="UsageOffer" Grid.Column="1" Grid.RowSpan="2" Width="232" Margin="0,12,8,8"
-                 VerticalAlignment="Top" IsOpen="False" Title="Claude usage"
-                 CloseButtonClick="UsageOffer_CloseButtonClick">
-            <InfoBar.ActionButton>
-                <Button x:Name="UsageOfferButton" Click="UsageOfferButton_Click" />
-            </InfoBar.ActionButton>
-        </InfoBar>
+                    <!-- Full-width content, anchored to the drawer's outer edge so it slides out with it. -->
+                    <Grid x:Name="DrawerPanel" Width="238" HorizontalAlignment="Right">
+                    <!-- Claude plan usage (see Services/ClaudeStatusLine.cs) -->
+                    <StackPanel x:Name="UsagePanel" Padding="16,16,16,12" Spacing="4" Visibility="Collapsed">
+                        <TextBlock Text="Claude usage" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel x:Name="UsageRows" Spacing="2" Margin="0,8,0,0">
+                            <TextBlock Text="Session" />
+                            <ProgressBar x:Name="SessionBar" Maximum="100" AutomationProperties.Name="Session usage" />
+                            <TextBlock x:Name="SessionText" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="Week" Margin="0,6,0,0" />
+                            <ProgressBar x:Name="WeekBar" Maximum="100" AutomationProperties.Name="Weekly usage" />
+                            <TextBlock x:Name="WeekText" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="UsageUpdatedText" Margin="0,8,0,0" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        </StackPanel>
+                        <TextBlock x:Name="UsageNote" Visibility="Collapsed" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+
+                    <InfoBar x:Name="UsageOffer" Margin="8" VerticalAlignment="Top" IsOpen="False" Title="Claude usage"
+                             CloseButtonClick="UsageOffer_CloseButtonClick">
+                        <InfoBar.ActionButton>
+                            <Button x:Name="UsageOfferButton" Click="UsageOfferButton_Click" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Popup>
 
         <!-- Footer -->
-        <Border Grid.Row="2" Grid.ColumnSpan="2" Padding="16,6,8,6" BorderThickness="0,1,0,0"
+        <Border Grid.Row="2" Padding="16,6,8,6" BorderThickness="0,1,0,0"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}">
             <Grid ColumnSpacing="4">

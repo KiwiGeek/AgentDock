@@ -131,7 +131,8 @@ the jump list uses them.
 ### Claude usage limits
 
 If you use Claude Code with a Pro or Max plan, the flyout can show how much of your 5-hour session
-and weekly limits you've used, and when each resets, in a column beside the agents. Click
+and weekly limits you've used, and when each resets, in a drawer that slides out beside the
+flyout while the pointer is over Claude Code. Click
 **Set up** the first time. Agent Dock then becomes Claude Code's status line, which is the only
 supported way to get these numbers. It reads only what Claude Code passes to its status line,
 never your login. The status line itself shows something like `Opus 5.5 | 5h 37% | 7d 12%`.

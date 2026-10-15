@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Graphics;
 using Windows.System;
 using FolderPicker = Microsoft.Windows.Storage.Pickers.FolderPicker;
@@ -24,9 +25,9 @@ namespace AgentDock;
 /// </summary>
 public sealed partial class FlyoutWindow : Window
 {
-    /// <summary>Width of the agent column (matches the XAML), plus the usage column when it's shown.</summary>
     private const double ListWidthDip = 380;
-    private const double UsageWidthDip = 240;
+    /// <summary>The drawer's width; matches DrawerContent in the XAML.</summary>
+    private const double DrawerWidthDip = 240;
     private const double HoverBackdropOpacity = 0.3;
     private const double MaxHeightDip = 640;
 
@@ -176,7 +177,9 @@ public sealed partial class FlyoutWindow : Window
         _hiddenByDeactivation = byDeactivation;
         _sinceHide.Restart();
         AppWindow.Hide();
-        FadeBackdrop(null); // don't reopen with the last hover's image showing
+        // Don't reopen with the last hover's image or drawer showing.
+        FadeBackdrop(null, spansDrawer: false);
+        CloseDrawer(animate: false);
     }
 
     private void BringToFront()
@@ -767,28 +770,46 @@ public sealed partial class FlyoutWindow : Window
         }
         UpdateUsage();
         StatusText.Text = "Claude Code now uses Agent Dock as its status line.";
-        PlaceWindow();
+        PlaceWindow(); // the footer message may wrap
     }
 
     private void UsageOffer_CloseButtonClick(InfoBar sender, object args)
     {
         _state.ClaudeUsageOfferDismissed = true;
         _store.SaveState(_state);
-        DispatcherQueue.TryEnqueue(PlaceWindow); // once the bar has collapsed
+        CloseDrawer(animate: true); // nothing left to show in it
     }
 
     // ---------- Hover background ----------
 
-    private readonly Dictionary<string, Microsoft.UI.Xaml.Media.ImageSource> _backdrops = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, BitmapImage> _backdrops = new(StringComparer.OrdinalIgnoreCase);
     private Storyboard? _backdropFade;
+    /// <summary>The current hover image is laid out across the flyout and the drawer together.</summary>
+    private bool _backdropSpansDrawer;
 
-    private void AgentRow_PointerEntered(object sender, PointerRoutedEventArgs e) =>
-        FadeBackdrop(((FrameworkElement)sender).DataContext is AgentItem { BackgroundPath: { } path } ? path : null);
+    private void AgentRow_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        var item = ((FrameworkElement)sender).DataContext as AgentItem;
+        var drawer = item is not null && HasDrawer(item);
+        // The drawer first: the image layout depends on which side it opens.
+        if (drawer)
+            OpenDrawer();
+        else
+            ScheduleDrawerClose();
+        FadeBackdrop(item?.BackgroundPath, spansDrawer: drawer);
+    }
 
-    private void AgentRow_PointerExited(object sender, PointerRoutedEventArgs e) => FadeBackdrop(null);
+    private void AgentRow_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        FadeBackdrop(null, spansDrawer: false);
+        ScheduleDrawerClose();
+    }
 
-    /// <summary>Fades the given image in behind the flyout, or fades out when <paramref name="path"/> is null.</summary>
-    private void FadeBackdrop(string? path)
+    /// <summary>
+    /// Fades the given image in behind the flyout (and the drawer, when <paramref name="spansDrawer"/>),
+    /// or fades out when <paramref name="path"/> is null.
+    /// </summary>
+    private void FadeBackdrop(string? path, bool spansDrawer)
     {
         if (path is not null)
         {
@@ -796,38 +817,227 @@ public sealed partial class FlyoutWindow : Window
             {
                 try
                 {
-                    _backdrops[path] = image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(path));
+                    _backdrops[path] = image = new BitmapImage(new Uri(path));
+                    // The layout needs the image's proportions, which are known once it has loaded.
+                    image.ImageOpened += (_, _) => LayoutBackdrop();
                 }
                 catch (Exception ex) when (ex is UriFormatException or ArgumentException)
                 {
                     return;
                 }
             }
-            HoverBrush.ImageSource = image;
+            HoverImage.Source = DrawerImage.Source = image;
+            _backdropSpansDrawer = spansDrawer;
+            LayoutBackdrop();
         }
 
         var target = path is null ? 0 : HoverBackdropOpacity;
         // Stopping a storyboard snaps back to the value before it ran, so carry the current one over.
         var current = HoverBackdrop.Opacity;
         _backdropFade?.Stop();
-        HoverBackdrop.Opacity = current;
+        HoverBackdrop.Opacity = DrawerImage.Opacity = current;
         if (!new Windows.UI.ViewManagement.UISettings().AnimationsEnabled || !AppWindow.IsVisible)
         {
-            HoverBackdrop.Opacity = target;
+            HoverBackdrop.Opacity = DrawerImage.Opacity = target;
             return;
         }
 
-        var fade = new DoubleAnimation
+        var duration = new Duration(TimeSpan.FromMilliseconds(path is null ? 600 : 900));
+        var storyboard = new Storyboard();
+        foreach (var element in new UIElement[] { HoverBackdrop, DrawerImage })
         {
-            From = current,
-            To = target,
-            Duration = new Duration(TimeSpan.FromMilliseconds(path is null ? 600 : 900)),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            var fade = new DoubleAnimation
+            {
+                From = current, To = target, Duration = duration,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(fade, element);
+            Storyboard.SetTargetProperty(fade, "Opacity");
+            storyboard.Children.Add(fade);
+        }
+        _backdropFade = storyboard;
+        storyboard.Begin();
+    }
+
+    /// <summary>
+    /// Sizes the hover image to fill the flyout (or, with the drawer, the flyout and drawer side by
+    /// side), keeping its right edge in view, then gives each panel its own slice so they line up.
+    /// </summary>
+    private void LayoutBackdrop()
+    {
+        if (HoverImage.Source is not BitmapImage { PixelWidth: > 0, PixelHeight: > 0 } image)
+            return;
+
+        var flyoutWidth = Root.ActualWidth;
+        var height = Root.ActualHeight;
+        var canvasWidth = flyoutWidth + (_backdropSpansDrawer ? DrawerWidthDip : 0);
+        // Where each panel sits on that shared canvas.
+        var flyoutLeft = _backdropSpansDrawer && _drawerSide < 0 ? DrawerWidthDip : 0;
+        var drawerLeft = _drawerSide > 0 ? flyoutWidth : 0;
+
+        var scale = Math.Max(canvasWidth / image.PixelWidth, height / image.PixelHeight);
+        var width = image.PixelWidth * scale;
+        var imageHeight = image.PixelHeight * scale;
+        var left = canvasWidth - width;          // right-aligned
+        var top = (height - imageHeight) / 2;    // vertically centred
+
+        Size(HoverImage);
+        HoverImage.Margin = new Thickness(left - flyoutLeft, top, 0, 0);
+
+        // The drawer's slice is anchored to the edge touching the flyout, which doesn't move while
+        // the drawer grows: its left edge on the right side, its right edge on the left side.
+        Size(DrawerImage);
+        DrawerImage.Margin = _drawerSide > 0
+            ? new Thickness(left - drawerLeft, top, 0, 0)
+            : new Thickness(0, top, DrawerWidthDip - (left + width), 0);
+
+        void Size(Image element)
+        {
+            element.Width = width;
+            element.Height = imageHeight;
+        }
+    }
+
+    // ---------- Drawer ----------
+
+    /// <summary>Width the drawer starts from and closes to; zero would leave the popup with no window.</summary>
+    private const double DrawerClosedWidthDip = 1;
+
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _drawerCloseTimer;
+    private Storyboard? _drawerSlide;
+    private bool _drawerClosing;
+    /// <summary>+1 when the drawer opens to the right of the flyout, -1 to the left.</summary>
+    private int _drawerSide = 1;
+
+    /// <summary>Only Claude Code (and its presets) has a drawer so far: its plan usage, or the setup offer.</summary>
+    private bool HasDrawer(AgentItem item) =>
+        item.IsCli && IsClaudeCode(item.Definition.Command)
+        && (UsagePanel.Visibility == Visibility.Visible || UsageOffer.IsOpen);
+
+    private void Drawer_PointerEntered(object sender, PointerRoutedEventArgs e) => _drawerCloseTimer?.Stop();
+
+    private void Drawer_PointerExited(object sender, PointerRoutedEventArgs e) => ScheduleDrawerClose();
+
+    /// <summary>On the left, the drawer grows leftwards: keep its right edge on the flyout's left edge.</summary>
+    private void DrawerContent_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (_drawerSide < 0)
+            Drawer.HorizontalOffset = -e.NewSize.Width;
+    }
+
+    /// <summary>
+    /// A short grace period, so the pointer can move from the row into the drawer (to click
+    /// Set up) without it closing.
+    /// </summary>
+    private void ScheduleDrawerClose()
+    {
+        if (!Drawer.IsOpen || _drawerClosing)
+            return;
+        if (_drawerCloseTimer is null)
+        {
+            _drawerCloseTimer = DispatcherQueue.CreateTimer();
+            _drawerCloseTimer.Interval = TimeSpan.FromMilliseconds(250);
+            _drawerCloseTimer.IsRepeating = false;
+            _drawerCloseTimer.Tick += (_, _) => CloseDrawer(animate: true);
+        }
+        _drawerCloseTimer.Start();
+    }
+
+    private void OpenDrawer()
+    {
+        _drawerCloseTimer?.Stop();
+        if (Drawer.IsOpen && !_drawerClosing)
+            return;
+
+        if (!Drawer.IsOpen)
+        {
+            // Right of the flyout if it fits on this monitor, otherwise left.
+            var scale = Root.XamlRoot.RasterizationScale;
+            var right = AppWindow.Position.X + AppWindow.Size.Width + (int)Math.Ceiling(DrawerWidthDip * scale);
+            _drawerSide = Win32.MonitorInfoAt(_anchor, out _) is { } info && right > info.rcWork.Right ? -1 : 1;
+            var onRight = _drawerSide > 0;
+
+            // Flush against the flyout, with no rounded corners or border on the side that touches it,
+            // so the two read as one panel.
+            DrawerContent.CornerRadius = onRight ? new CornerRadius(0, 8, 8, 0) : new CornerRadius(8, 0, 0, 8);
+            DrawerContent.BorderThickness = onRight ? new Thickness(0, 1, 1, 1) : new Thickness(1, 1, 0, 1);
+            DrawerContent.Height = Root.ActualHeight;
+            // The image stays with the flyout; the content travels with the drawer's outer edge.
+            DrawerImage.HorizontalAlignment = onRight ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+            DrawerPanel.HorizontalAlignment = onRight ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            LayoutBackdrop();
+
+            DrawerContent.Width = DrawerClosedWidthDip;
+            Drawer.HorizontalOffset = onRight ? Root.ActualWidth : -DrawerClosedWidthDip;
+            Drawer.VerticalOffset = 0;
+            Drawer.IsOpen = true;
+        }
+        _drawerClosing = false;
+        SlideDrawer(DrawerWidthDip, null);
+    }
+
+    private void CloseDrawer(bool animate)
+    {
+        _drawerCloseTimer?.Stop();
+        if (!Drawer.IsOpen)
+            return;
+
+        if (!animate || !AppWindow.IsVisible)
+        {
+            _drawerSlide?.Stop();
+            _drawerClosing = false;
+            Drawer.IsOpen = false;
+            return;
+        }
+
+        _drawerClosing = true;
+        // Shrinks back into the flyout's edge, then closes, unless it was reopened meanwhile.
+        SlideDrawer(DrawerClosedWidthDip, () =>
+        {
+            if (_drawerClosing)
+            {
+                _drawerClosing = false;
+                Drawer.IsOpen = false;
+            }
+        });
+    }
+
+    /// <summary>Animates the drawer's width, which grows or shrinks the popup window itself.</summary>
+    private void SlideDrawer(double toWidth, Action? completed)
+    {
+        // As with the backdrop fade: stopping snaps back, so carry the current width over.
+        var from = DrawerContent.ActualWidth > 0 ? DrawerContent.ActualWidth : DrawerContent.Width;
+        _drawerSlide?.Stop();
+        DrawerContent.Width = from;
+
+        if (!new Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+        {
+            DrawerContent.Width = toWidth;
+            completed?.Invoke();
+            return;
+        }
+
+        var opening = toWidth > from;
+        var slide = new DoubleAnimation
+        {
+            From = from,
+            To = toWidth,
+            Duration = new Duration(TimeSpan.FromMilliseconds(opening ? 250 : 200)),
+            EasingFunction = new CubicEase { EasingMode = opening ? EasingMode.EaseOut : EasingMode.EaseIn },
+            // Width affects layout, so WinUI only animates it when asked to explicitly.
+            EnableDependentAnimation = true
         };
-        Storyboard.SetTarget(fade, HoverBackdrop);
-        Storyboard.SetTargetProperty(fade, "Opacity");
-        _backdropFade = new Storyboard { Children = { fade } };
-        _backdropFade.Begin();
+        Storyboard.SetTarget(slide, DrawerContent);
+        Storyboard.SetTargetProperty(slide, "Width");
+        var storyboard = new Storyboard { Children = { slide } };
+        if (completed is not null)
+            storyboard.Completed += (_, _) =>
+            {
+                if (_drawerSlide == storyboard)
+                    completed();
+            };
+        _drawerSlide = storyboard;
+        storyboard.Begin();
     }
 
     // ---------- Placement and motion ----------
@@ -846,7 +1056,7 @@ public sealed partial class FlyoutWindow : Window
         var work = info.rcWork;
         var gap = (int)Math.Round(12 * scale);
 
-        var widthDip = ListWidthDip + (UsagePanel.Visibility == Visibility.Visible || UsageOffer.IsOpen ? UsageWidthDip : 0);
+        var widthDip = ListWidthDip;
         Root.Measure(new Windows.Foundation.Size(widthDip, double.PositiveInfinity));
         var maxHeightDip = Math.Min(MaxHeightDip, (work.Height - 2 * gap) / scale);
         var heightDip = Root.DesiredSize.Height > 1
