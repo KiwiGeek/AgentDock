@@ -4,7 +4,7 @@ namespace AgentDock.Services;
 
 /// <summary>
 /// The last few folders an agent was launched in. Kept in state.json so agents.json (and the
-/// user's comments in it) is never rewritten. Only Claude Code is recorded for now.
+/// user's comments in it) is never rewritten. Recorded for Claude Code, Codex and Grok Build, the agents with a drawer to show them in.
 /// </summary>
 public static class RecentLaunches
 {
@@ -17,7 +17,7 @@ public static class RecentLaunches
     /// </summary>
     public static bool Remember(DockState state, string? command, string agentId, string folder)
     {
-        if (!state.RememberRecentLaunches || !IsClaude(command) || string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(folder))
+        if (!state.RememberRecentLaunches || !Records(command) || string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(folder))
             return false;
 
         var list = ListFor(state, agentId, create: true);
@@ -53,8 +53,9 @@ public static class RecentLaunches
     /// <summary>Forgets every agent's recent folders.</summary>
     public static void Clear(DockState state) => state.RecentLaunches.Clear();
 
-    private static bool IsClaude(string? command) =>
-        string.Equals(Path.GetFileNameWithoutExtension(command?.Trim().Trim('"')), "claude", StringComparison.OrdinalIgnoreCase);
+    /// <summary>The agents whose drawer lists recent folders: Claude Code, Codex and Grok Build.</summary>
+    public static bool Records(string? command) =>
+        Path.GetFileNameWithoutExtension(command?.Trim().Trim('"'))?.ToLowerInvariant() is "claude" or "codex" or "grok";
 
     /// <summary>
     /// The deserializer builds an ordinary dictionary, so a lookup has to ignore case itself.

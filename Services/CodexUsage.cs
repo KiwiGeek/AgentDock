@@ -4,8 +4,6 @@ using AgentDock.Models;
 
 namespace AgentDock.Services;
 
-/// <summary>What <see cref="CodexUsage.FetchAsync"/> found: the limits, or a sentence saying why not.</summary>
-public sealed record CodexUsageFetch(PlanUsage? Usage, string? Problem);
 
 /// <summary>
 /// Codex plan usage, asked of Codex itself: <c>codex app-server</c> is the local JSON-RPC interface
@@ -30,18 +28,22 @@ public static class CodexUsage
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
 
-    private static string UsagePath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "codex-usage.json");
+    /// <summary>Where usage for the account in <paramref name="codexHome"/> is saved (codex-usage.json for the default).</summary>
+    private static string UsagePath(string codexHome) => UsageAccount.UsageFile("codex-usage", codexHome, UsageAccount.CodexHome);
 
-    public static Task<CodexUsageFetch> FetchAsync() => Task.Run(FetchCoreAsync);
+    /// <summary>
+    /// The limits of <paramref name="account"/>: Codex is started with the agent's own environment
+    /// (its CODEX_HOME), so it answers as that account, with its own sign-in.
+    /// </summary>
+    public static Task<UsageFetch> FetchAsync(UsageAccount account) => Task.Run(() => FetchCoreAsync(account));
 
-    private static async Task<CodexUsageFetch> FetchCoreAsync()
+    private static async Task<UsageFetch> FetchCoreAsync(UsageAccount account)
     {
         Process? process = null;
         try
         {
             if (PathResolver.Find("codex") is not { } codex)
-                return new CodexUsageFetch(null, Unreachable);
+                return new UsageFetch(null, Unreachable);
 
             var start = new ProcessStartInfo(codex)
             {
@@ -54,9 +56,11 @@ public static class CodexUsage
             };
             foreach (var arg in new[] { "-s", "read-only", "-a", "never", "app-server" })
                 start.ArgumentList.Add(arg);
+            foreach (var (name, value) in account.Env)
+                start.Environment[name] = value;
             process = Process.Start(start);
             if (process is null)
-                return new CodexUsageFetch(null, Unreachable);
+                return new UsageFetch(null, Unreachable);
             _ = process.StandardError.ReadToEndAsync(); // drain, so a chatty server can't block
 
             var input = process.StandardInput;
@@ -65,29 +69,29 @@ public static class CodexUsage
             await input.WriteLineAsync("""{"id":1,"method":"initialize","params":{"clientInfo":{"name":"agent-dock","title":"Agent Dock","version":"1.0.0"}}}""");
             await input.FlushAsync();
             if (await ReadResponseAsync(output, 1, StartTimeout) is not { } initialized)
-                return new CodexUsageFetch(null, Unreachable);
+                return new UsageFetch(null, Unreachable);
             if (initialized.Error is not null)
-                return new CodexUsageFetch(null, Unreachable);
+                return new UsageFetch(null, Unreachable);
 
             await input.WriteLineAsync("""{"method":"initialized"}""");
             // Background check: skip the separate reset-credit lookup.
             await input.WriteLineAsync("""{"id":2,"method":"account/rateLimits/read","params":{"excludeResetCreditDetails":true}}""");
             await input.FlushAsync();
             if (await ReadResponseAsync(output, 2, RequestTimeout) is not { } reply)
-                return new CodexUsageFetch(null, Unreachable);
+                return new UsageFetch(null, Unreachable);
             if (reply.Error is { } error)
-                return new CodexUsageFetch(null, LooksSignedOut(error) ? NotSignedIn : Unreachable);
+                return new UsageFetch(null, LooksSignedOut(error) ? NotSignedIn : Unreachable);
 
             var result = Parse(reply.Result!, DateTimeOffset.UtcNow);
             if (result.Usage is { } usage)
-                Save(usage);
+                Save(usage, account.ConfigDir);
             return result;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // A missing or broken codex, a closed pipe, an unwritable file: never the resident's
             // problem, and never shown as the exception's text.
-            return new CodexUsageFetch(null, Unreachable);
+            return new UsageFetch(null, Unreachable);
         }
         finally
         {
@@ -156,14 +160,14 @@ public static class CodexUsage
     /// Windows are sorted by length rather than primary/secondary: a day or less is the session.
     /// A result with no windows is still a success (no limits yet), not an error.
     /// </summary>
-    internal static CodexUsageFetch Parse(string resultJson, DateTimeOffset now)
+    internal static UsageFetch Parse(string resultJson, DateTimeOffset now)
     {
         try
         {
             using var document = JsonDocument.Parse(resultJson);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
-                return new CodexUsageFetch(null, NotUnderstood);
+                return new UsageFetch(null, NotUnderstood);
 
             var snapshot = root.TryGetProperty("rateLimitsByLimitId", out var buckets) && buckets.ValueKind == JsonValueKind.Object
                            && buckets.TryGetProperty("codex", out var codex) && codex.ValueKind == JsonValueKind.Object
@@ -172,7 +176,7 @@ public static class CodexUsage
                     ? limits
                     : default;
             if (snapshot.ValueKind != JsonValueKind.Object)
-                return new CodexUsageFetch(null, NotUnderstood);
+                return new UsageFetch(null, NotUnderstood);
 
             var usage = new PlanUsage { UpdatedAt = now.ToUnixTimeSeconds() };
             foreach (var name in new[] { "primary", "secondary" })
@@ -189,21 +193,41 @@ public static class CodexUsage
                 else
                     usage.SevenDay ??= parsed;
             }
-            return new CodexUsageFetch(usage, null);
+
+            usage.Plan = snapshot.TryGetProperty("planType", out var plan) && plan.ValueKind == JsonValueKind.String
+                         && plan.GetString() is { Length: > 0 } planName && planName != "unknown"
+                ? planName
+                : null;
+            // Credits are Codex's usage beyond the plan.
+            if (snapshot.TryGetProperty("credits", out var credits) && credits.ValueKind == JsonValueKind.Object)
+            {
+                var hasCredits = credits.TryGetProperty("hasCredits", out var has) && has.ValueKind == JsonValueKind.True;
+                var unlimited = credits.TryGetProperty("unlimited", out var u) && u.ValueKind == JsonValueKind.True;
+                usage.Extra = new ExtraUsage
+                {
+                    Enabled = hasCredits || unlimited,
+                    Unlimited = unlimited,
+                    Balance = credits.TryGetProperty("balance", out var balance) && balance.ValueKind == JsonValueKind.String
+                        ? balance.GetString()
+                        : null
+                };
+            }
+            return new UsageFetch(usage, null);
         }
         catch (JsonException)
         {
-            return new CodexUsageFetch(null, NotUnderstood);
+            return new UsageFetch(null, NotUnderstood);
         }
     }
 
-    /// <summary>The last answer saved, or null if there's none yet.</summary>
-    public static PlanUsage? LoadSaved()
+    /// <summary>The last answer saved for the account in <paramref name="codexHome"/>, or null if there's none yet.</summary>
+    public static PlanUsage? LoadSaved(string codexHome)
     {
         try
         {
-            return File.Exists(UsagePath)
-                ? JsonSerializer.Deserialize(File.ReadAllText(UsagePath), DockJsonContext.Default.PlanUsage)
+            var path = UsagePath(codexHome);
+            return File.Exists(path)
+                ? JsonSerializer.Deserialize(File.ReadAllText(path), DockJsonContext.Default.PlanUsage)
                 : null;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
@@ -212,11 +236,12 @@ public static class CodexUsage
         }
     }
 
-    private static void Save(PlanUsage usage)
+    private static void Save(PlanUsage usage, string codexHome)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(UsagePath)!);
-        var temp = $"{UsagePath}.{Environment.ProcessId}.tmp";
+        var path = UsagePath(codexHome);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var temp = $"{path}.{Environment.ProcessId}.tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(usage, DockJsonContext.Default.PlanUsage));
-        File.Move(temp, UsagePath, overwrite: true);
+        File.Move(temp, path, overwrite: true);
     }
 }

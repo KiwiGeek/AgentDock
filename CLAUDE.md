@@ -161,7 +161,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   content. Two levels (owner's request, 2026-10-16):
   - **General**: Waifu backgrounds, Hide unavailable agents, Remember recents and **Clear recents**
     (a confirm flyout; disabled when nothing is saved). Remember recents is general on purpose,
-    and its text doesn't name Claude: Claude is just the only agent recorded so far (owner,
+    and its text doesn't name Claude: only Claude Code, Codex and Grok Build are recorded so far (owner,
     2026-10-16). Below it, **Agents**: a row for every agent in the list, in order
     (`BuildAgentSettingsRows`), with its icon, "Not installed" if so, and a chevron; then **Add agents**.
   - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Agent-specific settings show
@@ -255,14 +255,37 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   added automatically.
 - **An agent's page** (`ShowAgentSettings`, settings → Agents → row): name, arguments (CLI), command
   shown, **environment variables** (CLI; add with name + value, remove with ×; names are letters,
-  digits and underscores), move up/down, **Duplicate** (a copy right after it, id from
+  digits and underscores), **Duplicate** (a copy right after it, id from
   `KnownAgents.UniqueId`, same catalog, name "… (copy)", opened with its name selected), **Remove**
   (confirms; presets for it stay). Changes save immediately. The flyout's right-click menu on an agent also has **Settings** (opens this page) and **Remove from list** (`ConfirmRemoveAgent`, a confirm flyout beside the row). Agent-specific panels (Claude's usage
   source) show under it.
-- **Copies for another account:** the env note suggests `CLAUDE_CONFIG_DIR` / `CODEX_HOME`. Usage is
-  only checked for the default account so far: a Claude or Codex agent whose env changes the account
-  or provider (`UsesOwnAccount`: config dir, API keys, base URLs, Bedrock/Vertex) gets a drawer saying
-  usage isn't shown for it yet, rather than another account's numbers. Per-account usage is in `tasks.md`.
+- **Reordering by dragging** (owner's request): the settings list (`AgentSettingsList`, a ListView
+  of `AgentListRow`) and the flyout's own lists (presets, command line, desktop) all have
+  `CanReorderItems`. A drop saves the order (`AgentList_DragItemsCompleted`,
+  `AgentSettingsList_DragItemsCompleted`); agents not shown in that list keep their places
+  (`ReorderShown`). Presets save to presets.json, refused while it can't be read. The agent page's
+  Move up/down buttons were removed at the owner's request (2026-10-16): dragging is the only way to reorder. Not yet verified by an actual drag.
+- **Usage per account** (`Services/UsageAccount.cs`): the account is the config folder from the
+  agent's `env` (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`, `%NAME%` expanded, full path), else the default.
+  `UsageAccount.Key` keys every cache, so copies on one account share numbers and accounts never mix.
+  - Saved files: the default account keeps `claude-usage.json` / `codex-usage.json`; another uses
+    `claude-usage-<sha1 of folder, 12 hex>.json` (`UsageAccount.UsageFile`).
+  - **Codex:** `codex app-server` is started with the agent's env, so Codex answers as that account
+    with its own sign-in. A signed-out folder gives the sign-in note, never the default's numbers.
+  - **Claude, asked directly:** the token comes from the agent's `CLAUDE_CODE_OAUTH_TOKEN`, else
+    that folder's `.credentials.json`; rate limiting (`Pace`) is per account.
+  - **Claude, status line:** no extra argument is needed. Claude Code passes its environment to the
+    status line command, so `--statusline` reads `CLAUDE_CONFIG_DIR` and writes that account's file.
+    Set up installs into that account's `settings.json`; dismissing it is per account
+    (`ClaudeUsageOfferDismissedFor`). The usage source is per account too: `ClaudeUsageSource` for the
+    default, `ClaudeUsageSources[folder]` for others, set on the copy's own page (`UpdateAgentPanel`,
+    rerun when its variables change).
+  - An agent using an API key or another endpoint (`UsesOtherProvider`: base URLs, API keys,
+    Bedrock/Vertex) has no plan: its drawer says plan limits don't apply, and its page hides the
+    Claude usage choice.
+  - Verified 2026-10-16: a status line run with another `CLAUDE_CONFIG_DIR` wrote its own file and
+    left `claude-usage.json` untouched; account detection cases and a Codex check against an empty
+    `CODEX_HOME` (sign-in note), in a throwaway console project (deleted).
 - Verified 2026-10-16 by screenshots (UI Automation): the welcome, and Add agents finding the
   owner's installed agents with icons. Not yet verified: adding, the agent page, duplicate,
   environment variables reaching an agent, the offer.
@@ -333,6 +356,8 @@ there degrade to a missing icon or entry, never an error.
 | `Services/SettingsStore.cs` | `%APPDATA%\AgentDock\agents.json` and `state.json`; atomic writes via temp file |
 | `Services/AgentCatalog.cs` | Definition → resolved item |
 | `Services/KnownAgents.cs` | The agents Agent Dock can find and offer (templates; ids match icons and pictures) |
+| `Services/UsageAccount.cs` | Whose plan an agent's usage belongs to (its config folder); per-account usage files; `UsageFetch` |
+| `Models/AgentListRow.cs` | A row in the settings page's draggable agent list |
 | `Services/PathResolver.cs` | PATH/PATHEXT lookup |
 | `Services/Launcher.cs` | Starts agents and plain shells |
 | `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
@@ -348,6 +373,8 @@ there degrade to a missing icon or entry, never an error.
 | `Services/ClaudeConfig.cs` | Claude Code's config folder (`CLAUDE_CONFIG_DIR` or `~\.claude`), shared |
 | `Services/CodexUsage.cs` | Codex plan usage, asked live of Codex's app server; last answer saved |
 | `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
+| `Services/GrokUsage.cs` | Grok Build usage from grok.com (gRPC-web, through a hidden WebView2 in Agent Dock's own sign-in) |
+| `GrokSignInWindow.xaml(.cs)` | grok.com in a window of Agent Dock's own, for signing in |
 | `Services/CopilotUsage.cs` | GitHub Copilot premium requests this month, via `gh api` (billing API) |
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
@@ -444,8 +471,8 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
 
 `Services/ClaudeStatusLine.cs` and `Services/ClaudeUsageApi.cs`, plus the drawer in `FlyoutWindow`.
 Two sources, chosen on Claude Code's settings page (`DockState.ClaudeUsageSource`, `"statusLine"`
-or `"api"` in state.json; missing means the status line). Both save to the same
-`claude-usage.json`.
+or `"api"` in state.json; missing means the status line). Both save to the same file, per account:
+`claude-usage.json` for the default, `claude-usage-<hash>.json` for another (see "Usage per account" under Agent list).
 
 - **Status line (default).** The only documented source is Claude Code's status-line input
   (https://code.claude.com/docs/en/statusline):
@@ -480,7 +507,12 @@ or `"api"` in state.json; missing means the status line). Both save to the same
   - **Body:** `five_hour` / `seven_day` with `utilization` (already 0–100; `used_percentage` also
     accepted) and ISO-8601 `resets_at` (`ClaudeStatusLine.ResetsAt`, shared with the status line).
     A `limits` array (`kind`/`group` + `percent`) only fills a window the named object didn't give.
-    Per-model weeks and `extra_usage` are ignored. A 200 with neither window is an empty success.
+    Per-model weeks (`seven_day_<model>`, or `weekly_<model>` in `limits`, but never `weekly_all`,
+    which is the all-models week: a real reply had it, and it showed as "All week") become `PlanUsage.ModelWeeks`
+    with a label ("Sonnet"), shown as extra bars; `extra_usage` (`is_enabled`, `used_credits`,
+    `monthly_limit`, unit undocumented, so shown as plain numbers) becomes `PlanUsage.Extra` (owner's
+    request, 2026-10-16). The status line doesn't send these, so its saves keep the last direct
+    check's. A 200 with neither window is an empty success.
   - **Saving:** a success replaces the file (`ClaudeStatusLine.Replace`), keeping only the previous
     `Model`; it doesn't merge missing windows the way the status line does, because that answer is
     complete. A failure writes nothing.
@@ -515,7 +547,10 @@ or `"api"` in state.json; missing means the status line). Both save to the same
   - `CLAUDE_CONFIG_DIR` is honoured, the same as Claude Code. Testing used it to point at a
     scratch copy, so the owner's real settings were never touched.
 - **Display:** in the drawer (see below), shown while the pointer is over Claude Code or its presets.
-  - Session and Week bars, each with "37% · resets 16:08" (or "Mon 1:58", or a date).
+  - Session and Week bars, each with "37% · resets 16:08" (or "Mon 1:58", or a date). Then a bar per
+    model week ("Sonnet week") and an "Extra usage: 12.5 of 50 used" line when known
+    (`ShowUsageExtras`, shared with Codex, which shows "Extra usage credits: …"). Under the title, the plan
+    (Codex: "Team plan") or the last model ("Opus 5.5, last used", from the status line).
   - "Updated N min ago" underneath, because Claude Code only refreshes the status line while a
     session is running.
   - Bars use `ShowPaused` from 75% and `ShowError` from 90% (Windows' warning and error colours).
@@ -546,7 +581,8 @@ or `"api"` in state.json; missing means the status line). Both save to the same
 - `AgentRow_PointerEntered` opens it when `PrepareDrawer(item)` returns true. That method also
   fills the drawer, and leaves it untouched for agents with nothing to show, so a closing drawer
   doesn't go blank.
-  - Today: Claude Code (usage, or the setup or update offer), Codex (usage) and GitHub Copilot
+  - Today: Claude Code (usage, or the setup or update offer), Codex (usage), Grok Build (week,
+    extra usage credits and a pie of what it went on, or the sign-in offer) and GitHub Copilot
     (premium requests), plus their presets, matched by command name (`CommandName`).
   - Moving between two drawer agents swaps the content in place.
   - Usage is loaded on the first hover after each show and cached until the next show
@@ -555,14 +591,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Claude recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code was launched
-  in, under the usage. Clicking one launches Claude Code there. Launching a folder already in the
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex or Grok Build (each copy separately) was launched
+  in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets of Claude share the agent's list. Only Claude is recorded so far.
+  Presets share their agent's list. Recorded for Claude Code, Codex and Grok Build (`RecentLaunches.Records`), the agents with a drawer; Codex and Grok added at the owner's request, 2026-10-16. Grok shows them under its usage or sign-in offer, and on their own if the offer was closed.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
@@ -623,7 +659,9 @@ or `"api"` in state.json; missing means the status line). Both save to the same
 - **Result:** `rateLimitsByLimitId.codex` if present, else `rateLimits`; `primary` / `secondary`
   with `usedPercent`, `windowDurationMins` (300 and 10080 seen) and `resetsAt` (Unix seconds,
   nullable). Windows are assigned by length (a day or less is the session), not by name. A result
-  with no windows is an empty success. `CodexUsage.Parse` is pure.
+  with no windows is an empty success. `planType` becomes `PlanUsage.Plan` ("Team plan" under the
+  drawer's title; "unknown" is dropped) and `credits` becomes `PlanUsage.Extra` ("Extra usage credits: …" when
+  on). `CodexUsage.Parse` is pure.
 - **When:** in the background on hover over Codex, only if the last answer is over 3 minutes old
   (`CodexUsage.MinInterval`); the answer is kept across shows. Nothing runs while the flyout is
   hidden. Timeouts: 10 s to start, 10 s for the reply.
@@ -637,6 +675,49 @@ or `"api"` in state.json; missing means the status line). Both save to the same
   processes left behind. The in-app drawer with it is not yet verified.
 - **Verified by the owner (2026-10-15):** the Codex picture, drawer, cross-fade between agents, and
   the seam overlap.
+
+### Grok Build usage (`Services/GrokUsage.cs`, `GrokSignInWindow`; owner's request, 2026-10-16)
+
+- **No CLI source.** Grok Build 1.0.60 has no usage command or call: `grok usage` is one session's
+  tokens and cost, its status line gets only context and tokens, and it only learns of a limit from
+  refused requests (`usage_pool_exhausted`, `usage_limit_reached`), when it links to
+  `grok.com?_s=usage`. Nothing in `~/.grok`. Its sign-in is for `cli-chat-proxy.grok.com`. Don't read
+  `~/.grok/auth.json` or browser cookies (Chrome and Edge encrypt them to the browser anyway).
+- **Source: grok.com, as its usage page asks.** Found by recording what that page fetched, inside
+  Agent Dock (the recorder is gone):
+  `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`, gRPC-web
+  (`application/grpc-web+proto`, `x-grpc-web: 1`), empty request message. Undocumented.
+  - Reply field 1 (the week): 1 = percent used (float), 4 / 5 = window start and end (Timestamp,
+    seconds), 7 = repeated breakdown {1 = category, 2 = share (float)}, 12.1 = extra-usage credit left
+    in cents (372, then 359 after use). 8, 11 and 13 aren't used. Categories, matched against the
+    owner's chart: 2 Grok Build, 4 Chat, 5 Imagine, 9 Grok bot, 10 Cursor; others "Other".
+  - The same page also fetches `ListPaymentMethods`, which returns the billing address. Agent Dock
+    never requests it; the discovery recording that caught it was deleted.
+- **Sign-in:** `GrokSignInWindow`, a normal window with a WinUI WebView2 in Agent Dock's own profile
+  (`GrokUsage.DataFolder`, `%LOCALAPPDATA%\AgentDock\WebView2`), opened on grok.com's usage page. From
+  the drawer's **Sign in** offer (closing it sets `DockState.GrokUsageOfferDismissed`), or Grok
+  Build's settings page (**Open grok.com**, for switching accounts). That page also has **Sign out**
+  (`GrokUsage.SignOutAsync`: a hidden controller deletes the profile's cookies and clears its browsing
+  data, and grok-usage.json is deleted; the drawer then offers Sign in again). Closing it
+  (`GrokSignInWindow.Finished`) drops the cached check. Google sign-in may refuse an embedded browser.
+- **The check** (`GrokUsage.FetchAsync`, UI thread): a hidden `CoreWebView2Controller`, parented to the
+  flyout's HWND, in that profile, navigates to `https://grok.com/robots.txt` (same origin, no app to
+  load), runs a `fetch` of that call with the page's credentials, and returns the bytes through
+  `chrome.webview.postMessage` as base64 (a script's result can't await a fetch). The controller is
+  closed after. So Agent Dock never handles a cookie, and grok.com's protections see a browser.
+  Signed out means: HTTP 401/403; grpc-status 16/7 in a trailer *or the response headers*; a grpc-message
+  mentioning auth, sign or login; a reply that isn't gRPC; or an empty reply with no status (what the
+  owner saw after signing out, first shown wrongly as "not understood"). The script passes the
+  reply's content type and grpc headers back with the body. A signed-out answer re-lays the drawer,
+  so it turns into the Sign in offer. `GrokUsage.Parse` is pure (gRPC-web frames + a
+  minimal protobuf reader). At most every 5 minutes, only on hover; saved to `grok-usage.json`.
+- **Drawer:** "Grok usage", a **Week** bar only (no session window: `showSession: false`), "Extra usage credits:
+  $3.59", and a pie of the breakdown with a legend (`ShowBreakdown`, slices clockwise from twelve
+  o'clock by size, tooltips). Signed out (no profile, or a sign-in failure with nothing saved) shows
+  the Sign in offer instead.
+- Verified 2026-10-16: decoder against a reply rebuilt from the recorded one (throwaway project,
+  deleted); live in the owner's drawer (100%, resets Wed 11:11, $3.59, the breakdown). The pie is
+  not yet verified on screen.
 
 ### GitHub Copilot usage (`Services/CopilotUsage.cs`)
 

@@ -109,13 +109,15 @@ After that, manage them on the settings page (the gear in the footer), under **A
 - **Scan for new agents** looks again for agents Agent Dock knows; **Add your own command** takes
   any other command line tool (a name, a command, and optional arguments).
 - Click an agent for its page: rename it, change its arguments, set **environment variables**,
-  move it up or down, **duplicate** it, or remove it.
+  **duplicate** it, or remove it. Drag agents in the list (here or in the flyout
+  itself) to put them in the order you want.
 - Or right-click an agent in the flyout (or press Shift+F10) for **Settings** (its page) and
   **Remove from list**.
 - **Duplicate** makes a second copy of the same agent with its own name and variables, for example a
   work and a personal Claude Code account: give the copy `CLAUDE_CONFIG_DIR` (or `CODEX_HOME` for
-  Codex) pointing at its own folder, and sign in once inside it. Plan usage in the drawer is shown
-  only for the default account for now; a copy set up for another account says so.
+  Codex) pointing at its own folder, and sign in once inside it. The drawer then shows that
+  account's own usage, and the copy's settings page has its own Claude usage choice. A copy using
+  an API key or another endpoint has no plan, so its drawer says plan limits don't apply.
 - Environment variables are set in the terminal before the agent starts. Write `%NAME%` in a value
   to use a variable from Windows, so a key never has to be written into `agents.json`.
 
@@ -193,10 +195,12 @@ refreshes that sign-in, never changes the file, and never saves or shows the tok
 has expired, open Claude Code once and it renews it. Anthropic's terms describe subscription sign-ins
 as being for Claude Code and claude.ai, which is why this is off unless you choose it. If a check
 fails, the drawer keeps showing the last saved numbers and says why. A status line you set up
-earlier keeps working alongside it.
+earlier keeps working alongside it. Asking directly also shows any per-model weekly limits (such as
+Sonnet's) as extra bars, and your extra usage when it's turned on. Under the title, the drawer names
+the model your last session used, when the status line has reported it.
 
-The drawer also lists the last five folders you opened Claude Code in, under the usage. Click one
-to open Claude Code there again. Opening a folder that's already in the list moves it to the top
+The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's and Grok Build's drawers do the same for them). Click one
+to open the agent there again. Opening a folder that's already in the list moves it to the top
 and shifts the others down. At most five are kept, and only as many as fit in the drawer.
 Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.
 On the settings page, **Remember recents** turns the list off, and **Clear recents** forgets every
@@ -211,7 +215,24 @@ so Agent Dock never reads your login or handles a token. The numbers are live an
 account, including Codex on other computers, the desktop app and cloud tasks, whether or not you've
 used Codex on this PC lately. It checks at most every three minutes, only while you're hovering
 over Codex. If a check fails (no network, or Codex needs you to sign in again with `codex login`),
-the drawer keeps showing the last numbers it got and says why.
+the drawer keeps showing the last numbers it got and says why. Your plan shows under the title
+("Team plan"), and your credit balance when you have credits.
+
+### Grok Build usage
+
+Grok Build doesn't report your usage itself; only grok.com does (Settings → Usage). So hovering
+over Grok Build offers **Sign in**, which opens grok.com in a small window of Agent Dock's own. Sign
+in there once. That sign-in stays with Agent Dock (in its own browser profile under
+`%LOCALAPPDATA%\AgentDock\WebView2`), separate from your web browser; Agent Dock never reads your
+browser's cookies or Grok Build's own login.
+
+After that, the drawer shows your **week**: how much of the weekly pool you've used and when it
+resets, your remaining extra-usage **credits**, and a pie chart of what the usage went on (Imagine, Cursor, Grok
+bot, Grok Build, Chat). It checks at most every five minutes, only while you're hovering over Grok
+Build, by asking grok.com the same way its usage page does. That isn't a published xAI API, so it
+can stop working when grok.com changes; the drawer then keeps the last numbers it got and says why.
+Grok Build's settings page has **Open grok.com** (to switch accounts) and **Sign out**, which clears
+Agent Dock's grok.com sign-in and saved usage; your browser and Grok Build stay signed in.
 
 ### GitHub Copilot usage
 

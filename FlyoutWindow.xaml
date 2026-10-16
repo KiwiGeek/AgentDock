@@ -181,6 +181,7 @@
 
                 <TextBlock x:Name="PresetHeader" Text="Presets" Style="{StaticResource SectionHeaderStyle}" />
                 <ListView x:Name="PresetList" Margin="4,0" SelectionMode="None" IsItemClickEnabled="True"
+                          CanReorderItems="True" CanDragItems="True" AllowDrop="True" DragItemsCompleted="AgentList_DragItemsCompleted"
                           ItemClick="Agent_ItemClick" PreviewKeyDown="List_PreviewKeyDown"
                           ContextRequested="Agent_ContextRequested"
                           ItemTemplate="{StaticResource AgentTemplate}"
@@ -190,6 +191,7 @@
 
                 <TextBlock x:Name="CliHeader" Text="Command line" Style="{StaticResource SectionHeaderStyle}" />
                 <ListView x:Name="CliList" Margin="4,0" SelectionMode="None" IsItemClickEnabled="True"
+                          CanReorderItems="True" CanDragItems="True" AllowDrop="True" DragItemsCompleted="AgentList_DragItemsCompleted"
                           ItemClick="Agent_ItemClick" PreviewKeyDown="List_PreviewKeyDown"
                           ContextRequested="Agent_ContextRequested"
                           ItemTemplate="{StaticResource AgentTemplate}"
@@ -199,6 +201,7 @@
 
                 <TextBlock x:Name="DesktopHeader" Text="Desktop apps" Style="{StaticResource SectionHeaderStyle}" />
                 <ListView x:Name="DesktopList" Margin="4,0" SelectionMode="None" IsItemClickEnabled="True"
+                          CanReorderItems="True" CanDragItems="True" AllowDrop="True" DragItemsCompleted="AgentList_DragItemsCompleted"
                           ItemClick="Agent_ItemClick" PreviewKeyDown="List_PreviewKeyDown"
                           ContextRequested="Agent_ContextRequested"
                           ItemTemplate="{StaticResource AgentTemplate}"
@@ -338,7 +341,36 @@
                 <TextBlock x:Name="AgentListNote" Margin="16,0,16,4" TextWrapping="Wrap" Visibility="Collapsed"
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <StackPanel x:Name="AgentSettingsRows" Margin="8,0,8,4" Spacing="2" />
+                <!-- Click for the agent's page; drag to reorder (the flyout follows). -->
+                <ListView x:Name="AgentSettingsList" Margin="4,0,4,4" SelectionMode="None" IsItemClickEnabled="True"
+                          ItemClick="AgentSettingsList_ItemClick"
+                          CanReorderItems="True" CanDragItems="True" AllowDrop="True"
+                          DragItemsCompleted="AgentSettingsList_DragItemsCompleted"
+                          ScrollViewer.VerticalScrollMode="Disabled"
+                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                          AutomationProperties.Name="Your agents">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:AgentListRow">
+                            <Grid Padding="0,6" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="{x:Bind Glyph}" FontSize="18" Visibility="{x:Bind GlyphVisibility}" />
+                                <Image Source="{x:Bind Icon}" Width="24" Height="24" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{x:Bind Note}" Visibility="{x:Bind NoteVisibility}"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                                <FontIcon Grid.Column="2" Glyph="&#xE76C;" FontSize="12"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
                 <StackPanel x:Name="AddAgentsButtons" Margin="8,0,8,12" Spacing="2">
                     <Button x:Name="ScanAgentsButton" Padding="8,6" Click="AddAgents_Click"
                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
@@ -427,12 +459,6 @@
 
                 <TextBlock Text="In your list" Style="{StaticResource SectionHeaderStyle}" />
                 <StackPanel Margin="8,0,8,12" Spacing="2">
-                    <Button x:Name="MoveUpButton" Padding="8,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="MoveAgent_Click" Tag="-1">
-                        <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE74A;" FontSize="16" Width="24" /><TextBlock Text="Move up" /></StackPanel>
-                    </Button>
-                    <Button x:Name="MoveDownButton" Padding="8,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="MoveAgent_Click" Tag="1">
-                        <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE74B;" FontSize="16" Width="24" /><TextBlock Text="Move down" /></StackPanel>
-                    </Button>
                     <Button Padding="8,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="DuplicateAgent_Click"
                             AutomationProperties.HelpText="A second copy with its own name and variables, e.g. for another account.">
                         <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE8C8;" FontSize="16" Width="24" /><TextBlock Text="Duplicate" /></StackPanel>
@@ -449,6 +475,33 @@
                         </Button.Flyout>
                     </Button>
                 </StackPanel>
+            </StackPanel>
+
+            <!-- Shown under Grok Build's page: its usage comes from grok.com, in Agent Dock's own sign-in. -->
+            <StackPanel x:Name="GrokSettings" Visibility="Collapsed">
+                <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                <TextBlock Margin="16,0,16,8" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="Grok Build's usage comes from grok.com, through a sign-in that stays with Agent Dock. Open grok.com to sign in, sign out or switch accounts. This is not a published xAI API, and it can stop working." />
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,0,16,8">
+                    <Button Content="Open grok.com" Click="OpenGrok_Click" />
+                    <!-- Clears Agent Dock's own grok.com profile (asks first). Disabled before the first sign-in. -->
+                    <Button x:Name="GrokSignOutButton" Content="Sign out"
+                            AutomationProperties.HelpText="Sign Agent Dock out of grok.com. Your browser stays signed in.">
+                        <Button.Flyout>
+                            <Flyout x:Name="GrokSignOutFlyout">
+                                <StackPanel Spacing="12" MaxWidth="260">
+                                    <TextBlock TextWrapping="Wrap"
+                                               Text="Sign Agent Dock out of grok.com? Grok usage won't show until you sign in again. Your browser and Grok Build stay signed in." />
+                                    <Button Content="Sign out" Style="{StaticResource AccentButtonStyle}" Click="GrokSignOut_Click" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+                <TextBlock x:Name="GrokSignOutNote" Margin="16,0,16,16" Visibility="Collapsed" TextWrapping="Wrap"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
 
             <!-- Shown under the agent's page for Claude Code (and its copies). -->
@@ -507,6 +560,9 @@
                     <StackPanel x:Name="UsagePanel" Padding="16,16,16,12" Spacing="4" Visibility="Collapsed">
                         <TextBlock x:Name="UsageTitle" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <!-- The plan (Codex) or the last model used (Claude), when known. -->
+                        <TextBlock x:Name="UsageSubtitle" Visibility="Collapsed" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                         <StackPanel x:Name="UsageRows" Spacing="2" Margin="0,8,0,0">
                             <!-- "Session" and "Week" for Claude Code and Codex; Copilot uses only the first row. -->
                             <TextBlock x:Name="SessionLabel" Text="Session" />
@@ -518,6 +574,16 @@
                                 <ProgressBar x:Name="WeekBar" Maximum="100" AutomationProperties.Name="Weekly usage" />
                                 <TextBlock x:Name="WeekText" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <!-- Per-model weeks (Claude: Sonnet, Opus), filled in ShowUsageExtras. -->
+                            <StackPanel x:Name="ModelWeekRows" Spacing="2" />
+                            <!-- Claude's extra usage, or Codex's credits. -->
+                            <TextBlock x:Name="ExtraUsageText" Visibility="Collapsed" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            <!-- What the usage went on (Grok: Imagine, Cursor, Grok Build…): a pie and its legend (ShowBreakdown). -->
+                            <StackPanel x:Name="BreakdownChart" Visibility="Collapsed" Orientation="Horizontal" Spacing="12" Margin="0,10,0,0">
+                                <Canvas x:Name="BreakdownPie" Width="64" Height="64" VerticalAlignment="Center"
+                                        AutomationProperties.Name="What this week's usage went on" />
+                                <StackPanel x:Name="BreakdownLegend" Spacing="1" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBlock x:Name="UsageUpdatedText" Margin="0,8,0,0" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
@@ -534,7 +600,7 @@
                     </InfoBar>
                 </Grid>
 
-                    <!-- Claude Code only, for now. Filled in PrepareClaudeDrawer. -->
+                    <!-- Claude Code and Codex (ShowRecents). -->
                     <StackPanel x:Name="RecentSection" Visibility="Collapsed" Padding="8,0,8,12" Spacing="2">
                         <StackPanel.Resources>
                             <ResourceDictionary>

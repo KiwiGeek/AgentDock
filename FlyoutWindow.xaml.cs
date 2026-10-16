@@ -102,6 +102,12 @@ public sealed partial class FlyoutWindow : Window
 
         Activated += OnActivated;
         Root.Loaded += (_, _) => _rootLoaded.TrySetResult();
+        // A new grok.com sign-in (or a sign-out): check again on the next hover.
+        GrokSignInWindow.Finished += () =>
+        {
+            _liveChecks.Remove(GrokCheckKey);
+            _savedUsage.Remove(GrokCheckKey);
+        };
         // Resizing the height changes how a picture needs to be scaled to cover the flyout.
         Root.SizeChanged += (_, _) =>
         {
@@ -660,6 +666,43 @@ public sealed partial class FlyoutWindow : Window
         UpdateSetupPanel();
     }
 
+    // ---------- Reordering by dragging ----------
+
+    /// <summary>
+    /// A row was dragged to a new place in its list (presets, command line, or desktop apps): save
+    /// that order. Agents not shown (hidden as unavailable, or in the other list) keep their places.
+    /// </summary>
+    private void AgentList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    {
+        if (args.DropResult != Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move)
+            return;
+
+        if (ReferenceEquals(sender, PresetList))
+        {
+            if (_presetsError is not null)
+            {
+                SetStatus(_presetsError); // never overwrite a file the user is part-way through editing
+                return;
+            }
+            var shown = _presets.Select(p => p.Preset).OfType<Preset>().ToList();
+            _presetList = ReorderShown(_presetList, shown);
+            _store.SavePresets(_presetList);
+            return;
+        }
+
+        var reordered = (ReferenceEquals(sender, CliList) ? _cli : _desktop).Select(i => i.Definition).ToList();
+        _settings.Agents = ReorderShown(_settings.Agents, reordered);
+        SaveAgentList();
+    }
+
+    /// <summary><paramref name="all"/>, with the items in <paramref name="shown"/> put in that order, in the places they held.</summary>
+    private static List<T> ReorderShown<T>(List<T> all, List<T> shown) where T : class
+    {
+        var moving = shown.ToHashSet(ReferenceEqualityComparer.Instance);
+        var next = new Queue<T>(shown);
+        return all.Select(item => moving.Contains(item) && next.Count > 0 ? next.Dequeue() : item).ToList();
+    }
+
     // ---------- Setting up the agent list ----------
 
     /// <summary>
@@ -976,66 +1019,75 @@ public sealed partial class FlyoutWindow : Window
     private FrameworkElement? AgentSettingsPanelFor(string? command) => command switch
     {
         "claude" => ClaudeSettings,
+        "grok" => GrokSettings,
         _ => null
     };
 
-    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings];
+    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings];
+
+    private void OpenGrok_Click(object sender, RoutedEventArgs e)
+    {
+        HideFlyout();
+        GrokSignInWindow.Show();
+    }
+
+    private async void GrokSignOut_Click(object sender, RoutedEventArgs e)
+    {
+        GrokSignOutFlyout.Hide();
+        GrokSignOutButton.IsEnabled = false;
+        var done = await GrokUsage.SignOutAsync(_hwnd);
+        _liveChecks.Remove(GrokCheckKey);
+        _savedUsage.Remove(GrokCheckKey);
+        // Signed out: hovering Grok Build offers Sign in again.
+        _state.GrokUsageOfferDismissed = false;
+        _store.SaveState(_state);
+        GrokSignOutNote.Text = done
+            ? "Signed out of grok.com."
+            : "Agent Dock couldn't clear its grok.com sign-in. Close the grok.com window if it's open, then try again.";
+        GrokSignOutNote.Visibility = Visibility.Visible;
+        GrokSignOutButton.IsEnabled = !done;
+        PlaceWindow();
+    }
+
+    /// <summary>The settings page's list of agents, in order. Dragging reorders it.</summary>
+    private readonly ObservableCollection<AgentListRow> _agentRows = [];
 
     /// <summary>A row for each agent in the list, in order, leading to its page.</summary>
     private void BuildAgentSettingsRows()
     {
-        AgentSettingsRows.Children.Clear();
+        AgentSettingsList.ItemsSource ??= _agentRows;
+        _agentRows.Clear();
         foreach (var definition in _settings.Agents)
         {
             var item = _agents.FirstOrDefault(a => a.Preset is null && ReferenceEquals(a.Definition, definition));
-            var icon = item?.Icon is { } source
-                ? (UIElement)new Image { Source = source, Width = 24, Height = 24 }
-                : new FontIcon { Glyph = definition.Kind == AgentKind.Cli ? "" : "", FontSize = 18, Width = 24 };
-            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            text.Children.Add(new TextBlock { Text = definition.Name, TextTrimming = TextTrimming.CharacterEllipsis });
-            if (item is { IsAgentAvailable: false })
-                text.Children.Add(new TextBlock
-                {
-                    Text = "Not installed", Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                    Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-                });
-            Grid.SetColumn(text, 1);
-            var chevron = new FontIcon
-            {
-                Glyph = "", FontSize = 12,
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-            };
-            Grid.SetColumn(chevron, 2);
-            var row = new Button
-            {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Padding = new Thickness(8, 6, 8, 6),
-                Tag = definition,
-                Content = new Grid
-                {
-                    ColumnSpacing = 12,
-                    ColumnDefinitions =
-                    {
-                        new ColumnDefinition { Width = GridLength.Auto },
-                        new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
-                        new ColumnDefinition { Width = GridLength.Auto }
-                    },
-                    Children = { icon, text, chevron }
-                }
-            };
-            AutomationProperties.SetName(row, $"{definition.Name} settings");
-            row.Click += (_, _) => ShowAgentSettings(definition);
-            AgentSettingsRows.Children.Add(row);
+            _agentRows.Add(new AgentListRow(definition, item?.Icon, item is not { IsAgentAvailable: false }));
         }
-
         // Agents.json that couldn't be read isn't really empty; changing the list would overwrite it.
         var editable = _settingsError is null;
+        AgentSettingsList.CanReorderItems = AgentSettingsList.CanDragItems = editable;
         AddAgentsButtons.Visibility = editable ? Visibility.Visible : Visibility.Collapsed;
         AgentListNote.Visibility = !editable || _settings.Agents.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         AgentListNote.Text = !editable
             ? "agents.json couldn't be read, so your agents can't be changed here. Fix it with the pencil button, or delete it to start again."
             : "No agents yet.";
+    }
+
+    private void AgentSettingsList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is AgentListRow row)
+            ShowAgentSettings(row.Definition);
+    }
+
+    /// <summary>An agent was dragged to a new place: save the list in that order.</summary>
+    private void AgentSettingsList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    {
+        if (args.DropResult != Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move)
+            return;
+        var order = _agentRows.Select(r => r.Definition).ToList();
+        if (order.SequenceEqual(_settings.Agents))
+            return;
+        _settings.Agents = order;
+        SaveAgentList();
     }
 
     private void ShowAgentSettings(AgentDefinition definition)
@@ -1061,16 +1113,11 @@ public sealed partial class FlyoutWindow : Window
         };
         FillEnvRows();
         EnvNameBox.Text = EnvValueBox.Text = "";
-        var index = _settings.Agents.IndexOf(definition);
-        MoveUpButton.IsEnabled = index > 0;
-        MoveDownButton.IsEnabled = index >= 0 && index < _settings.Agents.Count - 1;
         RemoveAgentText.Text = $"Remove {definition.Name} from your agents? Presets for it stay until you remove them.";
 
         SettingsGeneral.Visibility = AddAgentsPage.Visibility = Visibility.Collapsed;
         AgentEditor.Visibility = Visibility.Visible;
-        var panel = isCli ? AgentSettingsPanelFor(command) : null;
-        foreach (var other in AgentSettingsPanels)
-            other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
+        UpdateAgentPanel(definition);
         SettingsTitle.Text = definition.Name;
         SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
         PlaceWindow();
@@ -1097,6 +1144,7 @@ public sealed partial class FlyoutWindow : Window
                     _editingAgent.Env = null;
                 SaveAgentList();
                 FillEnvRows();
+                UpdateAgentPanel(_editingAgent);
                 PlaceWindow();
             };
             Grid.SetColumn(remove, 1);
@@ -1135,6 +1183,7 @@ public sealed partial class FlyoutWindow : Window
         _editingAgent.Env[name] = EnvValueBox.Text;
         SaveAgentList();
         FillEnvRows();
+        UpdateAgentPanel(_editingAgent);
         EnvNameBox.Text = EnvValueBox.Text = "";
         EnvNameBox.Focus(FocusState.Programmatic);
         PlaceWindow();
@@ -1182,23 +1231,6 @@ public sealed partial class FlyoutWindow : Window
         _editingAgent.Arguments = arguments;
         SaveAgentList();
         AgentCommandText.Text = $"Runs {_editingAgent.Command}{(arguments is null ? "" : " " + arguments)} in a terminal.";
-    }
-
-    private void MoveAgent_Click(object sender, RoutedEventArgs e)
-    {
-        if (_editingAgent is null || sender is not Button { Tag: string step })
-            return;
-        var from = _settings.Agents.IndexOf(_editingAgent);
-        var to = from + int.Parse(step, System.Globalization.CultureInfo.InvariantCulture);
-        if (from < 0 || to < 0 || to >= _settings.Agents.Count)
-            return;
-        _settings.Agents.RemoveAt(from);
-        _settings.Agents.Insert(to, _editingAgent);
-        SaveAgentList();
-        MoveUpButton.IsEnabled = to > 0;
-        MoveDownButton.IsEnabled = to < _settings.Agents.Count - 1;
-        // Keep focus on the button that was used, unless it just became disabled.
-        ((Control)(sender is Button { IsEnabled: true } used ? used : SettingsBackButton)).Focus(FocusState.Programmatic);
     }
 
     /// <summary>
@@ -1357,21 +1389,57 @@ public sealed partial class FlyoutWindow : Window
             return;
         BuildAgentSettingsRows();
         PlaceWindow();
-        var row = AgentSettingsRows.Children.OfType<Button>().FirstOrDefault(b => b.Tag == focusRowFor);
+        var row = _agentRows.FirstOrDefault(r => ReferenceEquals(r.Definition, focusRowFor));
         if (row is not null)
-            DispatcherQueue.TryEnqueue(() => row.Focus(FocusState.Programmatic));
+            DispatcherQueue.TryEnqueue(() => (AgentSettingsList.ContainerFromItem(row) as Control)?.Focus(FocusState.Programmatic));
         else
             SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
+    }
+
+    /// <summary>The Claude account whose usage setting the agent page shows.</summary>
+    private UsageAccount? _settingsAccount;
+
+    /// <summary>
+    /// The agent-specific panel under an agent's page, for its account: Claude's usage source is per
+    /// account, and doesn't apply at all to an agent using an API key or another endpoint. Run again
+    /// when its environment variables change, since they decide the account.
+    /// </summary>
+    private void UpdateAgentPanel(AgentDefinition definition)
+    {
+        var account = definition.Kind == AgentKind.Cli ? UsageAccount.For(definition) : null;
+        var panel = definition.Kind == AgentKind.Cli && account is not { UsesOtherProvider: true }
+            ? AgentSettingsPanelFor(CommandName(definition.Command))
+            : null;
+        foreach (var other in AgentSettingsPanels)
+            other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
+
+        if (panel == GrokSettings)
+        {
+            // Nothing to sign out of before the first sign-in.
+            GrokSignOutButton.IsEnabled = GrokUsage.HasProfile;
+            GrokSignOutNote.Visibility = Visibility.Collapsed;
+        }
+
+        _settingsAccount = account is { Agent: "claude", UsesOtherProvider: false } ? account : null;
+        if (_settingsAccount is null)
+            return;
+        _settingsToggleReady = false;
+        ClaudeUsageSourceButtons.SelectedIndex = SourceFor(_settingsAccount) == ClaudeUsageSource.Api ? 1 : 0;
+        _settingsToggleReady = true;
+        ClaudeUsageIntro.Text = _settingsAccount.IsDefault
+            ? "How Agent Dock finds out how much of your plan's session and weekly limits you've used, for the drawer beside Claude Code."
+            : $"How Agent Dock finds out how much of this account's session and weekly limits you've used (the sign-in in {_settingsAccount.ConfigDir}).";
     }
 
     private void ClaudeUsageSource_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         var source = ClaudeUsageSourceButtons.SelectedIndex == 1 ? ClaudeUsageSource.Api : ClaudeUsageSource.StatusLine;
-        if (!_settingsToggleReady || ClaudeUsageSourceButtons.SelectedIndex < 0 || _state.ClaudeUsageSource == source)
+        if (!_settingsToggleReady || ClaudeUsageSourceButtons.SelectedIndex < 0 || _settingsAccount is not { } account
+            || SourceFor(account) == source)
             return;
-        _state.ClaudeUsageSource = source;
+        SetSource(account, source);
         _store.SaveState(_state);
-        ClearUsageCache(sourceChanged: true);
+        ClearUsageCache(sourceChangedFor: account.Key);
         // A drawer open on Claude follows the new choice. (The settings page closes the drawer, so
         // this only matters if that ever changes.)
         if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && CommandName(item.Definition.Command) == "claude")
@@ -1396,8 +1464,6 @@ public sealed partial class FlyoutWindow : Window
             ? "Hide agents in your list that aren't installed any more, instead of showing them dimmed."
             : "Fix agents.json to change this here.";
         ClearRecentsButton.IsEnabled = RecentLaunches.Any(_state);
-        // Claude Code's page.
-        ClaudeUsageSourceButtons.SelectedIndex = _state.ClaudeUsageSource == ClaudeUsageSource.Api ? 1 : 0;
         _settingsToggleReady = true;
 
         MainPage.Visibility = Visibility.Collapsed;
@@ -1734,40 +1800,40 @@ public sealed partial class FlyoutWindow : Window
 
     // ---------- Plan usage (drawer content) ----------
 
-    // Loaded on the first hover after each show (ReloadData clears them), so opening stays fast.
-    private ClaudeStatusLine.Setup? _claudeSetup;
-    private PlanUsage? _claudeUsage;
-    // Codex is asked directly (CodexUsage), so like Copilot's its answer is kept across shows.
-    private CodexUsageFetch? _codexCheck;
-    private DateTimeOffset _codexCheckedAt;
-    private bool _codexChecking;
-    private PlanUsage? _codexSaved;
+    // Usage is per account (UsageAccount.Key): two copies on one account share it, two accounts never
+    // mix. Files are read on the first hover after each show (ClearUsageCache), so opening stays fast.
+    private readonly Dictionary<string, ClaudeStatusLine.Setup> _claudeSetups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PlanUsage?> _savedUsage = new(StringComparer.OrdinalIgnoreCase);
+    // Live checks (Claude asked directly, Codex) come over the network, so they're kept across shows.
+    private readonly Dictionary<string, LiveCheck> _liveChecks = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Changes when a usage setting does, so a check started before that is ignored.</summary>
+    private int _liveCheckEpoch;
     // Copilot's comes over the network, so it's fetched in the background and kept across shows.
     private static readonly TimeSpan CopilotUsageMaxAge = TimeSpan.FromMinutes(5);
     private CopilotUsageResult? _copilotUsage;
     private bool _copilotFetching;
-    // "Ask Claude directly": also over the network, so also kept across shows.
-    private ClaudeUsageFetch? _claudeCheck;
-    private DateTimeOffset _claudeCheckedAt;
-    private bool _claudeChecking;
-    /// <summary>Changes when the source setting does, so a check started before that is ignored.</summary>
-    private int _claudeCheckEpoch;
     /// <summary>The row whose content the drawer is showing.</summary>
     private AgentItem? _drawerItem;
 
-    /// <summary>
-    /// Drops what was loaded from files, so the next hover reads them again. Network results survive
-    /// a show; <paramref name="sourceChanged"/> (the Claude usage setting changed) drops those too.
-    /// </summary>
-    private void ClearUsageCache(bool sourceChanged = false)
+    private sealed class LiveCheck
     {
-        _claudeSetup = null;
-        _claudeUsage = _codexSaved = null;
-        if (!sourceChanged)
+        public UsageFetch? Result;
+        public DateTimeOffset At;
+        public bool Running;
+    }
+
+    /// <summary>
+    /// Drops what was loaded from files, so the next hover reads them again. Live results survive a
+    /// show; <paramref name="sourceChangedFor"/> (that account's usage setting changed) drops its too.
+    /// </summary>
+    private void ClearUsageCache(string? sourceChangedFor = null)
+    {
+        _claudeSetups.Clear();
+        _savedUsage.Clear();
+        if (sourceChangedFor is null)
             return;
-        _claudeCheck = null;
-        _claudeChecking = false;
-        _claudeCheckEpoch++;
+        _liveChecks.Remove(sourceChangedFor);
+        _liveCheckEpoch++;
     }
 
     /// <summary>
@@ -1780,28 +1846,61 @@ public sealed partial class FlyoutWindow : Window
         if (!item.IsCli || !item.IsAgentAvailable)
             return false;
 
-        // A copy set up for another account or provider: plan usage would be someone else's numbers.
-        if (UsesOwnAccount(item.Definition) is { } title)
+        var account = UsageAccount.For(item.Definition);
+        // Pointed at an API key or another endpoint: no Claude or ChatGPT plan behind it.
+        if (account is { UsesOtherProvider: true })
         {
             _drawerItem = item;
             UsageOffer.IsOpen = false;
-            ShowUsage(title, null, "Usage isn't shown for an agent with its own account settings yet.");
-            if (CommandName(item.Definition.Command) == "claude")
-                ShowClaudeRecents(item);
+            ShowUsage(account.Agent == "claude" ? "Claude usage" : "Codex usage", null,
+                "Plan limits don't apply: this agent uses its own API key or endpoint.");
+            ShowRecents(item);
             return true;
         }
 
         switch (CommandName(item.Definition.Command))
         {
             case "claude":
-                return PrepareClaudeDrawer(item);
+                return PrepareClaudeDrawer(item, account!);
             case "codex":
                 _drawerItem = item;
                 UsageOffer.IsOpen = false;
-                // Live from Codex in the background, at most every few minutes; what's known shows meanwhile.
-                if (!_codexChecking && (_codexCheck is null || DateTimeOffset.UtcNow - _codexCheckedAt > CodexUsage.MinInterval))
-                    _ = CheckCodexUsageAsync();
-                ShowCodexCheck();
+                // Live from Codex, as this account, at most every few minutes; what's known shows meanwhile.
+                StartLiveCheck(account!.Key, CodexUsage.MinInterval, () => CodexUsage.FetchAsync(account), CodexUsage.Unreachable,
+                    shown => OnAccount(shown, account), () => ShowCodexCheck(account));
+                ShowCodexCheck(account!);
+                ShowRecents(item);
+                return true;
+            case "grok":
+                // Grok Build's usage is only on grok.com, which needs a sign-in of Agent Dock's own.
+                var signedOut = !GrokUsage.HasProfile
+                                || (_liveChecks.GetValueOrDefault(GrokCheckKey)?.Result?.Problem == GrokUsage.NotSignedIn
+                                    && GrokUsage.LoadSaved() is null);
+                if (signedOut)
+                {
+                    if (_state.GrokUsageOfferDismissed)
+                    {
+                        // No usage and no offer: the drawer is just the recent folders, if any.
+                        UsagePanel.Visibility = Visibility.Collapsed;
+                        UsageOffer.IsOpen = false;
+                        if (!ShowRecents(item))
+                            return false;
+                        _drawerItem = item;
+                        return true;
+                    }
+                    _drawerItem = item;
+                    OfferUsage(InfoBarSeverity.Informational, "Sign in",
+                        "See your Grok Build usage here. Sign in to grok.com once, in a window of Agent Dock's own.", closable: true);
+                    ShowRecents(item);
+                    return true;
+                }
+                _drawerItem = item;
+                UsageOffer.IsOpen = false;
+                // When the answer comes, lay the drawer out again: a signed-out answer turns it into the Sign in offer.
+                StartLiveCheck(GrokCheckKey, GrokUsage.MinInterval, () => GrokUsage.FetchAsync(_hwnd), GrokUsage.Unreachable,
+                    shown => CommandName(shown.Definition.Command) == "grok", () => PrepareDrawer(_drawerItem!));
+                ShowGrokCheck();
+                ShowRecents(item);
                 return true;
             case "copilot":
                 _drawerItem = item;
@@ -1815,50 +1914,78 @@ public sealed partial class FlyoutWindow : Window
         }
     }
 
-    /// <summary>
-    /// The drawer's title if <paramref name="definition"/> is Claude Code or Codex with environment
-    /// variables that change whose account it uses (another config folder, an API key, another
-    /// endpoint), else null. Usage is only checked for the default account so far.
-    /// </summary>
-    private static string? UsesOwnAccount(AgentDefinition definition)
+    /// <summary>Where this Claude account's usage comes from (settings → the agent's page).</summary>
+    private ClaudeUsageSource SourceFor(UsageAccount account)
     {
-        if (definition.Env is not { Count: > 0 } env)
-            return null;
-        return CommandName(definition.Command) switch
+        if (account.IsDefault)
+            return _state.ClaudeUsageSource;
+        foreach (var (dir, source) in _state.ClaudeUsageSources)
+            if (string.Equals(dir, account.ConfigDir, StringComparison.OrdinalIgnoreCase))
+                return source;
+        return ClaudeUsageSource.StatusLine;
+    }
+
+    private void SetSource(UsageAccount account, ClaudeUsageSource source)
+    {
+        if (account.IsDefault)
         {
-            "claude" when env.Keys.Any(k => k.ToUpperInvariant() is "CLAUDE_CONFIG_DIR" or "ANTHROPIC_API_KEY" or "ANTHROPIC_AUTH_TOKEN"
-                or "ANTHROPIC_BASE_URL" or "CLAUDE_CODE_OAUTH_TOKEN" or "CLAUDE_CODE_USE_BEDROCK" or "CLAUDE_CODE_USE_VERTEX") => "Claude usage",
-            "codex" when env.Keys.Any(k => k.ToUpperInvariant() is "CODEX_HOME" or "OPENAI_API_KEY" or "OPENAI_BASE_URL") => "Codex usage",
-            _ => null
-        };
+            _state.ClaudeUsageSource = source;
+            return;
+        }
+        foreach (var dir in _state.ClaudeUsageSources.Keys.Where(k => string.Equals(k, account.ConfigDir, StringComparison.OrdinalIgnoreCase)).ToList())
+            _state.ClaudeUsageSources.Remove(dir);
+        _state.ClaudeUsageSources[account.ConfigDir] = source;
+    }
+
+    private bool OfferDismissed(UsageAccount account) =>
+        account.IsDefault
+            ? _state.ClaudeUsageOfferDismissed
+            : _state.ClaudeUsageOfferDismissedFor.Contains(account.ConfigDir, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The usage last saved for an account (by its status line or its last live check).</summary>
+    private PlanUsage? Saved(UsageAccount account)
+    {
+        if (!_savedUsage.TryGetValue(account.Key, out var usage))
+            _savedUsage[account.Key] = usage = account.Agent == "claude"
+                ? ClaudeStatusLine.Load(account.ConfigDir)
+                : CodexUsage.LoadSaved(account.ConfigDir);
+        return usage;
     }
 
     /// <summary>
-    /// Claude Code's usage, from the source chosen on the settings page. Status line: the saved
-    /// usage, or the offer to set Agent Dock up as Claude Code's status line. Ask Claude directly:
-    /// see <see cref="PrepareClaudeCheckDrawer"/>.
+    /// Claude Code's usage for this agent's account, from the source chosen on its settings page.
+    /// Status line: the saved usage, or the offer to set Agent Dock up as that account's status line.
+    /// Ask Claude directly: the last check, else the saved file, and a new check if that's over 3
+    /// minutes old. Nothing checks while the flyout is hidden.
     /// </summary>
-    private bool PrepareClaudeDrawer(AgentItem item)
+    private bool PrepareClaudeDrawer(AgentItem item, UsageAccount account)
     {
-        if (_state.ClaudeUsageSource == ClaudeUsageSource.Api)
-            return PrepareClaudeCheckDrawer(item);
+        if (SourceFor(account) == ClaudeUsageSource.Api)
+        {
+            UsageOffer.IsOpen = false;
+            StartLiveCheck(account.Key, ClaudeUsageApi.MinInterval, () => ClaudeUsageApi.FetchAsync(account), ClaudeUsageApi.Unreachable,
+                shown => OnAccount(shown, account) && SourceFor(account) == ClaudeUsageSource.Api, () => ShowClaudeCheck(account));
+            ShowClaudeCheck(account);
+            ShowRecents(item);
+            _drawerItem = item;
+            return true;
+        }
 
-        _claudeSetup ??= ClaudeStatusLine.CheckSetup(Environment.ProcessPath!);
-        var setup = _claudeSetup.Value;
+        if (!_claudeSetups.TryGetValue(account.Key, out var setup))
+            _claudeSetups[account.Key] = setup = ClaudeStatusLine.CheckSetup(Environment.ProcessPath!, account.ConfigDir);
         switch (setup.State)
         {
             case ClaudeStatusLine.SetupState.Installed:
-                _claudeUsage ??= ClaudeStatusLine.Load();
                 UsageOffer.IsOpen = false;
                 // Claude Code only refreshes its status line while a session is running.
-                ShowUsage("Claude usage", _claudeUsage, "Your limits appear here after your next Claude Code reply.");
+                ShowUsage("Claude usage", Saved(account), "Your limits appear here after your next Claude Code reply.");
                 break;
             case ClaudeStatusLine.SetupState.OtherCopy:
                 // Not dismissable: usage here has silently stopped updating.
                 OfferUsage(InfoBarSeverity.Warning, "Update",
                     "Claude Code's status line runs a different copy of Agent Dock, so usage here won't update.", closable: false);
                 break;
-            case ClaudeStatusLine.SetupState.NotInstalled when !_state.ClaudeUsageOfferDismissed:
+            case ClaudeStatusLine.SetupState.NotInstalled when !OfferDismissed(account):
                 OfferUsage(InfoBarSeverity.Informational, "Set up", setup.CurrentCommand is null
                     ? "See your plan's usage limits here. Agent Dock becomes Claude Code's status line to read them."
                     : $"See your plan's usage limits here. Agent Dock replaces Claude Code's status line ({DescribeCommand(setup.CurrentCommand)}). Its settings are backed up first.",
@@ -1867,98 +1994,88 @@ public sealed partial class FlyoutWindow : Window
             default:
                 UsagePanel.Visibility = Visibility.Collapsed;
                 UsageOffer.IsOpen = false;
-                if (!ShowClaudeRecents(item))
+                if (!ShowRecents(item))
                     return false;
                 _drawerItem = item;
                 return true;
         }
-        ShowClaudeRecents(item);
+        ShowRecents(item);
         _drawerItem = item;
         return true;
     }
 
     /// <summary>
-    /// "Ask Claude directly": no status line offer or other-copy warning. Shows what's known straight
-    /// away (the last check, else the saved file) and checks again in the background if that's
-    /// missing or over 3 minutes old. Only ever from here: nothing checks while the flyout is hidden.
+    /// Starts a live check under <paramref name="key"/> (an account, or "grok") unless one is running
+    /// or its last answer is still fresh. When it finishes, <paramref name="show"/> fills the drawer,
+    /// if it's still on an agent <paramref name="showing"/> accepts, in the same show.
     /// </summary>
-    private bool PrepareClaudeCheckDrawer(AgentItem item)
+    private void StartLiveCheck(string key, TimeSpan maxAge, Func<Task<UsageFetch>> fetch, string unreachable,
+        Func<AgentItem, bool> showing, Action show)
     {
-        UsageOffer.IsOpen = false;
-        if (!_claudeChecking && (_claudeCheck is null || DateTimeOffset.UtcNow - _claudeCheckedAt > ClaudeUsageApi.MinInterval))
-            _ = CheckClaudeUsageAsync();
-        ShowClaudeCheck();
-        ShowClaudeRecents(item);
-        _drawerItem = item;
-        return true;
-    }
-
-    private async Task CheckClaudeUsageAsync()
-    {
-        var epoch = _claudeCheckEpoch;
-        var shown = _generation;
-        _claudeChecking = true;
-        ClaudeUsageFetch result;
-        try
-        {
-            result = await ClaudeUsageApi.FetchAsync(); // resumes on the UI thread; never throws
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            result = new ClaudeUsageFetch(null, ClaudeUsageApi.Unreachable);
-        }
-        // The setting changed while this ran: it isn't wanted any more.
-        if (epoch != _claudeCheckEpoch)
+        if (!_liveChecks.TryGetValue(key, out var check))
+            _liveChecks[key] = check = new LiveCheck();
+        if (check.Running || (check.Result is not null && DateTimeOffset.UtcNow - check.At <= maxAge))
             return;
-        _claudeChecking = false;
-        _claudeCheck = result;
-        _claudeCheckedAt = DateTimeOffset.UtcNow;
-        if (result.Usage is not null)
-            _claudeUsage = null; // the file was just replaced; read it again for the status line mode
-
-        // Fill in the drawer only if it's still showing Claude, in the same show.
-        if (shown == _generation && _drawerOpen && !_drawerClosing && _drawerItem is { } item
-            && CommandName(item.Definition.Command) == "claude" && _state.ClaudeUsageSource == ClaudeUsageSource.Api)
-            ShowClaudeCheck();
+        _ = RunLiveCheckAsync(key, check, fetch, unreachable, showing, show);
     }
 
-    private void ShowClaudeCheck()
+    private async Task RunLiveCheckAsync(string key, LiveCheck check, Func<Task<UsageFetch>> fetch, string unreachable,
+        Func<AgentItem, bool> showing, Action show)
     {
-        var check = _claudeCheck;
-        ShowCheckedUsage("Claude usage", check?.Usage ?? (_claudeUsage ??= ClaudeStatusLine.Load()),
-            _claudeChecking, check?.Problem, ClaudeUsageApi.Checking, ClaudeUsageApi.NoWindows, ClaudeUsageApi.ShowingSaved);
-    }
-
-    private async Task CheckCodexUsageAsync()
-    {
+        var epoch = _liveCheckEpoch;
         var shown = _generation;
-        _codexChecking = true;
-        CodexUsageFetch result;
+        check.Running = true;
+        UsageFetch result;
         try
         {
-            result = await CodexUsage.FetchAsync(); // resumes on the UI thread; never throws
+            result = await fetch(); // resumes on the UI thread; never throws
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            result = new CodexUsageFetch(null, CodexUsage.Unreachable);
+            result = new UsageFetch(null, unreachable);
         }
-        _codexChecking = false;
-        _codexCheck = result;
-        _codexCheckedAt = DateTimeOffset.UtcNow;
+        check.Running = false;
+        // A usage setting changed while this ran: it isn't wanted any more.
+        if (epoch != _liveCheckEpoch || !_liveChecks.TryGetValue(key, out var current) || current != check)
+            return;
+        check.Result = result;
+        check.At = DateTimeOffset.UtcNow;
         if (result.Usage is not null)
-            _codexSaved = null; // just saved; read it again next time
+            _savedUsage.Remove(key); // the file was just written; read it again when needed
 
-        // Fill in the drawer only if it's still showing Codex, in the same show.
-        if (shown == _generation && _drawerOpen && !_drawerClosing && _drawerItem is { } item
-            && CommandName(item.Definition.Command) == "codex")
-            ShowCodexCheck();
+        if (shown == _generation && _drawerOpen && !_drawerClosing && _drawerItem is { } item && showing(item))
+            show();
     }
 
-    private void ShowCodexCheck()
+    /// <summary>Grok has one account, the grok.com sign-in in Agent Dock's own profile.</summary>
+    private const string GrokCheckKey = "grok";
+
+    private void ShowGrokCheck()
     {
-        var check = _codexCheck;
-        ShowCheckedUsage("Codex usage", check?.Usage ?? (_codexSaved ??= CodexUsage.LoadSaved()),
-            _codexChecking, check?.Problem, CodexUsage.Checking, CodexUsage.NoWindows, CodexUsage.ShowingSaved);
+        var check = _liveChecks.GetValueOrDefault(GrokCheckKey);
+        if (!_savedUsage.TryGetValue(GrokCheckKey, out var saved))
+            _savedUsage[GrokCheckKey] = saved = GrokUsage.LoadSaved();
+        // Grok has a weekly pool and no 5-hour window.
+        ShowCheckedUsage("Grok usage", check?.Result?.Usage ?? saved, check?.Running == true, check?.Result?.Problem,
+            GrokUsage.Checking, GrokUsage.NoWindows, GrokUsage.ShowingSaved, showSession: false);
+    }
+
+    /// <summary>Whether the drawer is on an agent of <paramref name="account"/> (another copy counts).</summary>
+    private static bool OnAccount(AgentItem item, UsageAccount account) =>
+        UsageAccount.For(item.Definition) is { } showing && showing.Key == account.Key;
+
+    private void ShowClaudeCheck(UsageAccount account)
+    {
+        var check = _liveChecks.GetValueOrDefault(account.Key);
+        ShowCheckedUsage("Claude usage", check?.Result?.Usage ?? Saved(account), check?.Running == true,
+            check?.Result?.Problem, ClaudeUsageApi.Checking, ClaudeUsageApi.NoWindows, ClaudeUsageApi.ShowingSaved);
+    }
+
+    private void ShowCodexCheck(UsageAccount account)
+    {
+        var check = _liveChecks.GetValueOrDefault(account.Key);
+        ShowCheckedUsage("Codex usage", check?.Result?.Usage ?? Saved(account), check?.Running == true,
+            check?.Result?.Problem, CodexUsage.Checking, CodexUsage.NoWindows, CodexUsage.ShowingSaved);
     }
 
     /// <summary>
@@ -1966,7 +2083,7 @@ public sealed partial class FlyoutWindow : Window
     /// check failed (under saved numbers, or on its own) or is still running with nothing to show.
     /// </summary>
     private void ShowCheckedUsage(string title, PlanUsage? usage, bool checking, string? problem,
-        string checkingNote, string noWindowsNote, string showingSaved)
+        string checkingNote, string noWindowsNote, string showingSaved, bool showSession = true)
     {
         var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
         string? note;
@@ -1977,7 +2094,7 @@ public sealed partial class FlyoutWindow : Window
         else
             note = null;
 
-        ShowUsage(title, usage, hasData ? "" : note ?? noWindowsNote, hasData ? note : null);
+        ShowUsage(title, usage, hasData ? "" : note ?? noWindowsNote, hasData ? note : null, showSession);
     }
 
     /// <summary>The folders currently offered for the hovered agent, newest first, at most five.</summary>
@@ -1986,10 +2103,10 @@ public sealed partial class FlyoutWindow : Window
     private double _recentsFitHeight;
 
     /// <summary>
-    /// The last few folders Claude Code was opened in, under the usage. Never more than five, and
-    /// never more than fit in the drawer without scrolling. Clicking one launches Claude Code there.
+    /// The last few folders the agent (Claude Code or Codex) was opened in, under the usage. Never
+    /// more than five, and never more than fit in the drawer without scrolling. Clicking one opens it there.
     /// </summary>
-    private bool ShowClaudeRecents(AgentItem item)
+    private bool ShowRecents(AgentItem item)
     {
         var id = item.Preset?.Agent ?? item.Definition.Id;
         _shownRecents = RecentLaunches.For(_state, id).Take(RecentLaunches.MaxCount).ToList();
@@ -2031,7 +2148,7 @@ public sealed partial class FlyoutWindow : Window
                     }
                 }
             };
-            AutomationProperties.SetName(button, $"Open Claude Code in {folder}");
+            AutomationProperties.SetName(button, $"Open {_drawerItem?.Definition.Name ?? "the agent"} in {folder}");
             ToolTipService.SetToolTip(button, folder);
             button.Click += RecentFolder_Click;
 
@@ -2110,7 +2227,7 @@ public sealed partial class FlyoutWindow : Window
             return;
         _store.SaveState(_state);
         // The drawer shows what's left; with nothing left and no usage to show, it closes.
-        if (!ShowClaudeRecents(item) && UsagePanel.Visibility != Visibility.Visible && !UsageOffer.IsOpen)
+        if (!ShowRecents(item) && UsagePanel.Visibility != Visibility.Visible && !UsageOffer.IsOpen)
             CloseDrawer(animate: true);
     }
 
@@ -2186,6 +2303,8 @@ public sealed partial class FlyoutWindow : Window
         UsageTitle.Text = "Copilot usage";
         UsagePanel.Visibility = Visibility.Visible;
         WeekGroup.Visibility = Visibility.Collapsed;
+        SessionLabel.Visibility = SessionText.Visibility = Visibility.Visible; // Grok hides them
+        ShowUsageExtras(null, DateTimeOffset.UtcNow);
         SessionLabel.Text = "Premium requests";
 
         var usage = _copilotUsage;
@@ -2229,12 +2348,17 @@ public sealed partial class FlyoutWindow : Window
     /// The session and week bars, or <paramref name="emptyNote"/> when there are none.
     /// <paramref name="note"/> goes under the bars (e.g. a check that failed while saved numbers show).
     /// </summary>
-    private void ShowUsage(string title, PlanUsage? usage, string emptyNote, string? note = null)
+    private void ShowUsage(string title, PlanUsage? usage, string emptyNote, string? note = null, bool showSession = true)
     {
         UsageTitle.Text = title;
         UsagePanel.Visibility = Visibility.Visible;
         SessionLabel.Text = "Session";
         SessionBar.Visibility = WeekGroup.Visibility = Visibility.Visible;
+        // Grok has only a weekly pool.
+        SessionLabel.Visibility = SessionText.Visibility = showSession ? Visibility.Visible : Visibility.Collapsed;
+        if (!showSession)
+            SessionBar.Visibility = Visibility.Collapsed;
+        ShowUsageExtras(null, DateTimeOffset.UtcNow);
         var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
         UsageRows.Visibility = hasData ? Visibility.Visible : Visibility.Collapsed;
         var text = hasData ? note : emptyNote;
@@ -2247,8 +2371,134 @@ public sealed partial class FlyoutWindow : Window
         var now = DateTimeOffset.UtcNow;
         ShowWindow(SessionBar, SessionText, usage!.FiveHour, now);
         ShowWindow(WeekBar, WeekText, usage.SevenDay, now);
+        ShowUsageExtras(usage, now);
         // Both agents only record usage while a session runs, so say how old this is.
         UsageUpdatedText.Text = UpdatedAgo(DateTimeOffset.FromUnixTimeSeconds(usage.UpdatedAt), now);
+    }
+
+    /// <summary>
+    /// What's known beyond the session and week: the plan (Codex) or last model (Claude) under the
+    /// title, a bar for each per-model week (Claude), and extra usage or credits. Null clears them.
+    /// </summary>
+    private void ShowUsageExtras(PlanUsage? usage, DateTimeOffset now)
+    {
+        var plan = usage?.Plan is { Length: > 0 } name
+            ? $"{char.ToUpperInvariant(name[0])}{name[1..].Replace('_', ' ')} plan"
+            : null;
+        var subtitle = plan ?? (usage?.Model is { Length: > 0 } model ? $"{model}, last used" : null);
+        UsageSubtitle.Text = subtitle ?? "";
+        UsageSubtitle.Visibility = subtitle is null ? Visibility.Collapsed : Visibility.Visible;
+
+        ModelWeekRows.Children.Clear();
+        foreach (var week in usage?.ModelWeeks ?? [])
+        {
+            var bar = new ProgressBar { Maximum = 100 };
+            var text = new TextBlock
+            {
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+            };
+            AutomationProperties.SetName(bar, $"{week.Label} weekly usage");
+            ShowWindow(bar, text, week, now);
+            var group = new StackPanel { Spacing = 2, Margin = new Thickness(0, 6, 0, 0) };
+            group.Children.Add(new TextBlock { Text = $"{week.Label} week" });
+            group.Children.Add(bar);
+            group.Children.Add(text);
+            ModelWeekRows.Children.Add(group);
+        }
+
+        var extra = usage?.Extra is { Enabled: true } on
+            ? on.Unlimited ? "Extra usage credits: unlimited"
+            : on.Balance is { Length: > 0 } balance ? $"Extra usage credits: {balance}"
+            : on.Used is { } used && on.Limit is { } limit ? $"Extra usage: {used:0.##} of {limit:0.##} used"
+            : on.Used is { } spent ? $"Extra usage: {spent:0.##} used"
+            : "Extra usage is on"
+            : null;
+        ExtraUsageText.Text = extra ?? "";
+        ExtraUsageText.Visibility = extra is null ? Visibility.Collapsed : Visibility.Visible;
+
+        ShowBreakdown(usage?.Breakdown);
+    }
+
+    /// <summary>Slice colours, in order of size: distinct in both themes, and not the warning or error colours.</summary>
+    private static readonly Windows.UI.Color[] SliceColors =
+    [
+        Windows.UI.Color.FromArgb(255, 0x4F, 0x8E, 0xF7), // blue
+        Windows.UI.Color.FromArgb(255, 0x9B, 0x7B, 0xF2), // violet
+        Windows.UI.Color.FromArgb(255, 0x3F, 0xB6, 0x8B), // green
+        Windows.UI.Color.FromArgb(255, 0xE8, 0xA3, 0x3D), // amber
+        Windows.UI.Color.FromArgb(255, 0xE0, 0x6C, 0x9F), // pink
+        Windows.UI.Color.FromArgb(255, 0x8A, 0x96, 0xA3), // grey
+    ];
+
+    /// <summary>
+    /// What the usage went on, as a pie with a legend beside it (name and share). Hovering a slice
+    /// names it too. Hidden when there's no breakdown.
+    /// </summary>
+    private void ShowBreakdown(List<UsageShare>? shares)
+    {
+        BreakdownPie.Children.Clear();
+        BreakdownLegend.Children.Clear();
+        var parts = (shares ?? []).Where(s => s.Percent > 0).OrderByDescending(s => s.Percent).ToList();
+        var total = parts.Sum(p => p.Percent);
+        BreakdownChart.Visibility = total > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (total <= 0)
+            return;
+
+        const double size = 64, radius = size / 2;
+        var centre = new Windows.Foundation.Point(radius, radius);
+        var angle = -90.0; // start at twelve o'clock, go clockwise
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var part = parts[i];
+            var brush = new Microsoft.UI.Xaml.Media.SolidColorBrush(SliceColors[Math.Min(i, SliceColors.Length - 1)]);
+            var sweep = part.Percent / total * 360;
+            Microsoft.UI.Xaml.Media.Geometry geometry;
+            if (sweep >= 359.99)
+            {
+                geometry = new Microsoft.UI.Xaml.Media.EllipseGeometry { Center = centre, RadiusX = radius, RadiusY = radius };
+            }
+            else
+            {
+                var figure = new Microsoft.UI.Xaml.Media.PathFigure { StartPoint = centre, IsClosed = true, IsFilled = true };
+                figure.Segments.Add(new Microsoft.UI.Xaml.Media.LineSegment { Point = PointOn(angle) });
+                figure.Segments.Add(new Microsoft.UI.Xaml.Media.ArcSegment
+                {
+                    Point = PointOn(angle + sweep),
+                    Size = new Windows.Foundation.Size(radius, radius),
+                    SweepDirection = Microsoft.UI.Xaml.Media.SweepDirection.Clockwise,
+                    IsLargeArc = sweep > 180
+                });
+                var path = new Microsoft.UI.Xaml.Media.PathGeometry();
+                path.Figures.Add(figure);
+                geometry = path;
+            }
+            var slice = new Microsoft.UI.Xaml.Shapes.Path { Data = geometry, Fill = brush };
+            ToolTipService.SetToolTip(slice, $"{part.Label}: {Math.Round(part.Percent)}%");
+            BreakdownPie.Children.Add(slice);
+            angle += sweep;
+
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            row.Children.Add(new Microsoft.UI.Xaml.Shapes.Rectangle
+            {
+                Width = 8, Height = 8, RadiusX = 2, RadiusY = 2, Fill = brush, VerticalAlignment = VerticalAlignment.Center
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = $"{part.Label} {Math.Round(part.Percent)}%",
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+            });
+            BreakdownLegend.Children.Add(row);
+        }
+        AutomationProperties.SetHelpText(BreakdownPie,
+            string.Join(", ", parts.Select(p => $"{p.Label} {Math.Round(p.Percent)}%")));
+
+        Windows.Foundation.Point PointOn(double degrees)
+        {
+            var radians = degrees * Math.PI / 180;
+            return new Windows.Foundation.Point(radius + radius * Math.Cos(radians), radius + radius * Math.Sin(radians));
+        }
     }
 
     private static void ShowWindow(ProgressBar bar, TextBlock text, UsageWindow? window, DateTimeOffset now)
@@ -2307,26 +2557,47 @@ public sealed partial class FlyoutWindow : Window
             : command.Length <= 40 ? command : command[..39] + "…";
     }
 
+    /// <summary>Sets up (or updates) the status line for the drawer's Claude account: its own settings.json.</summary>
     private void UsageOfferButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ClaudeStatusLine.Install(Environment.ProcessPath!) is { } error)
+        if (_drawerItem is not null && CommandName(_drawerItem.Definition.Command) == "grok")
+        {
+            HideFlyout();
+            GrokSignInWindow.Show();
+            return;
+        }
+        if (_drawerItem is null || UsageAccount.For(_drawerItem.Definition) is not { Agent: "claude" } account)
+            return;
+        if (ClaudeStatusLine.Install(Environment.ProcessPath!, account.ConfigDir) is { } error)
         {
             SetStatus(error);
             return;
         }
         ClearUsageCache();
-        if (_drawerItem is not null)
-            PrepareDrawer(_drawerItem);
-        StatusText.Text = "Claude Code now uses Agent Dock as its status line.";
+        PrepareDrawer(_drawerItem);
+        StatusText.Text = account.IsDefault
+            ? "Claude Code now uses Agent Dock as its status line."
+            : $"{_drawerItem.Definition.Name} now uses Agent Dock as its status line.";
         PlaceWindow(); // the footer message may wrap
     }
 
     private void UsageOffer_CloseButtonClick(InfoBar sender, object args)
     {
-        _state.ClaudeUsageOfferDismissed = true;
-        _store.SaveState(_state);
+        if (_drawerItem is not null && CommandName(_drawerItem.Definition.Command) == "grok")
+        {
+            _state.GrokUsageOfferDismissed = true;
+            _store.SaveState(_state);
+        }
+        else if (_drawerItem is not null && UsageAccount.For(_drawerItem.Definition) is { Agent: "claude" } account)
+        {
+            if (account.IsDefault)
+                _state.ClaudeUsageOfferDismissed = true;
+            else if (!OfferDismissed(account))
+                _state.ClaudeUsageOfferDismissedFor.Add(account.ConfigDir);
+            _store.SaveState(_state);
+        }
         UsageOffer.IsOpen = false;
-        if (_drawerItem is null || !ShowClaudeRecents(_drawerItem))
+        if (_drawerItem is null || !ShowRecents(_drawerItem))
             CloseDrawer(animate: true); // nothing left to show in it
     }
 

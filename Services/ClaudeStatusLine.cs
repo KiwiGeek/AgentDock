@@ -17,11 +17,8 @@ public static class ClaudeStatusLine
 {
     public const string Argument = "--statusline";
 
-    private static string UsagePath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "claude-usage.json");
-
-    /// <summary>Claude Code's user settings.</summary>
-    private static string SettingsPath => Path.Combine(ClaudeConfig.Directory, "settings.json");
+    /// <summary>Claude Code's user settings for the account in <paramref name="configDir"/>.</summary>
+    private static string SettingsPath(string configDir) => Path.Combine(configDir, "settings.json");
 
     // ---------- Status line mode (runs inside Claude Code, so: fast, WinUI-free, never fails) ----------
 
@@ -49,7 +46,8 @@ public static class ClaudeStatusLine
             }
 
             if (fiveHour is not null || sevenDay is not null)
-                Save(model, fiveHour, sevenDay);
+                // The account of the Claude Code session that ran this: it passes CLAUDE_CONFIG_DIR on.
+                Save(model, fiveHour, sevenDay, ClaudeConfig.Directory);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -96,15 +94,18 @@ public static class ClaudeStatusLine
     /// Claude Code leaves a window out once it has reset, so a missing window keeps its last value
     /// (the flyout shows it as reset once its time has passed).
     /// </summary>
-    private static void Save(string? model, UsageWindow? fiveHour, UsageWindow? sevenDay)
+    private static void Save(string? model, UsageWindow? fiveHour, UsageWindow? sevenDay, string configDir)
     {
-        var previous = Load();
-        Write(new PlanUsage
+        var previous = Load(configDir);
+        Write(configDir, new PlanUsage
         {
             UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             Model = model ?? previous?.Model,
             FiveHour = fiveHour ?? previous?.FiveHour,
-            SevenDay = sevenDay ?? previous?.SevenDay
+            SevenDay = sevenDay ?? previous?.SevenDay,
+            // The status line doesn't send these; keep what the last direct check found.
+            ModelWeeks = previous?.ModelWeeks,
+            Extra = previous?.Extra
         });
     }
 
@@ -113,28 +114,30 @@ public static class ClaudeStatusLine
     /// from the previous file: that answer is complete. Only the model name is kept, since the
     /// status line is what knows it.
     /// </summary>
-    public static void Replace(PlanUsage usage)
+    public static void Replace(PlanUsage usage, string configDir)
     {
-        usage.Model ??= Load()?.Model;
-        Write(usage);
+        usage.Model ??= Load(configDir)?.Model;
+        Write(configDir, usage);
     }
 
-    private static void Write(PlanUsage usage)
+    private static void Write(string configDir, PlanUsage usage)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(UsagePath)!);
+        var path = ClaudeConfig.UsageFile(configDir);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         // Unique temp name: two Claude Code sessions can refresh at the same moment.
-        var temp = $"{UsagePath}.{Environment.ProcessId}.tmp";
+        var temp = $"{path}.{Environment.ProcessId}.tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(usage, DockJsonContext.Default.PlanUsage));
-        File.Move(temp, UsagePath, overwrite: true);
+        File.Move(temp, path, overwrite: true);
     }
 
-    /// <summary>The last saved usage, or null if there's none yet.</summary>
-    public static PlanUsage? Load()
+    /// <summary>The last usage saved for the account in <paramref name="configDir"/>, or null if there's none yet.</summary>
+    public static PlanUsage? Load(string configDir)
     {
         try
         {
-            return File.Exists(UsagePath)
-                ? JsonSerializer.Deserialize(File.ReadAllText(UsagePath), DockJsonContext.Default.PlanUsage)
+            var path = ClaudeConfig.UsageFile(configDir);
+            return File.Exists(path)
+                ? JsonSerializer.Deserialize(File.ReadAllText(path), DockJsonContext.Default.PlanUsage)
                 : null;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
@@ -162,9 +165,9 @@ public static class ClaudeStatusLine
     /// <summary>The status line command Agent Dock installs. Forward slashes work in both bash and cmd.</summary>
     private static string CommandFor(string exe) => $"\"{exe.Replace('\\', '/')}\" {Argument}";
 
-    public static Setup CheckSetup(string exe)
+    public static Setup CheckSetup(string exe, string configDir)
     {
-        var (settings, error) = ReadSettings();
+        var (settings, error) = ReadSettings(configDir);
         if (error is not null)
             return new Setup(SetupState.Unreadable, null);
 
@@ -182,15 +185,15 @@ public static class ClaudeStatusLine
     /// Makes this exe Claude Code's status line, keeping every other setting. settings.json is
     /// copied to a timestamped backup first. Returns null on success, or what went wrong.
     /// </summary>
-    public static string? Install(string exe)
+    public static string? Install(string exe, string configDir)
     {
-        var (settings, error) = ReadSettings();
+        var (settings, error) = ReadSettings(configDir);
         if (error is not null)
             return error;
 
         try
         {
-            var path = SettingsPath;
+            var path = SettingsPath(configDir);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             if (File.Exists(path))
                 File.Copy(path, $"{path}.agentdock-{DateTime.Now:yyyyMMdd-HHmmss}.bak");
@@ -223,9 +226,9 @@ public static class ClaudeStatusLine
         }
     }
 
-    private static (JsonObject? Settings, string? Error) ReadSettings()
+    private static (JsonObject? Settings, string? Error) ReadSettings(string configDir)
     {
-        var path = SettingsPath;
+        var path = SettingsPath(configDir);
         if (!File.Exists(path))
             return (null, null);
         try

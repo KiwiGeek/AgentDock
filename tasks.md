@@ -3,21 +3,6 @@
 Work agreed with the owner but not started. Remove an item when it's done (and record the result
 in `CLAUDE.md`).
 
-## Usage for copies on another account (step 3 of the agent list work)
-
-Agents are now chosen by the user and can be duplicated with their own environment. A Claude Code or
-Codex copy whose `env` changes the account (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, API keys, base URLs)
-currently shows "Usage isn't shown for an agent with its own account settings yet" in the drawer
-(`UsesOwnAccount`). To do:
-
-- Key the usage caches and saved files by account (the expanded `CLAUDE_CONFIG_DIR` / `CODEX_HOME`),
-  not by agent type, so two copies on one account share them and two accounts never mix.
-- Codex: start `codex app-server` with the copy's environment (expanding `%NAME%`).
-- Claude, "Ask Claude for them directly": read `.credentials.json` from the copy's config folder.
-- Claude, status line: Set up installs into that account's `settings.json`, and the command carries
-  the config folder (`--statusline --config "<dir>"`) so each account writes its own file.
-- Copies pointed at another provider (base URL or API key) keep showing no plan usage.
-
 ## Review the agents Agent Dock knows (added 2026-10-16)
 
 These are in `Services/KnownAgents.cs` (offered by Find agents, not added by default). For each:

@@ -7,9 +7,6 @@ using AgentDock.Models;
 
 namespace AgentDock.Services;
 
-/// <summary>What <see cref="ClaudeUsageApi.FetchAsync"/> found: the limits, or a sentence saying why not.</summary>
-public sealed record ClaudeUsageFetch(PlanUsage? Usage, string? Problem);
-
 /// <summary>
 /// Claude plan limits asked for directly: the same call Claude Code's /usage makes,
 /// <c>GET /api/oauth/usage</c>, with the access token Claude Code already stored. Off unless the user
@@ -43,34 +40,44 @@ public static partial class ClaudeUsageApi
 
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(15) };
     private static readonly Lock Gate = new();
-    /// <summary>No request before this (after a success, or a 429). In memory only.</summary>
-    private static DateTimeOffset _notBefore = DateTimeOffset.MinValue;
-    private static PlanUsage? _lastSuccess;
-    /// <summary><see cref="_notBefore"/> comes from a 429, not a success.</summary>
-    private static bool _backingOff;
+    /// <summary>Rate limiting, per account (each sign-in has its own limits). In memory only.</summary>
+    private static readonly Dictionary<string, Pace> Paces = new(StringComparer.OrdinalIgnoreCase);
     private static string? _version;
 
-    public static Task<ClaudeUsageFetch> FetchAsync() => Task.Run(FetchCoreAsync);
+    private sealed class Pace
+    {
+        /// <summary>No request before this (after a success, or a 429).</summary>
+        public DateTimeOffset NotBefore = DateTimeOffset.MinValue;
+        public PlanUsage? LastSuccess;
+        /// <summary><see cref="NotBefore"/> comes from a 429, not a success.</summary>
+        public bool BackingOff;
+    }
 
-    private static async Task<ClaudeUsageFetch> FetchCoreAsync()
+    /// <summary>The limits of <paramref name="account"/>: its config folder's sign-in, or its own token variable.</summary>
+    public static Task<UsageFetch> FetchAsync(UsageAccount account) => Task.Run(() => FetchCoreAsync(account));
+
+    private static async Task<UsageFetch> FetchCoreAsync(UsageAccount account)
     {
         try
         {
             var now = DateTimeOffset.UtcNow;
+            Pace pace;
             lock (Gate)
             {
+                if (!Paces.TryGetValue(account.Key, out pace!))
+                    Paces[account.Key] = pace = new Pace();
                 // Too soon: after a 429 say so; after a success, that answer still stands.
-                if (now < _notBefore)
-                    return _backingOff || _lastSuccess is null
-                        ? new ClaudeUsageFetch(null, RateLimited)
-                        : new ClaudeUsageFetch(_lastSuccess, null);
+                if (now < pace.NotBefore)
+                    return pace.BackingOff || pace.LastSuccess is null
+                        ? new UsageFetch(null, RateLimited)
+                        : new UsageFetch(pace.LastSuccess, null);
             }
 
-            var (token, problem) = ReadToken(now);
+            var (token, problem) = ReadToken(account, now);
             if (token is null)
-                return new ClaudeUsageFetch(null, problem);
+                return new UsageFetch(null, problem);
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl()}/api/oauth/usage");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl(account)}/api/oauth/usage");
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             request.Headers.TryAddWithoutValidation("anthropic-beta", "oauth-2025-04-20");
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -81,30 +88,30 @@ public static partial class ClaudeUsageApi
 
             using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseContentRead);
             if (response.StatusCode == HttpStatusCode.Unauthorized)
-                return new ClaudeUsageFetch(null, SignInExpired);
+                return new UsageFetch(null, SignInExpired);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
             {
                 var wait = response.Headers.RetryAfter?.Delta is { } delta && delta > TimeSpan.Zero ? delta : MinInterval;
                 lock (Gate)
                 {
-                    _notBefore = DateTimeOffset.UtcNow + (wait > MaxBackoff ? MaxBackoff : wait);
-                    _backingOff = true;
+                    pace.NotBefore = DateTimeOffset.UtcNow + (wait > MaxBackoff ? MaxBackoff : wait);
+                    pace.BackingOff = true;
                 }
-                return new ClaudeUsageFetch(null, RateLimited);
+                return new UsageFetch(null, RateLimited);
             }
             if (!response.IsSuccessStatusCode)
-                return new ClaudeUsageFetch(null, Unreachable);
+                return new UsageFetch(null, Unreachable);
 
             var result = Parse(await response.Content.ReadAsStringAsync(), DateTimeOffset.UtcNow);
             if (result.Usage is { } usage)
             {
                 lock (Gate)
                 {
-                    _lastSuccess = usage;
-                    _notBefore = DateTimeOffset.UtcNow + MinInterval;
-                    _backingOff = false;
+                    pace.LastSuccess = usage;
+                    pace.NotBefore = DateTimeOffset.UtcNow + MinInterval;
+                    pace.BackingOff = false;
                 }
-                ClaudeStatusLine.Replace(usage);
+                ClaudeStatusLine.Replace(usage, account.ConfigDir);
             }
             return result;
         }
@@ -112,26 +119,33 @@ public static partial class ClaudeUsageApi
         {
             // Network failures, timeouts (TaskCanceledException), an unwritable usage file: never
             // the resident's problem, and never shown as the exception's text.
-            return new ClaudeUsageFetch(null, Unreachable);
+            return new UsageFetch(null, Unreachable);
         }
     }
 
+    /// <summary>A variable from the agent's own env first, then Agent Dock's environment.</summary>
+    private static string? Variable(UsageAccount account, string name) =>
+        account.Env.TryGetValue(name, out var own) && !string.IsNullOrWhiteSpace(own) ? own
+        : Environment.GetEnvironmentVariable(name) is { } inherited && !string.IsNullOrWhiteSpace(inherited) ? inherited
+        : null;
+
     /// <summary><c>CLAUDE_CODE_CUSTOM_OAUTH_URL</c> if Claude Code is pointed elsewhere, otherwise Anthropic's API.</summary>
-    private static string BaseUrl() =>
-        Environment.GetEnvironmentVariable("CLAUDE_CODE_CUSTOM_OAUTH_URL") is { Length: > 0 } custom
+    private static string BaseUrl(UsageAccount account) =>
+        Variable(account, "CLAUDE_CODE_CUSTOM_OAUTH_URL") is { } custom
             ? custom.TrimEnd('/')
             : "https://api.anthropic.com";
 
     /// <summary>
-    /// The access token: <c>CLAUDE_CODE_OAUTH_TOKEN</c> (no expiry to check), else Claude Code's
-    /// .credentials.json. Only <c>accessToken</c> and <c>expiresAt</c> are read.
+    /// The access token: <c>CLAUDE_CODE_OAUTH_TOKEN</c> (no expiry to check), else the
+    /// .credentials.json in the account's config folder. Only <c>accessToken</c> and
+    /// <c>expiresAt</c> are read.
     /// </summary>
-    private static (string? Token, string? Problem) ReadToken(DateTimeOffset now)
+    private static (string? Token, string? Problem) ReadToken(UsageAccount account, DateTimeOffset now)
     {
-        if (Environment.GetEnvironmentVariable("CLAUDE_CODE_OAUTH_TOKEN") is { } variable && !string.IsNullOrWhiteSpace(variable))
+        if (Variable(account, "CLAUDE_CODE_OAUTH_TOKEN") is { } variable)
             return (variable.Trim(), null);
 
-        var path = Path.Combine(ClaudeConfig.Directory, ".credentials.json");
+        var path = Path.Combine(account.ConfigDir, ".credentials.json");
         if (!File.Exists(path))
             return (null, NotSignedIn);
 
@@ -206,22 +220,32 @@ public static partial class ClaudeUsageApi
 
     /// <summary>
     /// Pure. The session and week windows from a usage reply, or a problem. <c>utilization</c> is
-    /// already 0–100. Per-model weeks and <c>extra_usage</c> are ignored. A reply with neither
+    /// already 0–100. Per-model weeks (<c>seven_day_*</c>) and <c>extra_usage</c> are kept too. A reply with neither
     /// window is still a success (no limits yet), not an error.
     /// </summary>
-    internal static ClaudeUsageFetch Parse(string json, DateTimeOffset now)
+    internal static UsageFetch Parse(string json, DateTimeOffset now)
     {
         try
         {
             using var document = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true });
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
-                return new ClaudeUsageFetch(null, NotUnderstood);
+                return new UsageFetch(null, NotUnderstood);
 
             var session = ReadWindow(root, "five_hour");
             var week = ReadWindow(root, "seven_day");
 
-            // Newer replies also list limits; they only fill a window the named object didn't give.
+            // Weekly limits for one model: "seven_day_sonnet", "seven_day_opus", and any added later.
+            var modelWeeks = new List<UsageWindow>();
+            foreach (var property in root.EnumerateObject())
+                if (property.Name.StartsWith("seven_day_", StringComparison.Ordinal)
+                    && ReadWindow(root, property.Name) is { } modelWeek)
+                {
+                    modelWeek.Label = ModelLabel(property.Name["seven_day_".Length..]);
+                    modelWeeks.Add(modelWeek);
+                }
+
+            // Newer replies also list limits; they only fill a window the named objects didn't give.
             if (root.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
                 foreach (var limit in limits.EnumerateArray())
                 {
@@ -230,26 +254,63 @@ public static partial class ClaudeUsageApi
                         continue;
                     var kind = Text(limit, "kind") ?? Text(limit, "group");
                     var window = new UsageWindow { UsedPercentage = percent.GetDouble(), ResetsAt = ClaudeStatusLine.ResetsAt(limit) };
-                    if (session is null && kind is "session" or "five_hour")
-                        session = window;
-                    else if (week is null && kind is "seven_day" or "weekly_all" or "weekly")
-                        week = window;
+                    // Session and all-models week entries only ever fill those two, never a model's row
+                    // ("weekly_all" isn't a model called "All").
+                    if (kind is "session" or "five_hour")
+                        session ??= window;
+                    else if (kind is "seven_day" or "weekly_all" or "weekly")
+                        week ??= window;
+                    else if (kind?.StartsWith("weekly_", StringComparison.Ordinal) == true
+                             && ModelLabel(kind["weekly_".Length..]) is var label
+                             && !modelWeeks.Any(w => string.Equals(w.Label, label, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        window.Label = label;
+                        modelWeeks.Add(window);
+                    }
                 }
 
-            return new ClaudeUsageFetch(new PlanUsage
+            return new UsageFetch(new PlanUsage
             {
                 UpdatedAt = now.ToUnixTimeSeconds(),
                 FiveHour = session,
-                SevenDay = week
+                SevenDay = week,
+                ModelWeeks = modelWeeks.Count > 0 ? modelWeeks : null,
+                Extra = ReadExtra(root)
             }, null);
         }
         catch (JsonException)
         {
-            return new ClaudeUsageFetch(null, NotUnderstood);
+            return new UsageFetch(null, NotUnderstood);
         }
 
         static string? Text(JsonElement element, string name) =>
             element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+    }
+
+    /// <summary>"sonnet" → "Sonnet", "opus_4" → "Opus 4".</summary>
+    private static string ModelLabel(string key)
+    {
+        var words = key.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(' ', words.Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
+    }
+
+    /// <summary>
+    /// <c>extra_usage</c>: <c>is_enabled</c>, <c>used_credits</c> and <c>monthly_limit</c>. Null when
+    /// it's missing or isn't an object. The amounts' unit isn't documented.
+    /// </summary>
+    private static ExtraUsage? ReadExtra(JsonElement root)
+    {
+        if (!root.TryGetProperty("extra_usage", out var extra) || extra.ValueKind != JsonValueKind.Object)
+            return null;
+        return new ExtraUsage
+        {
+            Enabled = extra.TryGetProperty("is_enabled", out var enabled) && enabled.ValueKind == JsonValueKind.True,
+            Used = Number(extra, "used_credits"),
+            Limit = Number(extra, "monthly_limit")
+        };
+
+        static double? Number(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
     }
 
     /// <summary>A named window; null when it's missing, null, or has no number (never an invented 0%).</summary>

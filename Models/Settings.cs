@@ -134,6 +134,8 @@ public sealed class PresetList
 /// <summary>One plan limit window: the 5-hour session or the week.</summary>
 public sealed class UsageWindow
 {
+    /// <summary>For an extra window, what it covers (e.g. "Sonnet"). Null for the session and week.</summary>
+    public string? Label { get; set; }
     /// <summary>0 to 100.</summary>
     public double UsedPercentage { get; set; }
     /// <summary>Unix seconds.</summary>
@@ -152,6 +154,41 @@ public sealed class PlanUsage
     public string? Model { get; set; }
     public UsageWindow? FiveHour { get; set; }
     public UsageWindow? SevenDay { get; set; }
+
+    /// <summary>The plan, as the service names it (Codex: "plus", "team"…). Claude doesn't report it.</summary>
+    public string? Plan { get; set; }
+
+    /// <summary>Weekly limits for one model (Claude: Sonnet, Opus), each with its <see cref="UsageWindow.Label"/>.</summary>
+    public List<UsageWindow>? ModelWeeks { get; set; }
+
+    /// <summary>Usage beyond the plan: Claude's extra usage, or Codex's credits.</summary>
+    public ExtraUsage? Extra { get; set; }
+
+    /// <summary>What the week's usage went on (Grok: Imagine, Cursor, Grok Build…), as shares adding to 100.</summary>
+    public List<UsageShare>? Breakdown { get; set; }
+}
+
+/// <summary>One part of <see cref="PlanUsage.Breakdown"/>.</summary>
+public sealed class UsageShare
+{
+    public string Label { get; set; } = "";
+    /// <summary>0 to 100, of the usage so far (not of the limit).</summary>
+    public double Percent { get; set; }
+}
+
+/// <summary>
+/// Usage beyond the plan. Claude reports extra usage as amounts used and a monthly limit (the unit
+/// isn't documented, so they're shown as plain numbers); Codex reports a credit balance.
+/// </summary>
+public sealed class ExtraUsage
+{
+    public bool Enabled { get; set; }
+    public double? Used { get; set; }
+    public double? Limit { get; set; }
+    /// <summary>The credit balance as shown (Codex formats its own; Grok's is dollars from cents).</summary>
+    public string? Balance { get; set; }
+    /// <summary>Codex: credits are unlimited.</summary>
+    public bool Unlimited { get; set; }
 }
 
 /// <summary>App-managed state (state.json). Not meant for hand editing.</summary>
@@ -180,7 +217,7 @@ public sealed class DockState
 
     /// <summary>
     /// Remember the last few folders each agent was launched in, and offer them again in the drawer.
-    /// Same "missing means on" rule as <see cref="ShowHoverBackgrounds"/>. Only Claude Code uses it so far.
+    /// Same "missing means on" rule as <see cref="ShowHoverBackgrounds"/>. Claude Code and Codex use it so far.
     /// </summary>
     public bool RememberRecentLaunches { get; set; } = true;
 
@@ -195,6 +232,18 @@ public sealed class DockState
     /// status line: the property initializer survives deserialization.
     /// </summary>
     public ClaudeUsageSource ClaudeUsageSource { get; set; } = ClaudeUsageSource.StatusLine;
+
+    /// <summary>
+    /// The same choice for other Claude accounts (agents with their own CLAUDE_CONFIG_DIR), keyed by
+    /// config folder. <see cref="ClaudeUsageSource"/> stays the default account's. Missing means the status line.
+    /// </summary>
+    public Dictionary<string, ClaudeUsageSource> ClaudeUsageSources { get; set; } = [];
+
+    /// <summary>The user closed the "sign in to grok.com to see Grok Build usage" offer.</summary>
+    public bool GrokUsageOfferDismissed { get; set; }
+
+    /// <summary>Other Claude accounts (config folders) whose status line offer was closed.</summary>
+    public List<string> ClaudeUsageOfferDismissedFor { get; set; } = [];
 
     /// <summary>
     /// The user has set up their agent list (added some, or chose "Not now"), so an empty list
