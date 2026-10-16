@@ -700,6 +700,12 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   (`GrokUsage.SignOutAsync`: a hidden controller deletes the profile's cookies and clears its browsing
   data, and grok-usage.json is deleted; the drawer then offers Sign in again). Closing it
   (`GrokSignInWindow.Finished`) drops the cached check. Google sign-in may refuse an embedded browser.
+  - **Closes itself once signed in** (owner's request), but only when opened from the drawer's
+    Sign in offer (`Show(closeWhenSignedIn: true)`), not from settings, where the user may be signing
+    out or switching. While on grok.com it runs `GrokUsage.FetchScript` in the page after each load
+    and every 3 s; a reply with usage (`GrokUsage.ReadReply`, which also saves it, so the drawer has
+    the numbers at once) shows "Signed in…" and closes the window 1.2 s later. Verified by the owner
+    (2026-10-16).
 - **The check** (`GrokUsage.FetchAsync`, UI thread): a hidden `CoreWebView2Controller`, parented to the
   flyout's HWND, in that profile, navigates to `https://grok.com/robots.txt` (same origin, no app to
   load), runs a `fetch` of that call with the page's credentials, and returns the bytes through

@@ -51,7 +51,7 @@ public static class GrokUsage
     /// body is an empty gRPC-web message. The reply comes back as base64 through postMessage, since a
     /// script's own result can't wait for a fetch.
     /// </summary>
-    private const string FetchScript = """
+    internal const string FetchScript = """
         (async () => {
           const send = (status, body, headers) => window.chrome.webview.postMessage(JSON.stringify({ agentDock: true, status, body, headers }));
           try {
@@ -104,26 +104,9 @@ public static class GrokUsage
             if (await Task.WhenAny(loaded.Task, Task.Delay(StepTimeout)) != loaded.Task)
                 return new UsageFetch(null, Unreachable);
             await web.ExecuteScriptAsync(FetchScript);
-            if (await Task.WhenAny(answered.Task, Task.Delay(StepTimeout)) != answered.Task || answered.Task.Result is not { } message)
+            if (await Task.WhenAny(answered.Task, Task.Delay(StepTimeout)) != answered.Task)
                 return new UsageFetch(null, Unreachable);
-
-            using var json = JsonDocument.Parse(message);
-            var status = json.RootElement.GetProperty("status").GetInt32();
-            if (status is 401 or 403)
-                return new UsageFetch(null, NotSignedIn);
-            if (status == 0)
-                return new UsageFetch(null, Unreachable);
-
-            string Header(string name) =>
-                json.RootElement.TryGetProperty("headers", out var headers) && headers.ValueKind == JsonValueKind.Object
-                && headers.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-                    ? value.GetString() ?? ""
-                    : "";
-            var result = Parse(Convert.FromBase64String(json.RootElement.GetProperty("body").GetString() ?? ""), DateTimeOffset.UtcNow,
-                status, Header("contentType"), Header("grpcStatus"), Header("grpcMessage"));
-            if (result.Usage is { } usage)
-                Save(usage);
-            return result;
+            return ReadReply(answered.Task.Result) ?? new UsageFetch(null, Unreachable);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -132,6 +115,42 @@ public static class GrokUsage
         finally
         {
             controller?.Close();
+        }
+    }
+
+    /// <summary>
+    /// Reads what <see cref="FetchScript"/> posted back, and saves a successful answer. Null if the
+    /// message isn't one of Agent Dock's (a grok.com page could post its own).
+    /// </summary>
+    internal static UsageFetch? ReadReply(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return null;
+        try
+        {
+            using var json = JsonDocument.Parse(message);
+            var root = json.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("agentDock", out var ours) || ours.ValueKind != JsonValueKind.True)
+                return null;
+            var status = root.GetProperty("status").GetInt32();
+            if (status == 0)
+                return new UsageFetch(null, Unreachable);
+
+            string Header(string name) =>
+                root.TryGetProperty("headers", out var headers) && headers.ValueKind == JsonValueKind.Object
+                && headers.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+                    ? value.GetString() ?? ""
+                    : "";
+            var result = Parse(Convert.FromBase64String(root.GetProperty("body").GetString() ?? ""), DateTimeOffset.UtcNow,
+                status, Header("contentType"), Header("grpcStatus"), Header("grpcMessage"));
+            if (result.Usage is { } usage)
+                Save(usage);
+            return result;
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException or InvalidOperationException
+                                       or IOException or UnauthorizedAccessException)
+        {
+            return new UsageFetch(null, NotUnderstood);
         }
     }
 

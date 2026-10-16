@@ -21,6 +21,14 @@ public sealed partial class GrokSignInWindow : Window
     /// <summary>Raised when the window closes, so the next hover checks with the new sign-in.</summary>
     public static event Action? Finished;
 
+    /// <summary>
+    /// Opened to sign in (the drawer's offer): close as soon as grok.com answers the usage request.
+    /// Not when opened from settings, where the user may be signing out or switching accounts.
+    /// </summary>
+    private bool _closeWhenSignedIn;
+    private bool _closing;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _signInWatch;
+
     private GrokSignInWindow()
     {
         InitializeComponent();
@@ -34,19 +42,71 @@ public sealed partial class GrokSignInWindow : Window
         AppWindow.MoveAndResize(new RectInt32(work.X + (work.Width - size.Width) / 2, work.Y + (work.Height - size.Height) / 2,
             size.Width, size.Height));
 
+        // Signing in can finish without a full page load (a popup, or the app routing itself), so
+        // look again every few seconds as well as after each load.
+        _signInWatch = DispatcherQueue.CreateTimer();
+        _signInWatch.Interval = TimeSpan.FromSeconds(3);
+        _signInWatch.IsRepeating = true;
+        _signInWatch.Tick += (_, _) => _ = ProbeSignInAsync();
+
         Closed += (_, _) =>
         {
+            _signInWatch.Stop();
             _open = null;
             Finished?.Invoke();
         };
         _ = StartAsync();
     }
 
-    /// <summary>Opens the window, or brings the open one forward.</summary>
-    public static void Show()
+    /// <summary>
+    /// Opens the window, or brings the open one forward. <paramref name="closeWhenSignedIn"/>: it's
+    /// for signing in, so it closes itself once that's done.
+    /// </summary>
+    public static void Show(bool closeWhenSignedIn = false)
     {
         _open ??= new GrokSignInWindow();
+        _open._closeWhenSignedIn = closeWhenSignedIn;
+        if (closeWhenSignedIn)
+            _open._signInWatch.Start();
+        else
+            _open._signInWatch.Stop();
         _open.Activate();
+    }
+
+    /// <summary>On grok.com, asks for usage the way the drawer does; an answer means signed in.</summary>
+    private async Task ProbeSignInAsync()
+    {
+        if (!_closeWhenSignedIn || _closing || Browser.CoreWebView2 is not { } web
+            || !Uri.TryCreate(web.Source, UriKind.Absolute, out var page)
+            || !page.Host.Equals("grok.com", StringComparison.OrdinalIgnoreCase))
+            return;
+        try
+        {
+            await web.ExecuteScriptAsync(GrokUsage.FetchScript);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The page went away mid-probe; the next one will try again.
+        }
+    }
+
+    private void OnWebMessage(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        string? message;
+        try { message = args.TryGetWebMessageAsString(); }
+        catch (ArgumentException) { return; }
+        // ReadReply saves the answer, so the drawer has the numbers straight away.
+        if (!_closeWhenSignedIn || _closing || GrokUsage.ReadReply(message) is not { Usage: not null })
+            return;
+
+        _closing = true;
+        _signInWatch.Stop();
+        StatusLine.Text = "Signed in. Agent Dock can now show your Grok Build usage.";
+        var close = DispatcherQueue.CreateTimer();
+        close.Interval = TimeSpan.FromSeconds(1.2);
+        close.IsRepeating = false;
+        close.Tick += (_, _) => Close();
+        close.Start();
     }
 
     private async Task StartAsync()
@@ -56,6 +116,8 @@ public sealed partial class GrokSignInWindow : Window
             Directory.CreateDirectory(GrokUsage.DataFolder);
             var environment = await CoreWebView2Environment.CreateWithOptionsAsync("", GrokUsage.DataFolder, new CoreWebView2EnvironmentOptions());
             await Browser.EnsureCoreWebView2Async(environment);
+            Browser.CoreWebView2.WebMessageReceived += OnWebMessage;
+            Browser.CoreWebView2.NavigationCompleted += (_, _) => _ = ProbeSignInAsync();
             Browser.Source = UsagePage;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

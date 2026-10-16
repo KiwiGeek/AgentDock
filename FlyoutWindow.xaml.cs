@@ -2563,7 +2563,7 @@ public sealed partial class FlyoutWindow : Window
         if (_drawerItem is not null && CommandName(_drawerItem.Definition.Command) == "grok")
         {
             HideFlyout();
-            GrokSignInWindow.Show();
+            GrokSignInWindow.Show(closeWhenSignedIn: true);
             return;
         }
         if (_drawerItem is null || UsageAccount.For(_drawerItem.Definition) is not { Agent: "claude" } account)
