@@ -25,7 +25,9 @@ namespace AgentDock;
 /// </summary>
 public sealed partial class FlyoutWindow : Window
 {
-    private const double ListWidthDip = 380;
+    /// <summary>The banner plus the list itself (380). Matches ListColumn and FooterContent in the XAML.</summary>
+    private const double ListWidthDip = 412;
+    private const double BannerWidthDip = 32;
     /// <summary>How far the window grows when the drawer is open.</summary>
     private const double DrawerWidthDip = 240;
     private const double HoverBackdropOpacity = 0.3;
@@ -62,6 +64,8 @@ public sealed partial class FlyoutWindow : Window
     private bool _loadingFolders;
     /// <summary>False while the settings switch is being set from state, so that doesn't count as a change.</summary>
     private bool _settingsToggleReady;
+    /// <summary>Why agents.json couldn't be read this time, if it couldn't.</summary>
+    private string? _settingsError;
 
     public FlyoutWindow(SettingsStore store)
     {
@@ -171,6 +175,7 @@ public sealed partial class FlyoutWindow : Window
         AppWindow.Show(activateWindow: true);
         BringToFront();
         PlayOpenAnimation();
+        SyncHearts();
         DispatcherQueue.TryEnqueue(FocusFirstAgent);
 
         if (!_sinceShellRefresh.IsRunning || _sinceShellRefresh.Elapsed > ShellRefreshInterval
@@ -185,6 +190,7 @@ public sealed partial class FlyoutWindow : Window
         _hiddenByDeactivation = byDeactivation;
         _sinceHide.Restart();
         AppWindow.Hide();
+        SyncHearts();
         // Don't reopen with the last hover's image, the drawer, or the settings page showing.
         FadeBackdrop(null, spansDrawer: false);
         CloseDrawer(animate: false);
@@ -216,16 +222,321 @@ public sealed partial class FlyoutWindow : Window
         first?.Focus(FocusState.Programmatic);
     }
 
+    // ---------- Banner ----------
+
+    private const double BannerInsetDip = 14;
+    /// <summary>Matches the fill's Opacity in the XAML.</summary>
+    private const double BannerFillOpacity = 0.7;
+
+    private void Banner_SizeChanged(object sender, SizeChangedEventArgs e) => LayoutBanner();
+
+    /// <summary>The heart goes with the waifu pictures: shown when they're on.</summary>
+    private void UpdateBannerHeart()
+    {
+        BannerHeart.Visibility = _state.ShowHoverBackgrounds ? Visibility.Visible : Visibility.Collapsed;
+        LayoutBanner();
+        SyncHearts();
+    }
+
+    // Banner colours: the accent by default, the highlighted agent's colour while one is.
+
+    private readonly Dictionary<string, Windows.UI.Color?> _themeColors = new(StringComparer.OrdinalIgnoreCase);
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _bannerResetTimer;
+    private Storyboard? _bannerColorFade;
+    /// <summary>The picture whose colour the banner should show; a late result for another one is dropped.</summary>
+    private string? _bannerColorSource;
+
+    /// <summary>The agent's picture when waifus are on (and it has one), otherwise its logo.</summary>
+    private string? ThemeSourceFor(AgentItem item) =>
+        _state.ShowHoverBackgrounds && item.BackgroundSource is { } background ? background : item.IconSource;
+
+    /// <summary>
+    /// The agent's "color" setting, else the colour of its picture (or logo, with waifus off): hand-picked
+    /// for built-in pictures, worked out from the image otherwise.
+    /// </summary>
+    private async void ColorBannerFor(AgentItem? item)
+    {
+        _bannerResetTimer?.Stop();
+        if (item is not null && ThemeColors.Parse(item.Definition.Color) is { } configured)
+        {
+            _bannerColorSource = item.Definition.Id;
+            SetBannerColors(configured);
+            return;
+        }
+
+        var source = item is not null ? ThemeSourceFor(item) : null;
+        _bannerColorSource = source;
+        if (source is null)
+        {
+            SetBannerColors(null);
+            return;
+        }
+
+        if (AgentIcons.IsBundledBackground(source) && ThemeColors.ForBundledBackground(source) is { } picked)
+        {
+            SetBannerColors(picked);
+            return;
+        }
+
+        if (!_themeColors.TryGetValue(source, out var color))
+        {
+            color = await LoadThemeColorAsync(source);
+            _themeColors[source] = color;
+            if (!string.Equals(_bannerColorSource, source, StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+        SetBannerColors(color);
+    }
+
+    private static async Task<Windows.UI.Color?> LoadThemeColorAsync(string source)
+    {
+        try
+        {
+            using var stream = AgentIcons.IsBundledBackground(source)
+                ? AgentIcons.OpenBundledBackground(source)?.AsRandomAccessStream()
+                : await ShellIcons.OpenAsync(source);
+            return stream is null ? null : await ThemeColors.FromStreamAsync(stream);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null; // the accent colour, then
+        }
+    }
+
+    /// <summary>
+    /// Back to the accent colour shortly after the pointer leaves, unless it lands on another agent (or
+    /// the drawer) first, so moving between rows doesn't flash the accent.
+    /// </summary>
+    private void ScheduleBannerReset()
+    {
+        if (_bannerResetTimer is null)
+        {
+            _bannerResetTimer = DispatcherQueue.CreateTimer();
+            _bannerResetTimer.Interval = TimeSpan.FromMilliseconds(250);
+            _bannerResetTimer.IsRepeating = false;
+            _bannerResetTimer.Tick += (_, _) =>
+            {
+                _bannerColorSource = null;
+                SetBannerColors(null);
+            };
+        }
+        _bannerResetTimer.Start();
+    }
+
+    /// <summary>
+    /// Fades the banner to an agent's colour, or to the accent colours for the current theme when
+    /// <paramref name="agentColor"/> is null.
+    /// </summary>
+    private void SetBannerColors(Windows.UI.Color? agentColor, bool animate = true)
+    {
+        Windows.UI.Color bottom, top;
+        if (agentColor is { } color)
+        {
+            var tamed = ThemeColors.Tame(color);
+            (bottom, top) = (ThemeColors.Shade(tamed, 0.15), ThemeColors.Shade(tamed, -0.2));
+        }
+        else
+        {
+            var light = Banner.ActualTheme == ElementTheme.Light;
+            bottom = AccentColor(light ? "SystemAccentColorDark2" : "SystemAccentColorLight2");
+            top = AccentColor(light ? "SystemAccentColorDark1" : "SystemAccentColorLight1");
+        }
+        // The fill is translucent, so pick the text colour against what shows: the fill over the flyout.
+        var behind = Banner.ActualTheme == ElementTheme.Light
+            ? Windows.UI.Color.FromArgb(255, 0xF3, 0xF3, 0xF3)
+            : Windows.UI.Color.FromArgb(255, 0x20, 0x20, 0x20);
+        var text = ThemeColors.TextOn(ThemeColors.Over(bottom, behind, BannerFillOpacity));
+
+        _bannerColorFade?.Stop();
+        if (!animate || !AppWindow.IsVisible || !new Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+        {
+            BannerStopBottom.Color = bottom;
+            BannerStopTop.Color = top;
+            BannerTextBrush.Color = text;
+            return;
+        }
+
+        var storyboard = new Storyboard();
+        Add(BannerStopBottom, bottom);
+        Add(BannerStopTop, top);
+        Add(BannerTextBrush, text);
+        _bannerColorFade = storyboard;
+        storyboard.Begin();
+
+        void Add(DependencyObject target, Windows.UI.Color to)
+        {
+            // Gradient stops and brushes aren't composition properties, so these run on the UI thread.
+            var fade = new ColorAnimation
+            {
+                To = to, Duration = new Duration(TimeSpan.FromMilliseconds(450)), EnableDependentAnimation = true,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(fade, target);
+            Storyboard.SetTargetProperty(fade, "Color");
+            storyboard.Children.Add(fade);
+        }
+    }
+
+    private static Windows.UI.Color AccentColor(string key) =>
+        Application.Current.Resources.TryGetValue(key, out var value) && value is Windows.UI.Color color
+            ? color
+            : Windows.UI.Color.FromArgb(255, 0, 120, 212);
+
+    // Hearts: the banner's heart beats, and small hearts float up from it.
+
+    private Storyboard? _heartbeat;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _floatTimer;
+    private readonly Random _random = new();
+    private const double HeartbeatSeconds = 1.6;
+
+    /// <summary>Runs the hearts only while they can be seen.</summary>
+    private void SyncHearts()
+    {
+        var run = AppWindow.IsVisible && BannerHeart.Visibility == Visibility.Visible
+                  && new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+        if (run)
+            StartHearts();
+        else
+            StopHearts();
+    }
+
+    private void StartHearts()
+    {
+        if (_heartbeat is null)
+        {
+            _heartbeat = new Storyboard { RepeatBehavior = RepeatBehavior.Forever };
+            foreach (var property in new[] { "ScaleX", "ScaleY" })
+            {
+                // Two quick beats, then a rest.
+                var beat = new DoubleAnimationUsingKeyFrames();
+                foreach (var (seconds, scale) in new[] { (0.0, 1.0), (0.12, 1.3), (0.24, 1.0), (0.36, 1.2), (0.52, 1.0), (HeartbeatSeconds, 1.0) })
+                    beat.KeyFrames.Add(new EasingDoubleKeyFrame
+                    {
+                        KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromSeconds(seconds)), Value = scale,
+                        EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                    });
+                Storyboard.SetTarget(beat, BannerHeartTransform);
+                Storyboard.SetTargetProperty(beat, property);
+                _heartbeat.Children.Add(beat);
+            }
+        }
+        _heartbeat.Begin();
+
+        if (_floatTimer is null)
+        {
+            _floatTimer = DispatcherQueue.CreateTimer();
+            _floatTimer.Interval = TimeSpan.FromSeconds(HeartbeatSeconds);
+            _floatTimer.IsRepeating = true;
+            _floatTimer.Tick += (_, _) => FloatHeart();
+        }
+        _floatTimer.Start();
+    }
+
+    private void StopHearts()
+    {
+        _heartbeat?.Stop();
+        _floatTimer?.Stop();
+        foreach (var floater in BannerCanvas.Children.OfType<TextBlock>().Where(t => t.Tag is "float").ToList())
+            BannerCanvas.Children.Remove(floater);
+    }
+
+    /// <summary>A small sideways heart that drifts up the banner from the big one and fades away.</summary>
+    private void FloatHeart()
+    {
+        var heartTop = Canvas.GetTop(BannerHeart) + BannerHeart.DesiredSize.Height / 2 - BannerHeart.DesiredSize.Width / 2;
+        var room = heartTop - 8;
+        if (room < 30)
+            return;
+
+        var transform = new Microsoft.UI.Xaml.Media.CompositeTransform { Rotation = -90 };
+        var heart = new TextBlock
+        {
+            Text = BannerHeart.Text, FontSize = 8 + _random.Next(5), Tag = "float", Opacity = 0,
+            IsHitTestVisible = false, RenderTransform = transform
+        };
+        heart.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = heart.DesiredSize;
+        transform.CenterX = size.Width / 2;
+        transform.CenterY = size.Height / 2;
+        Canvas.SetLeft(heart, BannerWidthDip / 2 - size.Width / 2);
+        Canvas.SetTop(heart, heartTop - size.Height / 2);
+        BannerCanvas.Children.Add(heart);
+
+        var duration = TimeSpan.FromSeconds(2.2);
+        var storyboard = new Storyboard();
+        var rise = new DoubleAnimation
+        {
+            To = -Math.Min(room, 70 + _random.Next(60)), Duration = duration,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Storyboard.SetTarget(rise, transform);
+        Storyboard.SetTargetProperty(rise, "TranslateY");
+        var sway = new DoubleAnimation
+        {
+            From = -3, To = 3, Duration = TimeSpan.FromSeconds(0.55), AutoReverse = true,
+            RepeatBehavior = new RepeatBehavior(2), BeginTime = TimeSpan.FromSeconds(_random.NextDouble() * 0.3)
+        };
+        Storyboard.SetTarget(sway, transform);
+        Storyboard.SetTargetProperty(sway, "TranslateX");
+        var fade = new DoubleAnimationUsingKeyFrames();
+        foreach (var (seconds, opacity) in new[] { (0.0, 0.0), (0.3, 0.9), (1.2, 0.7), (duration.TotalSeconds, 0.0) })
+            fade.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromSeconds(seconds)), Value = opacity });
+        Storyboard.SetTarget(fade, heart);
+        Storyboard.SetTargetProperty(fade, "Opacity");
+        storyboard.Children.Add(rise);
+        storyboard.Children.Add(sway);
+        storyboard.Children.Add(fade);
+        storyboard.Completed += (_, _) => BannerCanvas.Children.Remove(heart);
+        storyboard.Begin();
+    }
+
+    /// <summary>
+    /// Turns the banner text to read bottom to top, ending <see cref="BannerInsetDip"/> above the
+    /// bottom edge, with the heart upright above it.
+    /// </summary>
+    private void LayoutBanner()
+    {
+        var height = Banner.ActualHeight;
+        if (height <= 0)
+            return;
+
+        var unbounded = new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity);
+        BannerText.Measure(unbounded);
+        var length = BannerText.DesiredSize.Width;
+        var thickness = BannerText.DesiredSize.Height;
+        var bottom = height - BannerInsetDip;
+
+        // Rotating -90° about the top-left corner puts the text in x 0..thickness, y -length..0.
+        BannerText.RenderTransform = new Microsoft.UI.Xaml.Media.CompositeTransform
+        {
+            Rotation = -90,
+            TranslateX = Math.Round((BannerWidthDip - thickness) / 2),
+            TranslateY = Math.Round(bottom)
+        };
+
+        // The heart turns about its centre, so its (unturned) width is how much banner it takes up.
+        BannerHeart.Measure(unbounded);
+        var heart = BannerHeart.DesiredSize;
+        BannerHeartTransform.CenterX = heart.Width / 2;
+        BannerHeartTransform.CenterY = heart.Height / 2;
+        var centreY = bottom - length - 8 - heart.Width / 2;
+        Canvas.SetLeft(BannerHeart, Math.Round(BannerWidthDip / 2 - heart.Width / 2));
+        Canvas.SetTop(BannerHeart, Math.Round(centreY - heart.Height / 2));
+    }
+
     // ---------- Data ----------
 
     private void ReloadData()
     {
-        (_settings, var settingsError) = _store.LoadSettings();
+        (_settings, _settingsError) = _store.LoadSettings();
         _state = _store.LoadState();
         (_presetList, _presetsError) = _store.LoadPresets();
-        StatusText.Text = settingsError ?? _presetsError ?? "";
+        StatusText.Text = _settingsError ?? _presetsError ?? "";
         Autostart.Apply(_settings.StartWithWindows);
 
+        UpdateBannerHeart();
+        _bannerColorSource = null;
+        SetBannerColors(null, animate: false);
         LoadFolders();
         // Fast pass: PATH lookups plus whatever desktop apps were found last time.
         ShowAgents(AgentCatalog.Resolve(_settings, def => _state.DesktopApps.GetValueOrDefault(def.Id)));
@@ -469,6 +780,12 @@ public sealed partial class FlyoutWindow : Window
         _settingsToggleReady = false;
         HoverBackgroundsSwitch.IsOn = _state.ShowHoverBackgrounds;
         RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
+        HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
+        // Lives in agents.json, which is only changed when it reads cleanly (TrySetHideUnavailable).
+        HideUnavailableSwitch.IsEnabled = _settingsError is null;
+        HideUnavailableNote.Text = _settingsError is null
+            ? "Hide agents that aren't installed, instead of showing them dimmed."
+            : "Fix agents.json to change this here.";
         _settingsToggleReady = true;
 
         MainPage.Visibility = Visibility.Collapsed;
@@ -495,8 +812,26 @@ public sealed partial class FlyoutWindow : Window
             return;
         _state.ShowHoverBackgrounds = HoverBackgroundsSwitch.IsOn;
         _store.SaveState(_state);
+        UpdateBannerHeart();
         if (!_state.ShowHoverBackgrounds)
             FadeBackdrop(null, spansDrawer: false);
+    }
+
+    private void HideUnavailableSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsToggleReady || _settings.HideUnavailable == HideUnavailableSwitch.IsOn)
+            return;
+        if (!_store.TrySetHideUnavailable(HideUnavailableSwitch.IsOn))
+        {
+            _settingsToggleReady = false;
+            HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
+            _settingsToggleReady = true;
+            HideUnavailableNote.Text = "agents.json couldn't be changed. Edit hideUnavailable there instead.";
+            return;
+        }
+        _settings.HideUnavailable = HideUnavailableSwitch.IsOn;
+        // The list behind the settings page; it's sized again on the way back.
+        ShowAgents(_agents.ToList());
     }
 
     private void RecentFoldersSwitch_Toggled(object sender, RoutedEventArgs e)
@@ -1111,6 +1446,12 @@ public sealed partial class FlyoutWindow : Window
         public bool SpansDrawer { get; set; }
     }
 
+    /// <summary>
+    /// Where the subject of the built-in pictures stands, as a fraction of the picture's width
+    /// (measured on the Amp and Claude pictures: 0.72–0.73).
+    /// </summary>
+    private const double BackdropSubjectX = 0.72;
+
     private readonly Dictionary<string, BitmapImage> _backdrops = new(StringComparer.OrdinalIgnoreCase);
     private BackdropLayer[]? _layers;
     private int _activeLayer;
@@ -1119,9 +1460,14 @@ public sealed partial class FlyoutWindow : Window
     private BackdropLayer[] Layers => _layers ??=
         [new BackdropLayer(HoverImageA), new BackdropLayer(HoverImageB)];
 
+    /// <summary>The row under the pointer, if any.</summary>
+    private AgentItem? _hoverItem;
+
     private void AgentRow_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         var item = ((FrameworkElement)sender).DataContext as AgentItem;
+        _hoverItem = item;
+        ColorBannerFor(item);
         var previous = _drawerOpen && !_drawerClosing ? _drawerItem : null;
         var drawer = item is not null && PrepareDrawer(item);
         // Switching an open drawer to another agent: fade its new content in rather than swapping it.
@@ -1140,6 +1486,8 @@ public sealed partial class FlyoutWindow : Window
 
     private void AgentRow_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        _hoverItem = null;
+        ScheduleBannerReset();
         // Moving into the drawer should keep the picture. It fades when the drawer actually closes,
         // or straight away when the row had no drawer.
         if (_state.ShowHoverBackgrounds && !_drawerOpen)
@@ -1220,6 +1568,7 @@ public sealed partial class FlyoutWindow : Window
         }
         _backdropFade = storyboard;
         storyboard.Begin();
+        TraceBackdrop(path is null ? "fade-out" : "fade-in");
     }
 
     private Storyboard? _drawerContentFade;
@@ -1266,6 +1615,33 @@ public sealed partial class FlyoutWindow : Window
             LayoutBackdrop(layer);
     }
 
+    // TEMP: trace for the picture shifting while the drawer closes. Remove once fixed.
+    [Conditional("DEBUG")]
+    private void TraceBackdrop(string reason)
+    {
+        try
+        {
+            var scale = Root.XamlRoot?.RasterizationScale ?? 1;
+            var pos = AppWindow.Position;
+            var line = new System.Text.StringBuilder()
+                .Append($"{DateTime.Now:HH:mm:ss.fff} {reason,-12} win x={pos.X} y={pos.Y} w={AppWindow.Size.Width} h={AppWindow.Size.Height}")
+                .Append($" drawer={DrawerDip():0.0} side={_drawerSide} open={_drawerOpen} closing={_drawerClosing} rootH={Root.ActualHeight:0.0}");
+            for (var i = 0; i < Layers.Length; i++)
+            {
+                var layer = Layers[i];
+                var img = layer.Image;
+                var subjectScreenX = pos.X + (img.Margin.Left + img.Width * BackdropSubjectX) * scale;
+                line.Append($" | L{i}{(i == _activeLayer ? "*" : "")} {System.IO.Path.GetFileName(layer.Path ?? "-")} op={img.Opacity:0.00} span={layer.SpansDrawer}")
+                    .Append($" left={img.Margin.Left:0.0} top={img.Margin.Top:0.0} w={img.Width:0.0} subjX={subjectScreenX:0}");
+            }
+            File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AgentDock", "backdrop-trace.log"), line.AppendLine().ToString());
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+        }
+    }
+
     /// <summary>Lays out every layer again, e.g. when the drawer opens on a different side.</summary>
     private void LayoutBackdrop()
     {
@@ -1289,14 +1665,20 @@ public sealed partial class FlyoutWindow : Window
         var imageHeight = image.PixelHeight * scale;
         // Right side: the window's left edge is the canvas left, so this margin stays put as the
         // window grows right. Left side: keep the picture's right edge on the list's right edge,
-        // which stays put while the window grows left.
-        var left = layer.SpansDrawer && _drawerSide < 0
-            ? ListWidthDip + DrawerDip() - width
-            : canvasWidth - width;
+        // which stays put while the window grows left. No drawer: centre the subject in the list,
+        // as far as the picture still covers it. A drawer still closing on the left puts the list
+        // after it, so measure from the list: the window's left edge moves as the drawer shrinks.
+        var listLeft = _drawerOpen && _drawerSide < 0 ? DrawerDip() : 0;
+        var left = !layer.SpansDrawer
+            ? listLeft + Math.Clamp(BannerWidthDip + (ListWidthDip - BannerWidthDip) / 2 - width * BackdropSubjectX, canvasWidth - width, 0)
+            : _drawerSide < 0
+                ? ListWidthDip + DrawerDip() - width
+                : canvasWidth - width;
 
         layer.Image.Width = width;
         layer.Image.Height = imageHeight;
         layer.Image.Margin = new Thickness(left, (height - imageHeight) / 2, 0, 0);
+        TraceBackdrop("layout");
     }
 
     // ---------- Drawer ----------
@@ -1318,12 +1700,18 @@ public sealed partial class FlyoutWindow : Window
     private void Drawer_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         _drawerCloseTimer?.Stop();
+        // The drawer belongs to the agent, so the banner keeps its colour.
+        _bannerResetTimer?.Stop();
         // The row's pointer-exit may already have started fading the picture. Bring it back.
         if (_state.ShowHoverBackgrounds && _drawerItem?.BackgroundSource is { } source)
             FadeBackdrop(source, spansDrawer: true);
     }
 
-    private void Drawer_PointerExited(object sender, PointerRoutedEventArgs e) => ScheduleDrawerClose();
+    private void Drawer_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        ScheduleDrawerClose();
+        ScheduleBannerReset();
+    }
 
     /// <summary>The animated width changed, so the window grows or shrinks with it.</summary>
     private void OnDrawerWidthChanged(DependencyObject sender, DependencyProperty dp)
@@ -1360,7 +1748,8 @@ public sealed partial class FlyoutWindow : Window
             _drawerCloseTimer.IsRepeating = false;
             _drawerCloseTimer.Tick += (_, _) =>
             {
-                if (_state.ShowHoverBackgrounds)
+                // The pointer may have moved onto an agent without a drawer, whose picture is fading in.
+                if (_state.ShowHoverBackgrounds && _hoverItem is null)
                     FadeBackdrop(null, spansDrawer: false);
                 CloseDrawer(animate: true);
             };
@@ -1428,6 +1817,7 @@ public sealed partial class FlyoutWindow : Window
 
     private void FinishDrawerClose()
     {
+        TraceBackdrop("finish-pre");
         _drawerClosing = false;
         _drawerOpen = false;
         DrawerHost.Width = 0;
@@ -1438,6 +1828,8 @@ public sealed partial class FlyoutWindow : Window
         // Back to the list on its own, including height: the status line may need to wrap again.
         if (AppWindow.IsVisible)
             PlaceWindow();
+        TraceBackdrop("finish-post");
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => TraceBackdrop("finish-later"));
     }
 
     /// <summary>
@@ -1479,6 +1871,7 @@ public sealed partial class FlyoutWindow : Window
             // Cubic ease-out while opening, ease-in while closing. Same curve as the old storyboard.
             var eased = opening ? 1 - Math.Pow(1 - t, 3) : Math.Pow(t, 3);
             DrawerHost.Width = _drawerSlideFrom + (_drawerSlideTo - _drawerSlideFrom) * eased;
+            TraceBackdrop("slide");
             if (t < 1)
                 return;
             var completed = _drawerSlideCompleted;

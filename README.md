@@ -97,7 +97,9 @@ moment longer.
 ## Configuration
 
 `%APPDATA%\AgentDock\agents.json` is created on first run. Comments and trailing commas are allowed.
-Agents that aren't installed are hidden unless you set `hideUnavailable` to `false`.
+Agents that aren't installed are hidden unless you set `hideUnavailable` to `false`, or turn off
+**Hide unavailable agents** on the settings page (the gear in the footer). The switch changes only
+that value in `agents.json` and leaves the rest of the file, comments included, as it was.
 
 ```jsonc
 {
@@ -116,6 +118,9 @@ Agents that aren't installed are hidden unless you set `hideUnavailable` to `fal
     // Your own picture to fade in behind the flyout while the pointer is over this agent (and its
     // presets), instead of the built-in one
     { "id": "aider", "name": "Aider", "command": "aider", "background": "my-aider.png" },
+
+    // The colour the banner on the left takes on while this agent is highlighted
+    { "id": "goose", "name": "Goose", "command": "goose", "color": "#4C6B3A" },
 
     // Desktop: found by Start menu name...
     { "id": "claude-desktop", "name": "Claude", "kind": "desktop", "startMenuNames": ["Claude"] },
@@ -177,15 +182,22 @@ plan provided by an organisation isn't available this way. Results are cached fo
 ### Icons
 
 Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,
-`codex`, `gemini`, `copilot`, `opencode`, `claude-desktop`, `chatgpt-desktop`, `copilot-desktop`,
+`codex`, `gemini`, `copilot`, `opencode`, `aider`, `qwen`, `cursor-cli`, `amp`, `kiro`, `goose`,
+`crush`, `droid`, `grok`, `hermes`, `deepseek`, `claude-desktop`, `chatgpt-desktop`, `copilot-desktop`,
 `perplexity`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
 under any id. An `icon` setting overrides that. Desktop apps without either use the icon the Start
 menu shows. Anything else gets a plain terminal or app symbol.
 
 Hover pictures are built in the same way, as `Assets\Agents\<agent id>-background.png` (currently
-Aider, Claude Code, Codex, Copilot, DeepSeek, Gemini, Grok, OpenCode, Perplexity and Qwen), matched
+Aider, Amp, ChatGPT, Claude, Claude Code, Codex, Copilot, Copilot desktop, Crush, Cursor, Cursor CLI,
+DeepSeek, Factory Droid, Gemini, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
 by agent id or command name. A `background` setting overrides one. Turn them off with **Waifu
-backgrounds** on the settings page (the gear in the footer). That choice is saved in `state.json`.
+backgrounds** on the settings page (the gear in the footer), which also hides the hearts on the
+banner. That choice is saved in `state.json`.
+
+The banner down the left of the flyout takes on the colour of whichever agent is highlighted: a
+colour picked for its picture while waifu backgrounds are on, or one taken from its logo when they're
+off. Black and white logos keep your Windows accent colour. A `color` setting overrides either.
 
 `state.json` in the same folder holds recent folders, the last few folders Claude Code was opened
 in, cached app ids, and whether waifu backgrounds and recent folders are on. Start menu icons are

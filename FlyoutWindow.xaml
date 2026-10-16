@@ -83,8 +83,44 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Grid x:Name="ListColumn" Width="380">
-        <Grid x:Name="MainPage">
+            <Grid x:Name="ListColumn" Width="412">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="32" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!--
+                    Banner, after the Windows 98 Start menu's. Accent colours by default; it takes on the
+                    highlighted agent's colour (SetBannerColors). The text reads bottom to top; it's rotated and
+                    placed in code (LayoutBanner), since WinUI has no layout transform. A Canvas, so the text's
+                    length doesn't affect the flyout's height. The fill is translucent; the text isn't.
+                -->
+                <Grid x:Name="Banner" SizeChanged="Banner_SizeChanged" AutomationProperties.AccessibilityView="Raw">
+                    <Border Opacity="0.7">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                                <GradientStop x:Name="BannerStopBottom" Offset="0" />
+                                <GradientStop x:Name="BannerStopTop" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <Canvas x:Name="BannerCanvas">
+                        <TextBlock x:Name="BannerText" FontSize="18" CharacterSpacing="20" TextWrapping="NoWrap">
+                            <TextBlock.Foreground>
+                                <SolidColorBrush x:Name="BannerTextBrush" />
+                            </TextBlock.Foreground>
+                            <Run Text="Agent" FontWeight="Bold" /><Run Text=" Dock" FontWeight="SemiLight" />
+                        </TextBlock>
+                        <!-- Sideways like the text, and beating (StartHearts). -->
+                        <TextBlock x:Name="BannerHeart" Text="&#x2764;&#xFE0F;" FontSize="14" Visibility="Collapsed">
+                            <TextBlock.RenderTransform>
+                                <CompositeTransform x:Name="BannerHeartTransform" Rotation="-90" />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Canvas>
+                </Grid>
+
+        <Grid x:Name="MainPage" Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -157,7 +193,7 @@
         </Grid>
 
         <!-- Settings. Same window as the list, so placement, acrylic and hide-on-deactivate stay as they are. -->
-        <StackPanel x:Name="SettingsPage" Grid.Row="0" Visibility="Collapsed" VerticalAlignment="Top">
+        <StackPanel x:Name="SettingsPage" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Top">
             <Grid Padding="8,12,16,0" ColumnSpacing="8">
                 <Grid.Resources>
                     <!-- Same borderless buttons as the footer. -->
@@ -212,6 +248,25 @@
                               Toggled="HoverBackgroundsSwitch_Toggled"
                               AutomationProperties.Name="Waifu backgrounds"
                               AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
+            </Grid>
+
+            <TextBlock Text="Agents" Style="{StaticResource SectionHeaderStyle}" />
+            <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="Hide unavailable agents" />
+                    <TextBlock x:Name="HideUnavailableNote" Text="Hide agents that aren't installed, instead of showing them dimmed."
+                               TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <ToggleSwitch x:Name="HideUnavailableSwitch" Grid.Column="1" MinWidth="0"
+                              VerticalAlignment="Center" OffContent="" OnContent=""
+                              Toggled="HideUnavailableSwitch_Toggled"
+                              AutomationProperties.Name="Hide unavailable agents"
+                              AutomationProperties.HelpText="Hide agents that aren't installed, instead of showing them dimmed." />
             </Grid>
 
             <TextBlock Text="Recents" Style="{StaticResource SectionHeaderStyle}" />
@@ -320,7 +375,8 @@
         <Border x:Name="FooterBar" Grid.Row="1" BorderThickness="0,1,0,0"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}">
-            <Grid x:Name="FooterContent" Width="380" HorizontalAlignment="Left" Padding="16,6,8,6" ColumnSpacing="4">
+            <!-- Left padding lines the status text up with the list, past the banner. -->
+            <Grid x:Name="FooterContent" Width="412" HorizontalAlignment="Left" Padding="48,6,8,6" ColumnSpacing="4">
                 <Grid.Resources>
                     <!-- Lightweight styling: borderless buttons, like the Start menu's footer. -->
                     <ResourceDictionary>

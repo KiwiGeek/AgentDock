@@ -73,7 +73,8 @@ internal sealed class ShellIcons
         }
     }
 
-    private static async Task<IRandomAccessStream?> OpenAsync(string source)
+    /// <summary>The icon's image data: compiled in, an image file, or the disk cache. Null if there's none yet.</summary>
+    public static async Task<IRandomAccessStream?> OpenAsync(string source)
     {
         if (AgentIcons.IsBundled(source))
             return AgentIcons.OpenBundled(source)?.AsRandomAccessStream();

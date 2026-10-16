@@ -29,6 +29,12 @@ public sealed class AgentDefinition
     public string? Background { get; set; }
 
     /// <summary>
+    /// Optional "#RRGGBB" the banner takes on while this agent is highlighted. Without it, the colour
+    /// comes from the agent's picture (waifu backgrounds on) or its logo.
+    /// </summary>
+    public string? Color { get; set; }
+
+    /// <summary>
     /// GitHub Copilot: premium requests included in the plan each month (e.g. 300 for Copilot Pro).
     /// GitHub's API reports only what's been used, so this turns that into a bar.
     /// </summary>
@@ -87,11 +93,26 @@ public sealed class DockSettings
             new() { Id = "gemini",   Name = "Gemini CLI",         Command = "gemini" },
             new() { Id = "copilot",  Name = "GitHub Copilot CLI", Command = "copilot" },
             new() { Id = "opencode", Name = "OpenCode",           Command = "opencode" },
+            // Placeholders under review (tasks.md): commands not yet checked, no icons yet.
+            new() { Id = "aider",    Name = "Aider",              Command = "aider" },
+            new() { Id = "qwen",     Name = "Qwen Code",          Command = "qwen" },
+            new() { Id = "cursor-cli", Name = "Cursor CLI",       Command = "cursor-agent" },
+            new() { Id = "amp",      Name = "Amp",                Command = "amp" },
+            new() { Id = "kiro",     Name = "Kiro CLI",           Command = "kiro-cli" },
+            new() { Id = "goose",    Name = "Goose",              Command = "goose" },
+            new() { Id = "crush",    Name = "Crush",              Command = "crush" },
+            new() { Id = "droid",    Name = "Factory Droid",      Command = "droid" },
+            new() { Id = "grok",     Name = "Grok Build",         Command = "grok" },
+            new() { Id = "hermes",   Name = "Hermes Agent",       Command = "hermes" },
+            // Serves a web UI and opens it in the browser; the terminal keeps the server running.
+            new() { Id = "deepseek", Name = "DeepSeek Harness",   Command = "dsh", Arguments = "web" },
 
             new() { Id = "claude-desktop",  Name = "Claude",     Kind = AgentKind.Desktop, StartMenuNames = ["Claude"] },
             new() { Id = "chatgpt-desktop", Name = "ChatGPT",    Kind = AgentKind.Desktop, StartMenuNames = ["ChatGPT"] },
             new() { Id = "copilot-desktop", Name = "Copilot",    Kind = AgentKind.Desktop, StartMenuNames = ["Copilot", "Microsoft Copilot"] },
             new() { Id = "perplexity",      Name = "Perplexity", Kind = AgentKind.Desktop, StartMenuNames = ["Perplexity"] },
+            // Placeholder under review (tasks.md).
+            new() { Id = "cursor",          Name = "Cursor",     Kind = AgentKind.Desktop, StartMenuNames = ["Cursor"] },
         ]
     };
 }

@@ -12,6 +12,12 @@ just above the taskbar button, listing AI agents:
 - **CLI agents** (Claude Code, Codex, Gemini CLI, GitHub Copilot CLI, OpenCode by default) launch
   in Windows Terminal, in a working folder chosen from a recent-folders drop-down or a folder picker.
 - **Desktop agents** (Claude, ChatGPT, Copilot, Perplexity by default) launch directly.
+- Placeholder defaults (Aider, Qwen Code, Cursor CLI, Amp, Kiro CLI, Goose, Crush, Factory Droid,
+  Grok Build, Hermes Agent, DeepSeek Harness, Cursor desktop) were added 2026-10-16 and are under review: see `tasks.md`.
+- There is no separate Codex desktop app: OpenAI merged it into the ChatGPT desktop app (July 2026).
+  It's installed as `OpenAI.Codex_2p2nqsd0c76g0!App` but named "ChatGPT", so `chatgpt-desktop` finds it.
+  A chatgpt.com site installed from Edge has the same Start menu name; `StartMenuApps.Load` prefers the
+  real app over such web apps (`IsWebApp`).
 
 Agents that aren't installed are hidden. On startup, if the exe isn't pinned to the taskbar,
 it asks the user to pin it and quits if they decline (see "Pin prompt" below). The list is user-editable in `agents.json`. Right-clicking
@@ -144,6 +150,25 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   hiding the flyout does too, so the next click opens the list. The page resizes the flyout to
   its content. Not yet verified in the running app (the build is clean).
 - Open animation: 250 ms slide + fade, skipped when Windows animations are off.
+- **Banner** (owner's request, after the Windows 98 Start menu): a 32 DIP strip on the list's left
+  edge, a gradient with "**Agent** Dock" reading bottom to top. The fill is 70% opaque
+  (`BannerFillOpacity` must match the XAML); the text isn't, and is black or white, picked against
+  the fill as it looks over the flyout. WinUI has no layout transform, so `LayoutBanner` rotates and
+  places the text in a Canvas.
+  - **Colour** (`SetBannerColors`): accent colours by default, and the highlighted agent's colour,
+    fading over 450 ms. Order: the agent's `color` setting, then with waifus on its picture's colour
+    (hand-picked for built-in pictures in `ThemeColors.BundledBackgrounds`, because automatic picking
+    turned nearly all of them skin-tone orange), else worked out from its logo (`ThemeColors.FromStreamAsync`,
+    good on logos; black and white logos get the accent). Leaving a row resets after 250 ms unless
+    the pointer lands on another row or the drawer.
+  - **Hearts** (waifus on only): a ❤️ above the text, turned sideways like it, beats twice every
+    1.6 s, and a small heart floats up the strip from it on each beat (`FloatHeart`). They run only
+    while the flyout is visible and Windows animations are on (`SyncHearts`).
+  - `ListWidthDip` (412) is the banner plus the 380 DIP list; `ListColumn` and `FooterContent` match it.
+    The footer's left padding lines its text up with the list, past the banner.
+  - With the drawer on the left, the banner sits between the drawer and the list.
+  - Verified by screenshot (2026-10-16): dark theme, translucent fill, sideways heart, white text.
+    **Not yet verified:** the colour change on hover, the heart animation, light theme.
 
 ### Pin prompt (`PinPromptWindow.xaml(.cs)`, `Interop/TaskbarPins.cs`)
 
@@ -250,17 +275,24 @@ there degrade to a missing icon or entry, never an error.
 | `Services/AgentIcons.cs` | Which icon an agent gets; compiled-in icon lookup; .ico files for the jump list |
 | `Services/ClaudeStatusLine.cs` | `--statusline` mode, saved Claude usage, and setting up Claude Code's status line |
 | `Services/CodexUsage.cs` | Codex plan usage, read from Codex's own session logs |
+| `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
 | `Services/CopilotUsage.cs` | GitHub Copilot premium requests this month, via `gh api` (billing API) |
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
+| `tasks.md` | Agreed work not yet started (placeholder agents, API-credit agents like DeepSeek) |
 
 ## Config and data
 
 - `%APPDATA%\AgentDock\agents.json`: user-edited. Comments and trailing commas allowed.
   A malformed file is never overwritten: defaults are used for that session and the footer shows
   the error with a line number. Schema is documented in `README.md`; keep the two in sync.
+  - The app never re-serialises it (that would drop comments). The one exception is the settings
+    page's "Hide unavailable agents" switch: `SettingsStore.TrySetHideUnavailable` replaces just
+    that value in the text (or adds it after the opening brace), checks the result reads back,
+    then writes. It refuses if the file is malformed or the property appears more than once
+    (e.g. also in a comment), and the switch reverts with a note. Not yet verified in-app.
 - `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids,
   whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
   folders).
@@ -294,6 +326,15 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
     is slightly soft at 200% scaling.
   - `codex`: openai.com/apple-icon.png, the OpenAI mark (180 px). Codex has no logo of its own on
     any official page or in its repo, so it looks like ChatGPT's. Replace it if one appears.
+- **Added 2026-10-16, at the owner's request** (scaled to at most 256 px):
+  - `aider`: the Aider-AI GitHub organisation's avatar (same mark as aider.chat's 180 px icon).
+  - `amp`: ampcode.com/app-icon-1024.png. `qwen`: the Qwen Code docs' favicon.png (512 px).
+  - `kiro`: kiro.dev/apple-icon.png (192 px). `grok`: grok.com's android-chrome-512x512.png.
+  - `goose`: the desktop app's icon in block/goose (`ui/desktop/src/images/icon-512.png`).
+  - `crush`: charm.land's 180 px touch icon (Charm's ">c_" mark; Crush has no logo of its own).
+  - `droid`: the Factory-AI GitHub organisation's avatar. `deepseek`: deepseek.com/favicon.ico (225 px).
+  - `cursor-cli`: cursor.com's icon-512x512.png. Cursor desktop keeps the icon from the Start menu.
+  - `hermes`: Hermes Agent's own icon from its site. Only 48 px, so it's soft at high scaling.
 
 ### Built: presets (an agent pinned to a folder, for work that repeats)
 
@@ -502,7 +543,9 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
   - Moving back onto the agent whose picture is still fading out fades that same layer back in.
   - Leaving a row fades both layers out. Moving into the open drawer does not: the picture stays
     until the drawer closes.
-  - Each layer's sizing is done by `LayoutBackdrop(layer)` (see Drawer).
+  - Each layer's sizing is done by `LayoutBackdrop(layer)` (see Drawer). For agents without a
+    drawer, the picture is shifted so its subject is centred in the list. The built-in pictures put
+    the character about 72% of the way across (`BackdropSubjectX`); new pictures should keep that layout.
   Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
 - **Not yet verified in-app:** loading from the embedded resources. The build embeds all 10, but
@@ -511,5 +554,6 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 ## Possible next steps (none requested yet; ask before starting)
 
 - ARM64 build in CI (needs ARM64 MSVC tools on the runner for Native AOT cross-compilation).
-- More of the settings page. It exists (gear in the footer) and turns waifu backgrounds and Claude's
-  recent folders on or off. Editing `agents.json` from the UI is still not built.
+- More of the settings page. It exists (gear in the footer) and turns waifu backgrounds, Claude's
+  recent folders and "Hide unavailable agents" on or off. Editing the agent list from the UI is
+  still not built.
