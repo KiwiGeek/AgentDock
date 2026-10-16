@@ -490,31 +490,18 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- Shown under Grok Build's page: its usage comes from grok.com, in Agent Dock's own sign-in. -->
+            <!-- Shown under Grok Build's and Cursor's pages: where their usage comes from. -->
             <StackPanel x:Name="GrokSettings" Visibility="Collapsed">
                 <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
-                <TextBlock Margin="16,0,16,8" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                <TextBlock Margin="16,0,16,16" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                           Text="Grok Build's usage comes from grok.com, through a sign-in that stays with Agent Dock. Open grok.com to sign in, sign out or switch accounts. This is not a published xAI API, and it can stop working." />
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,0,16,8">
-                    <Button Content="Open grok.com" Click="OpenGrok_Click" />
-                    <!-- Clears Agent Dock's own grok.com profile (asks first). Disabled before the first sign-in. -->
-                    <Button x:Name="GrokSignOutButton" Content="Sign out"
-                            AutomationProperties.HelpText="Sign Agent Dock out of grok.com. Your browser stays signed in.">
-                        <Button.Flyout>
-                            <Flyout x:Name="GrokSignOutFlyout">
-                                <StackPanel Spacing="12" MaxWidth="260">
-                                    <TextBlock TextWrapping="Wrap"
-                                               Text="Sign Agent Dock out of grok.com? Grok usage won't show until you sign in again. Your browser and Grok Build stay signed in." />
-                                    <Button Content="Sign out" Style="{StaticResource AccentButtonStyle}" Click="GrokSignOut_Click" />
-                                </StackPanel>
-                            </Flyout>
-                        </Button.Flyout>
-                    </Button>
-                </StackPanel>
-                <TextBlock x:Name="GrokSignOutNote" Margin="16,0,16,16" Visibility="Collapsed" TextWrapping="Wrap"
-                           Style="{StaticResource CaptionTextBlockStyle}"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                           Text="Grok Build's usage comes from grok.com, using Grok Build's own sign-in. To switch accounts, sign in again in Grok Build. This is not a published xAI API, and it can stop working." />
+            </StackPanel>
+            <StackPanel x:Name="CursorSettings" Visibility="Collapsed">
+                <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                <TextBlock Margin="16,0,16,16" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="Cursor's usage comes from cursor.com, using Cursor CLI's sign-in, for both the CLI and the desktop app. To switch accounts, sign in again in Cursor CLI. This is not a published Cursor API, and it can stop working." />
             </StackPanel>
 
             <!-- Shown under the agent's page for Claude Code (and its copies). -->
@@ -583,7 +570,7 @@
                             <TextBlock x:Name="SessionText" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <StackPanel x:Name="WeekGroup" Spacing="2" Margin="0,6,0,0">
-                                <TextBlock Text="Week" />
+                                <TextBlock x:Name="WeekLabel" Text="Week" />
                                 <ProgressBar x:Name="WeekBar" Maximum="100" AutomationProperties.Name="Weekly usage" />
                                 <TextBlock x:Name="WeekText" Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />

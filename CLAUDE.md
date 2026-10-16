@@ -387,8 +387,8 @@ there degrade to a missing icon or entry, never an error.
 | `Services/ClaudeConfig.cs` | Claude Code's config folder (`CLAUDE_CONFIG_DIR` or `~\.claude`), shared |
 | `Services/CodexUsage.cs` | Codex plan usage, asked live of Codex's app server; last answer saved |
 | `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
-| `Services/GrokUsage.cs` | Grok Build usage from grok.com (gRPC-web, through a hidden WebView2 in Agent Dock's own sign-in) |
-| `GrokSignInWindow.xaml(.cs)` | grok.com in a window of Agent Dock's own, for signing in |
+| `Services/GrokUsage.cs` | Grok Build usage from grok.com (gRPC-web, with Grok Build's own sign-in from `~\.grok\auth.json`) |
+| `Services/CursorUsage.cs` | Cursor usage from cursor.com (`/api/usage-summary`, with Cursor CLI's sign-in from `%APPDATA%\cursor\auth.json`) |
 | `Services/CopilotUsage.cs` | GitHub Copilot premium requests this month, via `gh api` (billing API) |
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
@@ -600,8 +600,9 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   fills the drawer, and leaves it untouched for agents with nothing to show, so a closing drawer
   doesn't go blank.
   - Today: Claude Code (usage, or the setup or update offer), Codex (usage), Grok Build (week,
-    extra usage credits and a pie of what it went on, or the sign-in offer) and GitHub Copilot
-    (premium requests), plus their presets, matched by command name (`CommandName`).
+    extra usage credits and a pie of what it went on), Cursor CLI and Cursor desktop (the billing
+    period) and GitHub Copilot (premium requests), plus their presets, matched by command name
+    (`CommandName`), or for Cursor by catalog id too (`IsCursor`; the only desktop agent with a drawer).
   - Moving between two drawer agents swaps the content in place.
   - Usage is loaded on the first hover after each show and cached until the next show
     (`ClearUsageCache` in `ReloadData`), so opening stays fast.
@@ -616,7 +617,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex and Grok Build (`RecentLaunches.Records`), the agents with a drawer; Codex and Grok added at the owner's request, 2026-10-16. Grok shows them under its usage or sign-in offer, and on their own if the offer was closed.
+  Presets share their agent's list. Recorded for Claude Code, Codex and Grok Build (`RecentLaunches.Records`), the agents with a drawer; Codex and Grok added at the owner's request, 2026-10-16. Grok shows them under its usage.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
@@ -694,13 +695,24 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Verified by the owner (2026-10-15):** the Codex picture, drawer, cross-fade between agents, and
   the seam overlap.
 
-### Grok Build usage (`Services/GrokUsage.cs`, `GrokSignInWindow`; owner's request, 2026-10-16)
+### Grok Build usage (`Services/GrokUsage.cs`; owner's request, 2026-10-16)
 
 - **No CLI source.** Grok Build 1.0.60 has no usage command or call: `grok usage` is one session's
   tokens and cost, its status line gets only context and tokens, and it only learns of a limit from
   refused requests (`usage_pool_exhausted`, `usage_limit_reached`), when it links to
-  `grok.com?_s=usage`. Nothing in `~/.grok`. Its sign-in is for `cli-chat-proxy.grok.com`. Don't read
-  `~/.grok/auth.json` or browser cookies (Chrome and Edge encrypt them to the browser anyway).
+  `grok.com?_s=usage`. No usage in `~/.grok`. Don't read browser cookies (Chrome and Edge encrypt
+  them to the browser anyway).
+- **Sign-in: Grok Build's own** (owner's decision, 2026-10-16, replacing a WebView2 sign-in of Agent
+  Dock's own, now deleted with `GrokSignInWindow`). `~\.grok\auth.json` holds one entry per x.ai
+  session (`https://auth.x.ai::<id>`) with `key` (a JWT) and `expires_at` (ISO). grok.com accepts that
+  key as `Authorization: Bearer` for the call below (tested 2026-10-16: same reply as the browser).
+  - Only `key` and `expires_at` are read (`ReadToken`, `FileShare.ReadWrite`; of several sessions,
+    the one expiring last). **Never refresh it** (Grok Build does; a refresh here would race it),
+    never write the file, never log, show or save the token. An expired one sends nothing.
+  - It lasts only hours, so between Grok Build runs the drawer often shows the saved numbers with
+    "Grok Build's sign-in has expired. Run Grok Build to renew it."
+  - The old `GrokUsageOfferDismissed` state and the `%LOCALAPPDATA%\AgentDock\WebView2` profile are
+    no longer used (the folder isn't deleted by the app).
 - **Source: grok.com, as its usage page asks.** Found by recording what that page fetched, inside
   Agent Dock (the recorder is gone):
   `POST https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`, gRPC-web
@@ -711,37 +723,50 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
     owner's chart: 2 Grok Build, 4 Chat, 5 Imagine, 9 Grok bot, 10 Cursor; others "Other".
   - The same page also fetches `ListPaymentMethods`, which returns the billing address. Agent Dock
     never requests it; the discovery recording that caught it was deleted.
-- **Sign-in:** `GrokSignInWindow`, a normal window with a WinUI WebView2 in Agent Dock's own profile
-  (`GrokUsage.DataFolder`, `%LOCALAPPDATA%\AgentDock\WebView2`), opened on grok.com's usage page. From
-  the drawer's **Sign in** offer (closing it sets `DockState.GrokUsageOfferDismissed`), or Grok
-  Build's settings page (**Open grok.com**, for switching accounts). That page also has **Sign out**
-  (`GrokUsage.SignOutAsync`: a hidden controller deletes the profile's cookies and clears its browsing
-  data, and grok-usage.json is deleted; the drawer then offers Sign in again). Closing it
-  (`GrokSignInWindow.Finished`) drops the cached check. Google sign-in may refuse an embedded browser.
-  - **Closes itself once signed in** (owner's request), but only when opened from the drawer's
-    Sign in offer (`Show(closeWhenSignedIn: true)`), not from settings, where the user may be signing
-    out or switching. While on grok.com it runs `GrokUsage.FetchScript` in the page after each load
-    and every 3 s; a reply with usage (`GrokUsage.ReadReply`, which also saves it, so the drawer has
-    the numbers at once) shows "Signed in…" and closes the window 1.2 s later. Verified by the owner
-    (2026-10-16).
-- **The check** (`GrokUsage.FetchAsync`, UI thread): a hidden `CoreWebView2Controller`, parented to the
-  flyout's HWND, in that profile, navigates to `https://grok.com/robots.txt` (same origin, no app to
-  load), runs a `fetch` of that call with the page's credentials, and returns the bytes through
-  `chrome.webview.postMessage` as base64 (a script's result can't await a fetch). The controller is
-  closed after. So Agent Dock never handles a cookie, and grok.com's protections see a browser.
-  Signed out means: HTTP 401/403; grpc-status 16/7 in a trailer *or the response headers*; a grpc-message
-  mentioning auth, sign or login; a reply that isn't gRPC; or an empty reply with no status (what the
-  owner saw after signing out, first shown wrongly as "not understood"). The script passes the
-  reply's content type and grpc headers back with the body. A signed-out answer re-lays the drawer,
-  so it turns into the Sign in offer. `GrokUsage.Parse` is pure (gRPC-web frames + a
-  minimal protobuf reader). At most every 5 minutes, only on hover; saved to `grok-usage.json`.
+- **The check** (`GrokUsage.FetchAsync`, off the UI thread): one `HttpClient` POST with the bearer
+  token, `x-grpc-web: 1`, and an empty gRPC-web frame. The status, content type and grpc headers
+  (headers or trailing headers) go to `GrokUsage.Parse`, which is pure (gRPC-web frames + a minimal
+  protobuf reader). Signed out means: HTTP 401/403; grpc-status 16/7 in a trailer *or the response
+  headers*; a grpc-message mentioning auth, sign or login; a reply that isn't gRPC; or an empty reply
+  with no status (all seen through the old browser sign-in). At most every 5 minutes, only on hover;
+  saved to `grok-usage.json`.
 - **Drawer:** "Grok usage", a **Week** bar only (no session window: `showSession: false`), "Extra usage credits:
   $3.59", and a pie of the breakdown with a legend (`ShowBreakdown`, slices clockwise from twelve
-  o'clock by size, tooltips). Signed out (no profile, or a sign-in failure with nothing saved) shows
-  the Sign in offer instead.
+  o'clock by size, tooltips). With no sign-in, a note says to sign in to Grok Build (there's no offer
+  any more). The settings page says where the numbers come from.
 - Verified 2026-10-16: decoder against a reply rebuilt from the recorded one (throwaway project,
-  deleted); live in the owner's drawer (100%, resets Wed 11:11, $3.59, the breakdown). The pie is
-  not yet verified on screen.
+  deleted); live in the owner's drawer through the old browser sign-in. The bearer route, through
+  the real `GrokUsage.FetchAsync` in a throwaway console project (deleted): 100%, resets Wed 21 Oct
+  11:11, $1.50, the breakdown. **Not yet verified:** the drawer with the new route, the pie on screen.
+
+### Cursor usage (`Services/CursorUsage.cs`; owner's request, 2026-10-16)
+
+- **No CLI source.** Cursor CLI (2026.10.16) has no usage command; `about` / `status` give only the
+  plan tier and email, and `/usage` is interactive only.
+- **Sign-in: Cursor CLI's** (owner's decision): `%APPDATA%\cursor\auth.json` has `accessToken` (a JWT,
+  `sub` = `auth0|user_…`, `exp` about two months out) and `refreshToken`. Only `accessToken` is read.
+  Same rules as Grok's: never refresh it (the refresh token is single-use), never write the file,
+  never log, show or save the token; an expired one sends nothing.
+- **Source:** `GET https://cursor.com/api/usage-summary`, what cursor.com's dashboard uses, with the
+  dashboard's cookie built from the token: `WorkosCursorSessionToken=<user id>%3A%3A<token>` (user id
+  = `sub` after the "|"). The `HttpClient` has `UseCookies = false`, or the hand-set cookie is dropped.
+  Undocumented (third-party write-ups, and tested). Without a session: 401 `not_authenticated`.
+  - `api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage` (Connect JSON, POST `{}`,
+    bearer token) also works and is what Cursor's clients call, but has no plan name or on-demand
+    block, so it isn't used. Same percentages.
+- **Reply** (owner's, Pro+): `billingCycleStart` / `billingCycleEnd` (ISO), `membershipType`
+  (`pro_plus` → `PlanUsage.Plan` "pro+" → "Pro+ plan"), `individualUsage.plan` with `totalPercentUsed`,
+  `autoPercentUsed`, `apiPercentUsed` (0–100) and `used` / `limit` / `breakdown` in cents (7000 included,
+  9605 bonus), `individualUsage.onDemand` (`enabled`, `used`, `limit`, cents), and `teamUsage` (empty
+  for an individual). `CursorUsage.Parse` is pure.
+- **Drawer** (CLI and desktop: one account, `IsCursor` by catalog id or `cursor-agent`): "Cursor usage",
+  plan under the title, a **Total** bar (the week slot, relabelled with `weekLabel`), then
+  "Auto + Composer" and "API" bars (`ModelWeeks` with `UsageWindow.Title`), all resetting at the
+  period's end; "On-demand usage: $x of $y" when on (`ExtraUsage.Dollars`). Saved to
+  `cursor-usage.json`; at most every 5 minutes, only on hover. Settings shows `CursorSettings` (text
+  only) on both agents' pages.
+- Verified 2026-10-16 through the real `CursorUsage.FetchAsync` (throwaway console project, deleted):
+  Pro+, 12.7% total, Auto + Composer 13.7%, API 1.6%, resets 10 Nov. **Not yet verified:** the drawer.
 
 ### GitHub Copilot usage (`Services/CopilotUsage.cs`)
 

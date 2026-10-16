@@ -136,6 +136,8 @@ public sealed class UsageWindow
 {
     /// <summary>For an extra window, what it covers (e.g. "Sonnet"). Null for the session and week.</summary>
     public string? Label { get; set; }
+    /// <summary>For an extra window that isn't a week (Cursor's "API"), its whole heading; overrides "<see cref="Label"/> week".</summary>
+    public string? Title { get; set; }
     /// <summary>0 to 100.</summary>
     public double UsedPercentage { get; set; }
     /// <summary>Unix seconds.</summary>
@@ -189,6 +191,8 @@ public sealed class ExtraUsage
     public string? Balance { get; set; }
     /// <summary>Codex: credits are unlimited.</summary>
     public bool Unlimited { get; set; }
+    /// <summary><see cref="Used"/> and <see cref="Limit"/> are US dollars (Cursor's on-demand spend).</summary>
+    public bool Dollars { get; set; }
 }
 
 /// <summary>App-managed state (state.json). Not meant for hand editing.</summary>
@@ -238,9 +242,6 @@ public sealed class DockState
     /// config folder. <see cref="ClaudeUsageSource"/> stays the default account's. Missing means the status line.
     /// </summary>
     public Dictionary<string, ClaudeUsageSource> ClaudeUsageSources { get; set; } = [];
-
-    /// <summary>The user closed the "sign in to grok.com to see Grok Build usage" offer.</summary>
-    public bool GrokUsageOfferDismissed { get; set; }
 
     /// <summary>Other Claude accounts (config folders) whose status line offer was closed.</summary>
     public List<string> ClaudeUsageOfferDismissedFor { get; set; } = [];

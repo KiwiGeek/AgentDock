@@ -223,19 +223,26 @@ the drawer keeps showing the last numbers it got and says why. Your plan shows u
 
 ### Grok Build usage
 
-Grok Build doesn't report your usage itself; only grok.com does (Settings → Usage). So hovering
-over Grok Build offers **Sign in**, which opens grok.com in a small window of Agent Dock's own. Sign
-in there once. That sign-in stays with Agent Dock (in its own browser profile under
-`%LOCALAPPDATA%\AgentDock\WebView2`), separate from your web browser; Agent Dock never reads your
-browser's cookies or Grok Build's own login.
+Grok Build doesn't report your usage itself; only grok.com does (Settings → Usage). So Agent Dock
+asks grok.com the way its usage page does, signed in as Grok Build is: it reads Grok Build's sign-in
+from `~\.grok\auth.json` (read only; Agent Dock never renews it or changes the file). There's nothing
+to set up beyond signing in to Grok Build.
 
-After that, the drawer shows your **week**: how much of the weekly pool you've used and when it
+Hovering over Grok Build shows your **week**: how much of the weekly pool you've used and when it
 resets, your remaining extra-usage **credits**, and a pie chart of what the usage went on (Imagine, Cursor, Grok
-bot, Grok Build, Chat). It checks at most every five minutes, only while you're hovering over Grok
-Build, by asking grok.com the same way its usage page does. That isn't a published xAI API, so it
-can stop working when grok.com changes; the drawer then keeps the last numbers it got and says why.
-Grok Build's settings page has **Open grok.com** (to switch accounts) and **Sign out**, which clears
-Agent Dock's grok.com sign-in and saved usage; your browser and Grok Build stay signed in.
+bot, Grok Build, Chat). It checks at most every five minutes, only while you're hovering. Grok Build's
+sign-in only lasts a few hours and Grok Build renews it itself, so between uses the drawer may show
+the last numbers it got and say the sign-in has expired. That isn't a published xAI API, so it can
+stop working when grok.com changes; the drawer then keeps the last numbers it got and says why.
+
+### Cursor usage
+
+Hovering over Cursor CLI or the Cursor desktop app (one account, so both show the same numbers)
+shows your billing period, as cursor.com's dashboard does: the **Total** used and when it resets, then
+the **Auto + Composer** and **API** pools, your plan, and on-demand spend when it's on. Agent Dock asks
+cursor.com signed in as Cursor CLI is: it reads the CLI's sign-in from `%APPDATA%\cursor\auth.json`
+(read only), so sign in to Cursor CLI once (`cursor-agent login`). It checks at most every five
+minutes, only while you're hovering. Not a published Cursor API, so it can stop working.
 
 ### GitHub Copilot usage
 

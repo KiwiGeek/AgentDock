@@ -1,41 +1,44 @@
 using System.Globalization;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using AgentDock.Models;
-using Microsoft.Web.WebView2.Core;
 
 namespace AgentDock.Services;
 
 /// <summary>
 /// Grok Build usage, from grok.com. Grok Build's CLI has no usage call, so this asks grok.com the way
 /// its own usage page does: <c>POST /grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig</c>
-/// (gRPC-web, protobuf). It runs inside an invisible WebView2 page on grok.com, in Agent Dock's own
-/// profile (<see cref="DataFolder"/>) where the user signed in (<see cref="GrokSignInWindow"/>), so the
-/// sign-in and grok.com's protections are handled as for the website, and Agent Dock never reads a
-/// cookie or token. Undocumented: found by watching grok.com's usage page (2026-10-16); any failure
-/// is "no data", never an error.
+/// (gRPC-web, protobuf), with Grok Build's own sign-in: the x.ai session in <c>~\.grok\auth.json</c>
+/// as a bearer token (owner's decision, 2026-10-16; grok.com accepts it). Undocumented: found by
+/// watching grok.com's usage page; any failure is "no data", never an error.
 /// </summary>
+/// <remarks>
+/// The token is read-only to Agent Dock: it's never refreshed (Grok Build does that, and a refresh
+/// here would race it), the file is never written, and the token is never logged, shown or saved.
+/// An expired token sends nothing. It's short-lived (hours), so the drawer can fall back to the last
+/// saved numbers until Grok Build next runs.
+/// </remarks>
 public static class GrokUsage
 {
     public const string Checking = "Checking your Grok limits…";
     public const string NoWindows = "Your Grok usage appears here once grok.com reports it.";
-    public const string NotSignedIn = "Sign in to grok.com again to see your usage here.";
+    public const string NotSignedIn = "Sign in to Grok Build, then open this again.";
+    public const string SignInExpired = "Grok Build's sign-in has expired. Run Grok Build to renew it.";
     public const string Unreachable = "grok.com couldn't be reached.";
     public const string NotUnderstood = "grok.com's reply wasn't understood.";
     public const string ShowingSaved = "Showing the last saved limits.";
 
     /// <summary>How long an answer stands before the drawer asks again.</summary>
     public static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(15);
 
-    /// <summary>Agent Dock's own WebView2 profile: its grok.com sign-in lives here, nowhere else.</summary>
-    public static string DataFolder { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "WebView2");
+    private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     private static string UsagePath { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "grok-usage.json");
 
-    /// <summary>Whether the user has opened the sign-in window at least once (not whether they're still signed in).</summary>
-    public static bool HasProfile => Directory.Exists(DataFolder);
+    /// <summary>Grok Build's sign-in: one entry per x.ai session, each with a <c>key</c> and <c>expires_at</c>.</summary>
+    private static string AuthPath { get; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".grok", "auth.json");
 
     /// <summary>
     /// What grok.com's usage chart breaks the week down by (field 7, by number), as seen on the
@@ -46,145 +49,79 @@ public static class GrokUsage
         [2] = "Grok Build", [4] = "Chat", [5] = "Imagine", [9] = "Grok bot", [10] = "Cursor"
     };
 
-    /// <summary>
-    /// The request the usage page makes, from a grok.com page so it carries that page's sign-in. The
-    /// body is an empty gRPC-web message. The reply comes back as base64 through postMessage, since a
-    /// script's own result can't wait for a fetch.
-    /// </summary>
-    internal const string FetchScript = """
-        (async () => {
-          const send = (status, body, headers) => window.chrome.webview.postMessage(JSON.stringify({ agentDock: true, status, body, headers }));
-          try {
-            const reply = await fetch('/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig', {
-              method: 'POST', credentials: 'include',
-              headers: { 'content-type': 'application/grpc-web+proto', 'x-grpc-web': '1', 'accept': 'application/grpc-web+proto' },
-              body: new Uint8Array([0, 0, 0, 0, 0]) });
-            const bytes = new Uint8Array(await reply.arrayBuffer());
-            let text = '';
-            for (const b of bytes) text += String.fromCharCode(b);
-            send(reply.status, btoa(text), {
-              contentType: reply.headers.get('content-type') || '',
-              grpcStatus: reply.headers.get('grpc-status') || '',
-              grpcMessage: reply.headers.get('grpc-message') || '' });
-          } catch (e) {
-            send(0, '', {});
-          }
-        })();
-        """;
+    /// <summary>Checks once, off the UI thread. A successful answer is saved.</summary>
+    public static Task<UsageFetch> FetchAsync() => Task.Run(FetchCoreAsync);
 
-    /// <summary>
-    /// Checks once. Must run on the UI thread: WebView2 is driven from there, through a hidden
-    /// controller parented to <paramref name="hwnd"/> and closed when done.
-    /// </summary>
-    public static async Task<UsageFetch> FetchAsync(nint hwnd)
+    private static async Task<UsageFetch> FetchCoreAsync()
     {
-        if (!HasProfile)
-            return new UsageFetch(null, NotSignedIn);
-
-        CoreWebView2Controller? controller = null;
         try
         {
-            var environment = await CoreWebView2Environment.CreateWithOptionsAsync("", DataFolder, new CoreWebView2EnvironmentOptions());
-            controller = await environment.CreateCoreWebView2ControllerAsync(
-                CoreWebView2ControllerWindowReference.CreateFromWindowHandle((ulong)hwnd));
-            controller.IsVisible = false;
-            var web = controller.CoreWebView2;
+            var (token, problem) = ReadToken(DateTimeOffset.UtcNow);
+            if (token is null)
+                return new UsageFetch(null, problem);
 
-            var loaded = new TaskCompletionSource();
-            var answered = new TaskCompletionSource<string?>();
-            web.NavigationCompleted += (_, _) => loaded.TrySetResult();
-            web.WebMessageReceived += (_, args) =>
-            {
-                try { answered.TrySetResult(args.TryGetWebMessageAsString()); }
-                catch (ArgumentException) { answered.TrySetResult(null); }
-            };
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.TryAddWithoutValidation("x-grpc-web", "1");
+            request.Headers.Accept.ParseAdd("application/grpc-web+proto");
+            // An empty gRPC-web message: a data frame of length 0.
+            request.Content = new ByteArrayContent([0, 0, 0, 0, 0]);
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/grpc-web+proto");
+            token = null;
 
-            // A plain text file on grok.com: the page's origin and sign-in, without loading the app.
-            web.Navigate("https://grok.com/robots.txt");
-            if (await Task.WhenAny(loaded.Task, Task.Delay(StepTimeout)) != loaded.Task)
-                return new UsageFetch(null, Unreachable);
-            await web.ExecuteScriptAsync(FetchScript);
-            if (await Task.WhenAny(answered.Task, Task.Delay(StepTimeout)) != answered.Task)
-                return new UsageFetch(null, Unreachable);
-            return ReadReply(answered.Task.Result) ?? new UsageFetch(null, Unreachable);
+            using var response = await Client.SendAsync(request, HttpCompletionOption.ResponseContentRead);
+            var body = await response.Content.ReadAsByteArrayAsync();
+            string Header(string name) =>
+                response.Headers.TryGetValues(name, out var values) || response.TrailingHeaders.TryGetValues(name, out values)
+                    ? values.FirstOrDefault() ?? ""
+                    : "";
+            var result = Parse(body, DateTimeOffset.UtcNow, (int)response.StatusCode,
+                response.Content.Headers.ContentType?.MediaType ?? "", Header("grpc-status"), Header("grpc-message"));
+            if (result.Usage is { } usage)
+                Save(usage);
+            return result;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return new UsageFetch(null, Unreachable);
         }
-        finally
-        {
-            controller?.Close();
-        }
     }
 
     /// <summary>
-    /// Reads what <see cref="FetchScript"/> posted back, and saves a successful answer. Null if the
-    /// message isn't one of Agent Dock's (a grok.com page could post its own).
+    /// Grok Build's current x.ai session token from auth.json, or why there isn't one. Of several
+    /// sessions, the one that expires last. Only <c>key</c> and <c>expires_at</c> are read.
     /// </summary>
-    internal static UsageFetch? ReadReply(string? message)
+    private static (string? Token, string? Problem) ReadToken(DateTimeOffset now)
     {
-        if (string.IsNullOrEmpty(message))
-            return null;
-        try
-        {
-            using var json = JsonDocument.Parse(message);
-            var root = json.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("agentDock", out var ours) || ours.ValueKind != JsonValueKind.True)
-                return null;
-            var status = root.GetProperty("status").GetInt32();
-            if (status == 0)
-                return new UsageFetch(null, Unreachable);
+        if (!File.Exists(AuthPath))
+            return (null, NotSignedIn);
+        string json;
+        // Grok Build may be rewriting it at the same moment.
+        using (var stream = new FileStream(AuthPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        using (var reader = new StreamReader(stream))
+            json = reader.ReadToEnd();
 
-            string Header(string name) =>
-                root.TryGetProperty("headers", out var headers) && headers.ValueKind == JsonValueKind.Object
-                && headers.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-                    ? value.GetString() ?? ""
-                    : "";
-            var result = Parse(Convert.FromBase64String(root.GetProperty("body").GetString() ?? ""), DateTimeOffset.UtcNow,
-                status, Header("contentType"), Header("grpcStatus"), Header("grpcMessage"));
-            if (result.Usage is { } usage)
-                Save(usage);
-            return result;
-        }
-        catch (Exception ex) when (ex is JsonException or FormatException or KeyNotFoundException or InvalidOperationException
-                                       or IOException or UnauthorizedAccessException)
+        using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true });
+        if (doc.RootElement.ValueKind != JsonValueKind.Object)
+            return (null, NotSignedIn);
+        string? best = null;
+        var bestExpiry = DateTimeOffset.MinValue;
+        foreach (var session in doc.RootElement.EnumerateObject())
         {
-            return new UsageFetch(null, NotUnderstood);
+            if (session.Value.ValueKind != JsonValueKind.Object
+                || !session.Value.TryGetProperty("key", out var key) || key.ValueKind != JsonValueKind.String
+                || key.GetString() is not { Length: > 0 } value)
+                continue;
+            var expiry = session.Value.TryGetProperty("expires_at", out var at) && at.ValueKind == JsonValueKind.String
+                         && DateTimeOffset.TryParse(at.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
+                ? parsed
+                : DateTimeOffset.MaxValue; // no expiry given: let grok.com decide
+            if (best is null || expiry > bestExpiry)
+                (best, bestExpiry) = (value, expiry);
         }
-    }
-
-    /// <summary>
-    /// Signs Agent Dock out of grok.com: clears everything its own WebView2 profile keeps (cookies,
-    /// site storage, cache) and deletes the saved usage. The user's browser and Grok Build's own
-    /// login aren't touched. UI thread, like <see cref="FetchAsync"/>. False if it couldn't be cleared.
-    /// </summary>
-    public static async Task<bool> SignOutAsync(nint hwnd)
-    {
-        if (File.Exists(UsagePath))
-            File.Delete(UsagePath);
-        if (!HasProfile)
-            return true;
-
-        CoreWebView2Controller? controller = null;
-        try
-        {
-            var environment = await CoreWebView2Environment.CreateWithOptionsAsync("", DataFolder, new CoreWebView2EnvironmentOptions());
-            controller = await environment.CreateCoreWebView2ControllerAsync(
-                CoreWebView2ControllerWindowReference.CreateFromWindowHandle((ulong)hwnd));
-            controller.IsVisible = false;
-            controller.CoreWebView2.CookieManager.DeleteAllCookies();
-            await controller.CoreWebView2.Profile.ClearBrowsingDataAsync();
-            return true;
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            return false;
-        }
-        finally
-        {
-            controller?.Close();
-        }
+        if (best is null)
+            return (null, NotSignedIn);
+        return bestExpiry <= now.AddSeconds(30) ? (null, SignInExpired) : (best, null);
     }
 
     /// <summary>
@@ -197,7 +134,8 @@ public static class GrokUsage
     /// <remarks>
     /// Signed out, grok.com sends no message, and the status can come in the response headers
     /// (<paramref name="headerStatus"/>, <paramref name="headerMessage"/>) instead of a trailer, or the
-    /// reply isn't gRPC at all. All of those mean "sign in", not "not understood".
+    /// reply isn't gRPC at all. All of those mean "sign in", not "not understood". (Seen through the
+    /// browser sign-in this replaced; with a bearer token, a rejected one gets 401.)
     /// </remarks>
     internal static UsageFetch Parse(byte[] reply, DateTimeOffset now, int httpStatus = 200,
         string contentType = "application/grpc-web+proto", string headerStatus = "", string headerMessage = "")

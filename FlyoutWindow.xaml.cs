@@ -102,12 +102,6 @@ public sealed partial class FlyoutWindow : Window
 
         Activated += OnActivated;
         Root.Loaded += (_, _) => _rootLoaded.TrySetResult();
-        // A new grok.com sign-in (or a sign-out): check again on the next hover.
-        GrokSignInWindow.Finished += () =>
-        {
-            _liveChecks.Remove(GrokCheckKey);
-            _savedUsage.Remove(GrokCheckKey);
-        };
         // Resizing the height changes how a picture needs to be scaled to cover the flyout.
         Root.SizeChanged += (_, _) =>
         {
@@ -1024,34 +1018,19 @@ public sealed partial class FlyoutWindow : Window
     {
         "claude" => ClaudeSettings,
         "grok" => GrokSettings,
+        "cursor-agent" => CursorSettings,
         _ => null
     };
 
-    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings];
+    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings, CursorSettings];
 
-    private void OpenGrok_Click(object sender, RoutedEventArgs e)
-    {
-        HideFlyout();
-        GrokSignInWindow.Show();
-    }
-
-    private async void GrokSignOut_Click(object sender, RoutedEventArgs e)
-    {
-        GrokSignOutFlyout.Hide();
-        GrokSignOutButton.IsEnabled = false;
-        var done = await GrokUsage.SignOutAsync(_hwnd);
-        _liveChecks.Remove(GrokCheckKey);
-        _savedUsage.Remove(GrokCheckKey);
-        // Signed out: hovering Grok Build offers Sign in again.
-        _state.GrokUsageOfferDismissed = false;
-        _store.SaveState(_state);
-        GrokSignOutNote.Text = done
-            ? "Signed out of grok.com."
-            : "Agent Dock couldn't clear its grok.com sign-in. Close the grok.com window if it's open, then try again.";
-        GrokSignOutNote.Visibility = Visibility.Visible;
-        GrokSignOutButton.IsEnabled = !done;
-        PlaceWindow();
-    }
+    /// <summary>
+    /// Cursor CLI or the Cursor desktop app (one account, one usage), by catalog id or CLI command.
+    /// The CLI's command can also be plain "agent", so the catalog id matters.
+    /// </summary>
+    private static bool IsCursor(AgentDefinition definition) =>
+        (definition.Catalog ?? definition.Id).ToLowerInvariant() is "cursor" or "cursor-cli"
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "cursor-agent");
 
     /// <summary>The settings page's list of agents, in order. Dragging reorders it.</summary>
     private readonly ObservableCollection<AgentListRow> _agentRows = [];
@@ -1429,18 +1408,12 @@ public sealed partial class FlyoutWindow : Window
     private void UpdateAgentPanel(AgentDefinition definition)
     {
         var account = definition.Kind == AgentKind.Cli ? UsageAccount.For(definition) : null;
-        var panel = definition.Kind == AgentKind.Cli && account is not { UsesOtherProvider: true }
-            ? AgentSettingsPanelFor(CommandName(definition.Command))
-            : null;
+        var panel = IsCursor(definition) ? CursorSettings
+            : definition.Kind == AgentKind.Cli && account is not { UsesOtherProvider: true }
+                ? AgentSettingsPanelFor(CommandName(definition.Command))
+                : null;
         foreach (var other in AgentSettingsPanels)
             other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
-
-        if (panel == GrokSettings)
-        {
-            // Nothing to sign out of before the first sign-in.
-            GrokSignOutButton.IsEnabled = GrokUsage.HasProfile;
-            GrokSignOutNote.Visibility = Visibility.Collapsed;
-        }
 
         _settingsAccount = account is { Agent: "claude", UsesOtherProvider: false } ? account : null;
         if (_settingsAccount is null)
@@ -1865,7 +1838,20 @@ public sealed partial class FlyoutWindow : Window
     private bool PrepareDrawer(AgentItem item)
     {
         RecentSection.Visibility = Visibility.Collapsed;
-        if (!item.IsCli || !item.IsAgentAvailable)
+        if (!item.IsAgentAvailable)
+            return false;
+        // The CLI and the desktop app share one account, so both show its usage.
+        if (IsCursor(item.Definition))
+        {
+            _drawerItem = item;
+            UsageOffer.IsOpen = false;
+            StartLiveCheck(CursorCheckKey, CursorUsage.MinInterval, CursorUsage.FetchAsync, CursorUsage.Unreachable,
+                shown => IsCursor(shown.Definition), ShowCursorCheck);
+            ShowCursorCheck();
+            ShowRecents(item);
+            return true;
+        }
+        if (!item.IsCli)
             return false;
 
         var account = UsageAccount.For(item.Definition);
@@ -1894,33 +1880,11 @@ public sealed partial class FlyoutWindow : Window
                 ShowRecents(item);
                 return true;
             case "grok":
-                // Grok Build's usage is only on grok.com, which needs a sign-in of Agent Dock's own.
-                var signedOut = !GrokUsage.HasProfile
-                                || (_liveChecks.GetValueOrDefault(GrokCheckKey)?.Result?.Problem == GrokUsage.NotSignedIn
-                                    && GrokUsage.LoadSaved() is null);
-                if (signedOut)
-                {
-                    if (_state.GrokUsageOfferDismissed)
-                    {
-                        // No usage and no offer: the drawer is just the recent folders, if any.
-                        UsagePanel.Visibility = Visibility.Collapsed;
-                        UsageOffer.IsOpen = false;
-                        if (!ShowRecents(item))
-                            return false;
-                        _drawerItem = item;
-                        return true;
-                    }
-                    _drawerItem = item;
-                    OfferUsage(InfoBarSeverity.Informational, "Sign in",
-                        "See your Grok Build usage here. Sign in to grok.com once, in a window of Agent Dock's own.", closable: true);
-                    ShowRecents(item);
-                    return true;
-                }
+                // From grok.com, with Grok Build's own sign-in.
                 _drawerItem = item;
                 UsageOffer.IsOpen = false;
-                // When the answer comes, lay the drawer out again: a signed-out answer turns it into the Sign in offer.
-                StartLiveCheck(GrokCheckKey, GrokUsage.MinInterval, () => GrokUsage.FetchAsync(_hwnd), GrokUsage.Unreachable,
-                    shown => CommandName(shown.Definition.Command) == "grok", () => PrepareDrawer(_drawerItem!));
+                StartLiveCheck(GrokCheckKey, GrokUsage.MinInterval, GrokUsage.FetchAsync, GrokUsage.Unreachable,
+                    shown => CommandName(shown.Definition.Command) == "grok", ShowGrokCheck);
                 ShowGrokCheck();
                 ShowRecents(item);
                 return true;
@@ -2069,8 +2033,19 @@ public sealed partial class FlyoutWindow : Window
             show();
     }
 
-    /// <summary>Grok has one account, the grok.com sign-in in Agent Dock's own profile.</summary>
+    /// <summary>Grok and Cursor have one account each, their CLI's sign-in.</summary>
     private const string GrokCheckKey = "grok";
+    private const string CursorCheckKey = "cursor";
+
+    private void ShowCursorCheck()
+    {
+        var check = _liveChecks.GetValueOrDefault(CursorCheckKey);
+        if (!_savedUsage.TryGetValue(CursorCheckKey, out var saved))
+            _savedUsage[CursorCheckKey] = saved = CursorUsage.LoadSaved();
+        // One monthly billing period: the total, then its Auto + Composer and API pools under it.
+        ShowCheckedUsage("Cursor usage", check?.Result?.Usage ?? saved, check?.Running == true, check?.Result?.Problem,
+            CursorUsage.Checking, CursorUsage.NoWindows, CursorUsage.ShowingSaved, showSession: false, weekLabel: "Total");
+    }
 
     private void ShowGrokCheck()
     {
@@ -2105,7 +2080,7 @@ public sealed partial class FlyoutWindow : Window
     /// check failed (under saved numbers, or on its own) or is still running with nothing to show.
     /// </summary>
     private void ShowCheckedUsage(string title, PlanUsage? usage, bool checking, string? problem,
-        string checkingNote, string noWindowsNote, string showingSaved, bool showSession = true)
+        string checkingNote, string noWindowsNote, string showingSaved, bool showSession = true, string weekLabel = "Week")
     {
         var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
         string? note;
@@ -2116,7 +2091,7 @@ public sealed partial class FlyoutWindow : Window
         else
             note = null;
 
-        ShowUsage(title, usage, hasData ? "" : note ?? noWindowsNote, hasData ? note : null, showSession);
+        ShowUsage(title, usage, hasData ? "" : note ?? noWindowsNote, hasData ? note : null, showSession, weekLabel);
     }
 
     /// <summary>The folders currently offered for the hovered agent, newest first, at most five.</summary>
@@ -2370,11 +2345,13 @@ public sealed partial class FlyoutWindow : Window
     /// The session and week bars, or <paramref name="emptyNote"/> when there are none.
     /// <paramref name="note"/> goes under the bars (e.g. a check that failed while saved numbers show).
     /// </summary>
-    private void ShowUsage(string title, PlanUsage? usage, string emptyNote, string? note = null, bool showSession = true)
+    private void ShowUsage(string title, PlanUsage? usage, string emptyNote, string? note = null, bool showSession = true,
+        string weekLabel = "Week")
     {
         UsageTitle.Text = title;
         UsagePanel.Visibility = Visibility.Visible;
         SessionLabel.Text = "Session";
+        WeekLabel.Text = weekLabel; // Cursor's is the month's total
         SessionBar.Visibility = WeekGroup.Visibility = Visibility.Visible;
         // Grok has only a weekly pool.
         SessionLabel.Visibility = SessionText.Visibility = showSession ? Visibility.Visible : Visibility.Collapsed;
@@ -2420,10 +2397,11 @@ public sealed partial class FlyoutWindow : Window
                 Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
                 Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
             };
-            AutomationProperties.SetName(bar, $"{week.Label} weekly usage");
+            var heading = week.Title ?? $"{week.Label} week";
+            AutomationProperties.SetName(bar, $"{heading} usage");
             ShowWindow(bar, text, week, now);
             var group = new StackPanel { Spacing = 2, Margin = new Thickness(0, 6, 0, 0) };
-            group.Children.Add(new TextBlock { Text = $"{week.Label} week" });
+            group.Children.Add(new TextBlock { Text = heading });
             group.Children.Add(bar);
             group.Children.Add(text);
             ModelWeekRows.Children.Add(group);
@@ -2432,6 +2410,9 @@ public sealed partial class FlyoutWindow : Window
         var extra = usage?.Extra is { Enabled: true } on
             ? on.Unlimited ? "Extra usage credits: unlimited"
             : on.Balance is { Length: > 0 } balance ? $"Extra usage credits: {balance}"
+            : on.Dollars && on.Used is { } dollars ? on.Limit is { } cap
+                ? $"On-demand usage: {Dollars(dollars)} of {Dollars(cap)}"
+                : $"On-demand usage: {Dollars(dollars)}"
             : on.Used is { } used && on.Limit is { } limit ? $"Extra usage: {used:0.##} of {limit:0.##} used"
             : on.Used is { } spent ? $"Extra usage: {spent:0.##} used"
             : "Extra usage is on"
@@ -2441,6 +2422,9 @@ public sealed partial class FlyoutWindow : Window
 
         ShowBreakdown(usage?.Breakdown);
     }
+
+    private static string Dollars(double amount) =>
+        amount.ToString("C2", System.Globalization.CultureInfo.GetCultureInfo("en-US"));
 
     /// <summary>Slice colours, in order of size: distinct in both themes, and not the warning or error colours.</summary>
     private static readonly Windows.UI.Color[] SliceColors =
@@ -2582,12 +2566,6 @@ public sealed partial class FlyoutWindow : Window
     /// <summary>Sets up (or updates) the status line for the drawer's Claude account: its own settings.json.</summary>
     private void UsageOfferButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_drawerItem is not null && CommandName(_drawerItem.Definition.Command) == "grok")
-        {
-            HideFlyout();
-            GrokSignInWindow.Show(closeWhenSignedIn: true);
-            return;
-        }
         if (_drawerItem is null || UsageAccount.For(_drawerItem.Definition) is not { Agent: "claude" } account)
             return;
         if (ClaudeStatusLine.Install(Environment.ProcessPath!, account.ConfigDir) is { } error)
@@ -2605,12 +2583,7 @@ public sealed partial class FlyoutWindow : Window
 
     private void UsageOffer_CloseButtonClick(InfoBar sender, object args)
     {
-        if (_drawerItem is not null && CommandName(_drawerItem.Definition.Command) == "grok")
-        {
-            _state.GrokUsageOfferDismissed = true;
-            _store.SaveState(_state);
-        }
-        else if (_drawerItem is not null && UsageAccount.For(_drawerItem.Definition) is { Agent: "claude" } account)
+        if (_drawerItem is not null && UsageAccount.For(_drawerItem.Definition) is { Agent: "claude" } account)
         {
             if (account.IsDefault)
                 _state.ClaudeUsageOfferDismissed = true;
