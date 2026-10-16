@@ -6,11 +6,12 @@ using AgentDock.Models;
 namespace AgentDock.Services;
 
 /// <summary>
-/// Claude plan usage limits. The only supported source is the JSON Claude Code pipes to its status
-/// line command (https://code.claude.com/docs/en/statusline): <c>rate_limits.five_hour</c> and
+/// Claude plan usage limits from the JSON Claude Code pipes to its status line command
+/// (https://code.claude.com/docs/en/statusline): <c>rate_limits.five_hour</c> and
 /// <c>rate_limits.seven_day</c>, each with <c>used_percentage</c> and <c>resets_at</c> (Unix seconds),
 /// for Pro/Max subscribers. So Agent Dock makes itself the status line (<c>--statusline</c>), saves
-/// those numbers, and the flyout reads them. Nothing here touches Claude credentials.
+/// those numbers, and the flyout reads them. Nothing here touches Claude credentials. The other
+/// source, chosen on the settings page, is <see cref="ClaudeUsageApi"/>; it saves to the same file.
 /// </summary>
 public static class ClaudeStatusLine
 {
@@ -19,12 +20,8 @@ public static class ClaudeStatusLine
     private static string UsagePath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "claude-usage.json");
 
-    /// <summary>Claude Code's user settings. CLAUDE_CONFIG_DIR moves the whole folder.</summary>
-    private static string SettingsPath => Path.Combine(
-        Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") is { Length: > 0 } dir
-            ? dir
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude"),
-        "settings.json");
+    /// <summary>Claude Code's user settings.</summary>
+    private static string SettingsPath => Path.Combine(ClaudeConfig.Directory, "settings.json");
 
     // ---------- Status line mode (runs inside Claude Code, so: fast, WinUI-free, never fails) ----------
 
@@ -75,16 +72,24 @@ public static class ClaudeStatusLine
             return null;
         if (!window.TryGetProperty("used_percentage", out var used) || used.ValueKind != JsonValueKind.Number)
             return null;
+        return new UsageWindow { UsedPercentage = used.GetDouble(), ResetsAt = ResetsAt(window) };
+    }
 
-        long resetsAt = 0;
-        if (window.TryGetProperty("resets_at", out var reset))
-        {
-            if (reset.ValueKind == JsonValueKind.Number)
-                resetsAt = (long)reset.GetDouble();
-            else if (reset.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(reset.GetString(), out var parsed))
-                resetsAt = parsed.ToUnixTimeSeconds();
-        }
-        return new UsageWindow { UsedPercentage = used.GetDouble(), ResetsAt = resetsAt };
+    /// <summary>
+    /// A window's <c>resets_at</c> as Unix seconds: the status line sends a number, the usage call an
+    /// ISO-8601 string. Missing or unreadable is 0, which the drawer shows as a percent with no time.
+    /// </summary>
+    internal static long ResetsAt(JsonElement window)
+    {
+        if (!window.TryGetProperty("resets_at", out var reset))
+            return 0;
+        if (reset.ValueKind == JsonValueKind.Number)
+            return (long)reset.GetDouble();
+        return reset.ValueKind == JsonValueKind.String
+               && DateTimeOffset.TryParse(reset.GetString(), System.Globalization.CultureInfo.InvariantCulture,
+                   System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed.ToUnixTimeSeconds()
+            : 0;
     }
 
     /// <summary>
@@ -94,14 +99,28 @@ public static class ClaudeStatusLine
     private static void Save(string? model, UsageWindow? fiveHour, UsageWindow? sevenDay)
     {
         var previous = Load();
-        var usage = new PlanUsage
+        Write(new PlanUsage
         {
             UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             Model = model ?? previous?.Model,
             FiveHour = fiveHour ?? previous?.FiveHour,
             SevenDay = sevenDay ?? previous?.SevenDay
-        };
+        });
+    }
 
+    /// <summary>
+    /// Saves a result from the usage call. Unlike <see cref="Save"/>, missing windows aren't filled in
+    /// from the previous file: that answer is complete. Only the model name is kept, since the
+    /// status line is what knows it.
+    /// </summary>
+    public static void Replace(PlanUsage usage)
+    {
+        usage.Model ??= Load()?.Model;
+        Write(usage);
+    }
+
+    private static void Write(PlanUsage usage)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(UsagePath)!);
         // Unique temp name: two Claude Code sessions can refresh at the same moment.
         var temp = $"{UsagePath}.{Environment.ProcessId}.tmp";

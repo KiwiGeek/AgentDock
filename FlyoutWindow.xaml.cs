@@ -317,6 +317,9 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private void ScheduleBannerReset()
     {
+        // A recent folder's menu took the pointer; the drawer (and its agent's colour) stays.
+        if (_drawerMenuOpen)
+            return;
         if (_bannerResetTimer is null)
         {
             _bannerResetTimer = DispatcherQueue.CreateTimer();
@@ -775,7 +778,119 @@ public sealed partial class FlyoutWindow : Window
             ShowSettingsPage();
     }
 
-    private void SettingsBack_Click(object sender, RoutedEventArgs e) => ShowMainPage();
+    private void SettingsBack_Click(object sender, RoutedEventArgs e) => SettingsBack();
+
+    /// <summary>Up one level: from an agent's page to the general settings, from there to the list.</summary>
+    private void SettingsBack()
+    {
+        if (_settingsAgent is not null)
+            ShowSettingsGeneral(focusRowFor: _settingsAgent);
+        else
+            ShowMainPage();
+    }
+
+    // ---------- Per-agent settings ----------
+
+    /// <summary>The agent whose own settings page is showing, if one is.</summary>
+    private AgentItem? _settingsAgent;
+
+    /// <summary>
+    /// An agent's own settings page, by command name. To give another agent settings, add a panel to
+    /// the settings page in the XAML (like ClaudeSettings), return it here, and fill it in
+    /// <see cref="ShowSettingsPage"/>.
+    /// </summary>
+    private FrameworkElement? AgentSettingsPanelFor(string? command) => command switch
+    {
+        "claude" => ClaudeSettings,
+        _ => null
+    };
+
+    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings];
+
+    /// <summary>A row for each installed agent with a settings page of its own (one per page).</summary>
+    private void BuildAgentSettingsRows()
+    {
+        AgentSettingsRows.Children.Clear();
+        var seen = new HashSet<FrameworkElement>();
+        foreach (var agent in _agents.Where(a => a.Preset is null && a.IsAvailable))
+        {
+            if (AgentSettingsPanelFor(CommandName(agent.Definition.Command)) is not { } panel || !seen.Add(panel))
+                continue;
+
+            var icon = agent.Icon is { } source
+                ? (UIElement)new Image { Source = source, Width = 24, Height = 24 }
+                : new FontIcon { Glyph = agent.Glyph, FontSize = 18 };
+            var chevron = new FontIcon { Glyph = "", FontSize = 12, Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
+            Grid.SetColumn(chevron, 2);
+            var name = new TextBlock { Text = agent.Definition.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            Grid.SetColumn(name, 1);
+            var row = new Button
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(8, 6, 8, 6),
+                Tag = agent,
+                Content = new Grid
+                {
+                    ColumnSpacing = 12,
+                    ColumnDefinitions =
+                    {
+                        new ColumnDefinition { Width = GridLength.Auto },
+                        new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                        new ColumnDefinition { Width = GridLength.Auto }
+                    },
+                    Children = { icon, name, chevron }
+                }
+            };
+            AutomationProperties.SetName(row, $"{agent.Definition.Name} settings");
+            row.Click += (_, _) => ShowAgentSettings(agent);
+            AgentSettingsRows.Children.Add(row);
+        }
+        AgentSettingsHeader.Visibility = AgentSettingsRows.Visibility =
+            AgentSettingsRows.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ShowAgentSettings(AgentItem agent)
+    {
+        if (AgentSettingsPanelFor(CommandName(agent.Definition.Command)) is not { } panel)
+            return;
+        _settingsAgent = agent;
+        SettingsGeneral.Visibility = Visibility.Collapsed;
+        foreach (var other in AgentSettingsPanels)
+            other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
+        SettingsTitle.Text = agent.Definition.Name;
+        PlaceWindow();
+        DispatcherQueue.TryEnqueue(() => SettingsBackButton.Focus(FocusState.Programmatic));
+    }
+
+    /// <summary>The first level of settings. Coming back from an agent's page focuses its row.</summary>
+    private void ShowSettingsGeneral(AgentItem? focusRowFor = null)
+    {
+        _settingsAgent = null;
+        foreach (var panel in AgentSettingsPanels)
+            panel.Visibility = Visibility.Collapsed;
+        SettingsGeneral.Visibility = Visibility.Visible;
+        SettingsTitle.Text = "Settings";
+        if (!AppWindow.IsVisible || SettingsPage.Visibility != Visibility.Visible)
+            return;
+        PlaceWindow();
+        var row = AgentSettingsRows.Children.OfType<Button>().FirstOrDefault(b => b.Tag == focusRowFor);
+        DispatcherQueue.TryEnqueue(() => ((Control?)row ?? HoverBackgroundsSwitch).Focus(FocusState.Programmatic));
+    }
+
+    private void ClaudeUsageSource_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var source = ClaudeUsageSourceButtons.SelectedIndex == 1 ? ClaudeUsageSource.Api : ClaudeUsageSource.StatusLine;
+        if (!_settingsToggleReady || ClaudeUsageSourceButtons.SelectedIndex < 0 || _state.ClaudeUsageSource == source)
+            return;
+        _state.ClaudeUsageSource = source;
+        _store.SaveState(_state);
+        ClearUsageCache(sourceChanged: true);
+        // A drawer open on Claude follows the new choice. (The settings page closes the drawer, so
+        // this only matters if that ever changes.)
+        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && CommandName(item.Definition.Command) == "claude")
+            PrepareDrawer(item);
+    }
 
     /// <summary>
     /// The list and the settings page share this window. Settings is a short page, so the flyout
@@ -794,8 +909,13 @@ public sealed partial class FlyoutWindow : Window
         HideUnavailableNote.Text = _settingsError is null
             ? "Hide agents that aren't installed, instead of showing them dimmed."
             : "Fix agents.json to change this here.";
+        ClearRecentsButton.IsEnabled = RecentLaunches.Any(_state);
+        // Claude Code's page.
+        ClaudeUsageSourceButtons.SelectedIndex = _state.ClaudeUsageSource == ClaudeUsageSource.Api ? 1 : 0;
         _settingsToggleReady = true;
 
+        BuildAgentSettingsRows();
+        ShowSettingsGeneral();
         MainPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
         HeightGrip.Visibility = Visibility.Collapsed;
@@ -807,6 +927,8 @@ public sealed partial class FlyoutWindow : Window
     {
         if (MainPage.Visibility == Visibility.Visible)
             return;
+        // Next time, settings opens at the first level.
+        ShowSettingsGeneral();
         SettingsPage.Visibility = Visibility.Collapsed;
         MainPage.Visibility = Visibility.Visible;
         HeightGrip.Visibility = Visibility.Visible;
@@ -852,12 +974,22 @@ public sealed partial class FlyoutWindow : Window
         _store.SaveState(_state);
     }
 
+    private void ClearRecents_Click(object sender, RoutedEventArgs e)
+    {
+        ClearRecentsFlyout.Hide();
+        RecentLaunches.Clear(_state);
+        _store.SaveState(_state);
+        ClearRecentsButton.IsEnabled = false;
+        // The button just went away under the focus; keep it on the page.
+        RecentFoldersSwitch.Focus(FocusState.Programmatic);
+    }
+
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Escape)
         {
             if (SettingsPage.Visibility == Visibility.Visible)
-                ShowMainPage();
+                SettingsBack();
             else
                 HideFlyout();
             e.Handled = true;
@@ -1086,14 +1218,29 @@ public sealed partial class FlyoutWindow : Window
     private static readonly TimeSpan CopilotUsageMaxAge = TimeSpan.FromMinutes(5);
     private CopilotUsageResult? _copilotUsage;
     private bool _copilotFetching;
+    // "Ask Claude directly": also over the network, so also kept across shows.
+    private ClaudeUsageFetch? _claudeCheck;
+    private DateTimeOffset _claudeCheckedAt;
+    private bool _claudeChecking;
+    /// <summary>Changes when the source setting does, so a check started before that is ignored.</summary>
+    private int _claudeCheckEpoch;
     /// <summary>The row whose content the drawer is showing.</summary>
     private AgentItem? _drawerItem;
 
-    private void ClearUsageCache()
+    /// <summary>
+    /// Drops what was loaded from files, so the next hover reads them again. Network results survive
+    /// a show; <paramref name="sourceChanged"/> (the Claude usage setting changed) drops those too.
+    /// </summary>
+    private void ClearUsageCache(bool sourceChanged = false)
     {
         _claudeSetup = null;
         _claudeUsage = _codexUsage = null;
         _codexUsageLoaded = false;
+        if (!sourceChanged)
+            return;
+        _claudeCheck = null;
+        _claudeChecking = false;
+        _claudeCheckEpoch++;
     }
 
     /// <summary>
@@ -1134,11 +1281,15 @@ public sealed partial class FlyoutWindow : Window
     }
 
     /// <summary>
-    /// Claude Code's saved usage, or the offer to set Agent Dock up as its status line (the only
-    /// supported way to get those numbers).
+    /// Claude Code's usage, from the source chosen on the settings page. Status line: the saved
+    /// usage, or the offer to set Agent Dock up as Claude Code's status line. Ask Claude directly:
+    /// see <see cref="PrepareClaudeCheckDrawer"/>.
     /// </summary>
     private bool PrepareClaudeDrawer(AgentItem item)
     {
+        if (_state.ClaudeUsageSource == ClaudeUsageSource.Api)
+            return PrepareClaudeCheckDrawer(item);
+
         _claudeSetup ??= ClaudeStatusLine.CheckSetup(Environment.ProcessPath!);
         var setup = _claudeSetup.Value;
         switch (setup.State)
@@ -1171,6 +1322,69 @@ public sealed partial class FlyoutWindow : Window
         ShowClaudeRecents(item);
         _drawerItem = item;
         return true;
+    }
+
+    /// <summary>
+    /// "Ask Claude directly": no status line offer or other-copy warning. Shows what's known straight
+    /// away (the last check, else the saved file) and checks again in the background if that's
+    /// missing or over 3 minutes old. Only ever from here: nothing checks while the flyout is hidden.
+    /// </summary>
+    private bool PrepareClaudeCheckDrawer(AgentItem item)
+    {
+        UsageOffer.IsOpen = false;
+        if (!_claudeChecking && (_claudeCheck is null || DateTimeOffset.UtcNow - _claudeCheckedAt > ClaudeUsageApi.MinInterval))
+            _ = CheckClaudeUsageAsync();
+        ShowClaudeCheck();
+        ShowClaudeRecents(item);
+        _drawerItem = item;
+        return true;
+    }
+
+    private async Task CheckClaudeUsageAsync()
+    {
+        var epoch = _claudeCheckEpoch;
+        var shown = _generation;
+        _claudeChecking = true;
+        ClaudeUsageFetch result;
+        try
+        {
+            result = await ClaudeUsageApi.FetchAsync(); // resumes on the UI thread; never throws
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            result = new ClaudeUsageFetch(null, ClaudeUsageApi.Unreachable);
+        }
+        // The setting changed while this ran: it isn't wanted any more.
+        if (epoch != _claudeCheckEpoch)
+            return;
+        _claudeChecking = false;
+        _claudeCheck = result;
+        _claudeCheckedAt = DateTimeOffset.UtcNow;
+        if (result.Usage is not null)
+            _claudeUsage = null; // the file was just replaced; read it again for the status line mode
+
+        // Fill in the drawer only if it's still showing Claude, in the same show.
+        if (shown == _generation && _drawerOpen && !_drawerClosing && _drawerItem is { } item
+            && CommandName(item.Definition.Command) == "claude" && _state.ClaudeUsageSource == ClaudeUsageSource.Api)
+            ShowClaudeCheck();
+    }
+
+    /// <summary>The newest numbers available, with a note when the check failed or is still running.</summary>
+    private void ShowClaudeCheck()
+    {
+        var check = _claudeCheck;
+        var usage = check?.Usage ?? (_claudeUsage ??= ClaudeStatusLine.Load());
+        var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
+
+        string? note;
+        if (_claudeChecking && check?.Problem is null)
+            note = hasData ? null : ClaudeUsageApi.Checking; // saved numbers stay as they are
+        else if (check?.Problem is { } problem)
+            note = hasData ? $"{problem} {ClaudeUsageApi.ShowingSaved}" : problem;
+        else
+            note = null;
+
+        ShowUsage("Claude usage", usage, hasData ? "" : note ?? ClaudeUsageApi.NoWindows, hasData ? note : null);
     }
 
     /// <summary>The folders currently offered for the hovered agent, newest first, at most five.</summary>
@@ -1227,8 +1441,37 @@ public sealed partial class FlyoutWindow : Window
             AutomationProperties.SetName(button, $"Open Claude Code in {folder}");
             ToolTipService.SetToolTip(button, folder);
             button.Click += RecentFolder_Click;
+
+            // Right-click, Shift+F10 or the menu key.
+            var remove = new MenuFlyoutItem { Text = "Remove from recents", Icon = new FontIcon { Glyph = "" }, Tag = folder };
+            remove.Click += RemoveRecent_Click;
+            var menu = new MenuFlyout { Items = { remove } };
+            // The menu is a popup, so the pointer "leaves" the drawer while it's open. Keep it open.
+            menu.Opened += (_, _) =>
+            {
+                _drawerMenuOpen = true;
+                _drawerCloseTimer?.Stop();
+            };
+            menu.Closed += (_, _) => _drawerMenuOpen = false;
+            button.ContextFlyout = menu;
             RecentRows.Children.Add(button);
         }
+    }
+
+    /// <summary>A recent folder's menu is open; the drawer mustn't close under it.</summary>
+    private bool _drawerMenuOpen;
+
+    private void RemoveRecent_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem { Tag: string folder } || _drawerItem is not { } item)
+            return;
+        var id = item.Preset?.Agent ?? item.Definition.Id;
+        if (!RecentLaunches.Forget(_state, id, folder))
+            return;
+        _store.SaveState(_state);
+        // The drawer shows what's left; with nothing left and no usage to show, it closes.
+        if (!ShowClaudeRecents(item) && UsagePanel.Visibility != Visibility.Visible && !UsageOffer.IsOpen)
+            CloseDrawer(animate: true);
     }
 
     /// <summary>Drops recent rows from the bottom until the drawer doesn't have to scroll.</summary>
@@ -1342,7 +1585,11 @@ public sealed partial class FlyoutWindow : Window
         UsageOffer.IsOpen = true;
     }
 
-    private void ShowUsage(string title, PlanUsage? usage, string emptyNote)
+    /// <summary>
+    /// The session and week bars, or <paramref name="emptyNote"/> when there are none.
+    /// <paramref name="note"/> goes under the bars (e.g. a check that failed while saved numbers show).
+    /// </summary>
+    private void ShowUsage(string title, PlanUsage? usage, string emptyNote, string? note = null)
     {
         UsageTitle.Text = title;
         UsagePanel.Visibility = Visibility.Visible;
@@ -1350,8 +1597,9 @@ public sealed partial class FlyoutWindow : Window
         SessionBar.Visibility = WeekGroup.Visibility = Visibility.Visible;
         var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
         UsageRows.Visibility = hasData ? Visibility.Visible : Visibility.Collapsed;
-        UsageNote.Visibility = hasData ? Visibility.Collapsed : Visibility.Visible;
-        UsageNote.Text = emptyNote;
+        var text = hasData ? note : emptyNote;
+        UsageNote.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+        UsageNote.Text = text ?? "";
         UsageUpdatedText.Text = "";
         if (!hasData)
             return;
@@ -1721,7 +1969,7 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private void ScheduleDrawerClose()
     {
-        if (!_drawerOpen || _drawerClosing)
+        if (!_drawerOpen || _drawerClosing || _drawerMenuOpen)
             return;
         if (_drawerCloseTimer is null)
         {

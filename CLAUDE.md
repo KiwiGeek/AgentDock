@@ -154,9 +154,20 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - Number keys 1–9 launch the corresponding available agent. Up/Down cross between the two lists.
   Neither does anything while the settings page is open.
 - **Settings page:** the gear in the footer swaps the list for a page in the same window (so
-  placement, acrylic and hide-on-deactivate stay as they are). Esc there goes back to the list;
-  hiding the flyout does too, so the next click opens the list. The page resizes the flyout to
-  its content. Not yet verified in the running app (the build is clean).
+  placement, acrylic and hide-on-deactivate stay as they are). The page resizes the flyout to its
+  content. Two levels (owner's request, 2026-10-16):
+  - **General**: Waifu backgrounds, Hide unavailable agents, Remember recents and **Clear recents**
+    (a confirm flyout; disabled when nothing is saved). Remember recents is general on purpose,
+    and its text doesn't name Claude: Claude is just the only agent recorded so far (owner,
+    2026-10-16). Below it, **Agents**: a row for each installed agent that has a page of its own
+    (`BuildAgentSettingsRows`), with its icon and a chevron.
+  - **An agent's page** (`ShowAgentSettings`): the header shows the agent's name. Today only Claude
+    Code has one (`ClaudeSettings`: "Usage limits", how Claude usage is found: "Read them from the status line" or "Ask Claude for them directly"). To add another, add a
+    panel in the XAML, return it from `AgentSettingsPanelFor` (by command name), list it in
+    `AgentSettingsPanels`, and fill it in `ShowSettingsPage`.
+  - The back button and Esc go up one level (`SettingsBack`). Hiding the flyout returns to the
+    list, and settings reopens at the first level.
+  - Verified by screenshot (2026-10-16, driven through UI Automation): both levels render.
 - Open animation: 250 ms slide + fade, skipped when Windows animations are off.
 - **Banner** (owner's request, after the Windows 98 Start menu): a 32 DIP strip on the list's left
   edge, a gradient with "**Agent** Dock" reading bottom to top. The fill is 70% opaque
@@ -283,6 +294,8 @@ there degrade to a missing icon or entry, never an error.
 | `Interop/ShellIcons.cs` | Icon loading: compiled-in, image files, and shell extraction with a PNG cache |
 | `Services/AgentIcons.cs` | Which icon an agent gets; compiled-in icon lookup; .ico files for the jump list |
 | `Services/ClaudeStatusLine.cs` | `--statusline` mode, saved Claude usage, and setting up Claude Code's status line |
+| `Services/ClaudeUsageApi.cs` | "Ask Claude directly": the one usage GET, its token handling, rate limits and parser |
+| `Services/ClaudeConfig.cs` | Claude Code's config folder (`CLAUDE_CONFIG_DIR` or `~\.claude`), shared |
 | `Services/CodexUsage.cs` | Codex plan usage, read from Codex's own session logs |
 | `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
 | `Services/CopilotUsage.cs` | GitHub Copilot premium requests this month, via `gh api` (billing API) |
@@ -304,7 +317,7 @@ there degrade to a missing icon or entry, never an error.
     (e.g. also in a comment), and the switch reverts with a note. Not yet verified in-app.
 - `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids,
   whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
-  folders).
+  folders, the dragged list height, and where Claude usage comes from).
 - `%LOCALAPPDATA%\AgentDock\Icons\`: PNG icon cache.
 
 ## Conventions
@@ -382,16 +395,59 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
 
 ### Built: Claude usage limits (replaces the owner's dead WaifuOps status line)
 
-All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
+`Services/ClaudeStatusLine.cs` and `Services/ClaudeUsageApi.cs`, plus the drawer in `FlyoutWindow`.
+Two sources, chosen on Claude Code's settings page (`DockState.ClaudeUsageSource`, `"statusLine"`
+or `"api"` in state.json; missing means the status line). Both save to the same
+`claude-usage.json`.
 
-- **The only official source** is Claude Code's status-line input (https://code.claude.com/docs/en/statusline):
+- **Status line (default).** The only documented source is Claude Code's status-line input
+  (https://code.claude.com/docs/en/statusline):
   - `rate_limits.five_hour.used_percentage` and `.resets_at` (Unix seconds).
   - The same pair under `rate_limits.seven_day`.
   - Present only for claude.ai Pro/Max, and only after a session's first response. Either window
     can be missing, and Claude Code drops a window once it has reset.
-- **Ruled out:** there's no CLI command, documented file or endpoint for these numbers. `/usage`
-  doesn't work with `-p`. The Admin API is organisation-only. Reading `.credentials.json` to call
-  an internal endpoint is against Anthropic's terms for third-party apps.
+  - No other documented source: no CLI command or file, `/usage` doesn't work with `-p`, and the
+    Admin API is organisation-only.
+- **Ask Claude directly** (owner's decision, 2026-10-16; `ClaudeUsageApi`). The same undocumented
+  call Claude Code's `/usage` makes: one `GET {base}/api/oauth/usage` (`base` is
+  `CLAUDE_CODE_CUSTOM_OAUTH_URL` or `https://api.anthropic.com`). Anthropic's terms describe
+  subscription OAuth as for Claude Code and claude.ai and say third-party apps may not take those
+  credentials; the owner chose to offer it anyway, off by default, with that stated in the UI and
+  README. **Don't widen it** past this single GET of the user's own limits: no other endpoint, no
+  POST, no profile call, no claude.ai endpoint, no browser or Claude Desktop cookies.
+  - **Token:** `CLAUDE_CODE_OAUTH_TOKEN` if set (no expiry check), else `.credentials.json` in
+    `ClaudeConfig.Directory` (shared with the status-line setup), read with `FileShare.ReadWrite`.
+    Only `claudeAiOauth.accessToken` (or a root `accessToken`) and `expiresAt` (Unix ms) are read.
+    An expired token sends nothing. **Never refresh it** (refresh tokens are single-use; refreshing
+    would race Claude Code and sign the user out), never write the credentials file, never call the
+    token endpoint, and never put the token in state.json, claude-usage.json, logs or the UI.
+  - **Headers:** `Authorization: Bearer`, `anthropic-beta: oauth-2025-04-20`, and
+    `User-Agent: claude-code/<version>`. The user agent puts the call in Claude Code's rate-limit
+    bucket; any other agent gets a lasting 429. The version comes from one `claude --version` per
+    process (5 s, no window), falling back to 2.1.201.
+  - **Rate:** at most every 3 minutes after a success; after a 429, `Retry-After` (else 3 min),
+    capped at 15 min. In memory only. The drawer caches its last result across shows and checks
+    again only when that's over 3 minutes old, and only from `PrepareClaudeDrawer` (nothing runs
+    while the flyout is hidden). Changing the setting drops the cache (`ClearUsageCache(sourceChanged)`),
+    and an epoch counter ignores a check started before the change.
+  - **Body:** `five_hour` / `seven_day` with `utilization` (already 0–100; `used_percentage` also
+    accepted) and ISO-8601 `resets_at` (`ClaudeStatusLine.ResetsAt`, shared with the status line).
+    A `limits` array (`kind`/`group` + `percent`) only fills a window the named object didn't give.
+    Per-model weeks and `extra_usage` are ignored. A 200 with neither window is an empty success.
+  - **Saving:** a success replaces the file (`ClaudeStatusLine.Replace`), keeping only the previous
+    `Model`; it doesn't merge missing windows the way the status line does, because that answer is
+    complete. A failure writes nothing.
+  - **Drawer:** no Set up offer or other-copy warning. It shows the last result, else the saved
+    file, straight away. On failure the saved numbers stay with a note under them ("… Showing the
+    last saved limits."); with nothing saved, the note alone. Notes never include the token, a
+    path, the response or an exception message. A status line set up earlier keeps writing the
+    file, which is the fallback.
+  - Verified 2026-10-16 with a throwaway console project (since deleted): every parser case in the
+    spec; no credentials file → sign-in note; expired token → no request; against a local test
+    server (not the live endpoint, with a dummy token): one GET with the right path and headers,
+    the user agent read from the installed Claude Code (`claude-code/2.1.301`), and a 429 with
+    `Retry-After` holding off the next request. **Not yet verified:** a real check against the
+    owner's sign-in (the owner's to try).
 - **Bridge:** `AgentDock.exe --statusline`, the first thing `Program.Main` checks (before the
   mutex). It stays WinUI-free, and Native AOT keeps it fast, which matters because Claude Code runs it often.
   - It parses stdin with `JsonDocument` and saves `ClaudeUsage` to
@@ -460,6 +516,10 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
   Presets of Claude share the agent's list. Only Claude is recorded so far.
+  Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
+  (`RecentLaunches.Forget`). While that menu is open the drawer and banner colour stay
+  (`_drawerMenuOpen`), since the popup takes the pointer out of the drawer. Removing the last folder
+  closes the drawer if there's no usage to show. Not yet verified in-app.
 - Placement: on the right if the grown window fits in the monitor's work area, otherwise on the
   left. Content sits against the list; the window growing uncovers it. The column is above the
   toolbar. The bar and its divider span the whole window; the buttons stay in the list's 380 DIP
@@ -569,6 +629,6 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 ## Possible next steps (none requested yet; ask before starting)
 
 - ARM64 build in CI (needs ARM64 MSVC tools on the runner for Native AOT cross-compilation).
-- More of the settings page. It exists (gear in the footer) and turns waifu backgrounds, Claude's
-  recent folders and "Hide unavailable agents" on or off. Editing the agent list from the UI is
-  still not built.
+- More of the settings page. It exists (gear in the footer): general settings plus per-agent pages
+  (only Claude Code has one so far). Pages for Codex or Copilot (e.g. Copilot's monthly allowance),
+  and editing the agent list from the UI, are still not built.

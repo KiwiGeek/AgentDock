@@ -193,32 +193,37 @@
         </ScrollViewer>
         </Grid>
 
-        <!-- Settings. Same window as the list, so placement, acrylic and hide-on-deactivate stay as they are. -->
+        <!--
+            Settings. Same window as the list, so placement, acrylic and hide-on-deactivate stay as they are.
+            Two levels: general settings with a row for each agent that has settings of its own, and that
+            agent's page (ShowAgentSettings). The back button and Esc go up one level.
+        -->
         <StackPanel x:Name="SettingsPage" Grid.Column="1" Visibility="Collapsed" VerticalAlignment="Top">
+            <StackPanel.Resources>
+                <!-- Same borderless buttons as the footer. -->
+                <ResourceDictionary>
+                    <ResourceDictionary.ThemeDictionaries>
+                        <ResourceDictionary x:Key="Default">
+                            <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                            <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                            <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                            <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                            <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                            <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                        </ResourceDictionary>
+                        <ResourceDictionary x:Key="Light">
+                            <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                            <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                            <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                            <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                            <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                            <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                        </ResourceDictionary>
+                    </ResourceDictionary.ThemeDictionaries>
+                </ResourceDictionary>
+            </StackPanel.Resources>
+
             <Grid Padding="8,12,16,0" ColumnSpacing="8">
-                <Grid.Resources>
-                    <!-- Same borderless buttons as the footer. -->
-                    <ResourceDictionary>
-                        <ResourceDictionary.ThemeDictionaries>
-                            <ResourceDictionary x:Key="Default">
-                                <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
-                                <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
-                                <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
-                                <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
-                                <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
-                                <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
-                            </ResourceDictionary>
-                            <ResourceDictionary x:Key="Light">
-                                <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
-                                <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
-                                <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
-                                <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
-                                <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
-                                <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
-                            </ResourceDictionary>
-                        </ResourceDictionary.ThemeDictionaries>
-                    </ResourceDictionary>
-                </Grid.Resources>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -228,66 +233,114 @@
                         ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
                     <FontIcon Glyph="&#xE72B;" FontSize="16" />
                 </Button>
-                <TextBlock Grid.Column="1" Text="Settings" VerticalAlignment="Center"
-                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="SettingsTitle" Grid.Column="1" Text="Settings" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
             </Grid>
 
-            <TextBlock Text="Appearance" Style="{StaticResource SectionHeaderStyle}" />
-            <Grid Margin="16,0,16,16" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="Waifu backgrounds" />
-                    <TextBlock Text="Show a picture behind the flyout while the pointer is over an agent."
-                               TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
-                <ToggleSwitch x:Name="HoverBackgroundsSwitch" Grid.Column="1" MinWidth="0"
-                              VerticalAlignment="Center" OffContent="" OnContent=""
-                              Toggled="HoverBackgroundsSwitch_Toggled"
-                              AutomationProperties.Name="Waifu backgrounds"
-                              AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
-            </Grid>
+            <!-- General settings, and the way into each agent's own. -->
+            <StackPanel x:Name="SettingsGeneral">
+                <TextBlock Text="General" Style="{StaticResource SectionHeaderStyle}" />
+                <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="Waifu backgrounds" />
+                        <TextBlock Text="Show a picture behind the flyout while the pointer is over an agent."
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="HoverBackgroundsSwitch" Grid.Column="1" MinWidth="0"
+                                  VerticalAlignment="Center" OffContent="" OnContent=""
+                                  Toggled="HoverBackgroundsSwitch_Toggled"
+                                  AutomationProperties.Name="Waifu backgrounds"
+                                  AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
+                </Grid>
+                <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="Hide unavailable agents" />
+                        <TextBlock x:Name="HideUnavailableNote" Text="Hide agents that aren't installed, instead of showing them dimmed."
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="HideUnavailableSwitch" Grid.Column="1" MinWidth="0"
+                                  VerticalAlignment="Center" OffContent="" OnContent=""
+                                  Toggled="HideUnavailableSwitch_Toggled"
+                                  AutomationProperties.Name="Hide unavailable agents"
+                                  AutomationProperties.HelpText="Hide agents that aren't installed, instead of showing them dimmed." />
+                </Grid>
 
-            <TextBlock Text="Agents" Style="{StaticResource SectionHeaderStyle}" />
-            <Grid Margin="16,0,16,16" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="Hide unavailable agents" />
-                    <TextBlock x:Name="HideUnavailableNote" Text="Hide agents that aren't installed, instead of showing them dimmed."
-                               TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
-                <ToggleSwitch x:Name="HideUnavailableSwitch" Grid.Column="1" MinWidth="0"
-                              VerticalAlignment="Center" OffContent="" OnContent=""
-                              Toggled="HideUnavailableSwitch_Toggled"
-                              AutomationProperties.Name="Hide unavailable agents"
-                              AutomationProperties.HelpText="Hide agents that aren't installed, instead of showing them dimmed." />
-            </Grid>
+                <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="Remember recents" />
+                        <TextBlock Text="Remember the last five folders you opened each agent in. Right-click one in the drawer to remove it."
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="RecentFoldersSwitch" Grid.Column="1" MinWidth="0"
+                                  VerticalAlignment="Center" OffContent="" OnContent=""
+                                  Toggled="RecentFoldersSwitch_Toggled"
+                                  AutomationProperties.Name="Remember recents"
+                                  AutomationProperties.HelpText="Remember the last five folders you opened each agent in. Right-click one in the drawer to remove it." />
+                </Grid>
+                <!-- Clears the saved recents (asks first). Disabled when there are none. -->
+                <Button x:Name="ClearRecentsButton" Content="Clear recents" Margin="16,-6,16,16"
+                        AutomationProperties.HelpText="Forget every recent folder.">
+                    <Button.Flyout>
+                        <Flyout x:Name="ClearRecentsFlyout">
+                            <StackPanel Spacing="12" MaxWidth="260">
+                                <TextBlock Text="Forget every recent folder?" TextWrapping="Wrap" />
+                                <Button Content="Clear" Style="{StaticResource AccentButtonStyle}" Click="ClearRecents_Click" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
 
-            <TextBlock Text="Recents" Style="{StaticResource SectionHeaderStyle}" />
-            <Grid Margin="16,0,16,16" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Text="Remember recents" />
-                    <TextBlock Text="Remember the last five folders you opened an agent in."
-                               TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
-                <ToggleSwitch x:Name="RecentFoldersSwitch" Grid.Column="1" MinWidth="0"
-                              VerticalAlignment="Center" OffContent="" OnContent=""
-                              Toggled="RecentFoldersSwitch_Toggled"
-                              AutomationProperties.Name="Remember recents"
-                              AutomationProperties.HelpText="Remember the last five folders you opened an agent in." />
-            </Grid>
+                <!-- One row per agent with a page of its own (BuildAgentSettingsRows). -->
+                <TextBlock x:Name="AgentSettingsHeader" Text="Agents" Style="{StaticResource SectionHeaderStyle}" />
+                <StackPanel x:Name="AgentSettingsRows" Margin="8,0,8,12" Spacing="2" />
+            </StackPanel>
+
+            <!-- Claude Code's page. -->
+            <StackPanel x:Name="ClaudeSettings" Visibility="Collapsed">
+                <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                <TextBlock x:Name="ClaudeUsageIntro" Margin="16,0,16,4" TextWrapping="Wrap"
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="How Agent Dock finds out how much of your plan's session and weekly limits you've used, for the drawer beside Claude Code." />
+                <RadioButtons x:Name="ClaudeUsageSourceButtons" Margin="16,0,16,12"
+                              SelectionChanged="ClaudeUsageSource_SelectionChanged"
+                              AutomationProperties.Name="How to check Claude usage limits"
+                              AutomationProperties.HelpText="How Agent Dock finds out how much of your plan's session and weekly limits you've used, for the drawer beside Claude Code.">
+                    <RadioButton AutomationProperties.Name="Read them from the status line"
+                                 AutomationProperties.HelpText="Claude Code reports your limits while a session is running.">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Read them from the status line" />
+                            <TextBlock Text="Claude Code reports your limits while a session is running."
+                                       TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton AutomationProperties.Name="Ask Claude for them directly"
+                                 AutomationProperties.HelpText="Checks your limits when you open the flyout, using the Claude Code sign-in already on this PC. This is not a published Anthropic API, and it can stop working.">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Ask Claude for them directly" />
+                            <TextBlock Text="Checks your limits when you open the flyout, using the Claude Code sign-in already on this PC. This is not a published Anthropic API, and it can stop working."
+                                       TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </RadioButton>
+                </RadioButtons>
+            </StackPanel>
         </StackPanel>
             </Grid>
 

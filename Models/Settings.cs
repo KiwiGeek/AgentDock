@@ -193,6 +193,21 @@ public sealed class DockState
     /// Launching one already in the list moves it to the front and shifts the newer ones down.
     /// </summary>
     public Dictionary<string, List<string>> RecentLaunches { get; set; } = [];
+
+    /// <summary>
+    /// Where the Claude drawer reads plan limits. Missing from an older state.json means the
+    /// status line: the property initializer survives deserialization.
+    /// </summary>
+    public ClaudeUsageSource ClaudeUsageSource { get; set; } = ClaudeUsageSource.StatusLine;
+}
+
+/// <summary>Where Claude Code's plan limits come from (settings page, Claude Code).</summary>
+public enum ClaudeUsageSource
+{
+    /// <summary>Claude Code's status line, through <c>AgentDock.exe --statusline</c>.</summary>
+    [JsonStringEnumMemberName("statusLine")] StatusLine,
+    /// <summary>The usage call Claude Code's /usage makes (<see cref="Services.ClaudeUsageApi"/>).</summary>
+    [JsonStringEnumMemberName("api")] Api
 }
 
 /// <summary>Source-generated serializers (no reflection, so Native AOT is happy).</summary>

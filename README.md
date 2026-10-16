@@ -51,7 +51,7 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Right-click a command line agent (or Shift+F10) | **Save as preset** for the current folder |
 | Right-click a preset | Rename or remove it |
 | Drag the top edge (the bottom edge if your taskbar is at the top) | Makes the list taller or shorter. Double-click the edge to fit the list again |
-| Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. On the settings page, Esc goes back to the list first |
+| Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. In settings, Esc goes back one level first (an agent's page, then the list) |
 
 ### Presets
 
@@ -140,21 +140,34 @@ the jump list uses them.
 
 If you use Claude Code with a Pro or Max plan, the flyout can show how much of your 5-hour session
 and weekly limits you've used, and when each resets, in a drawer that slides out beside the
-flyout while the pointer is over Claude Code. Click
-**Set up** the first time. Agent Dock then becomes Claude Code's status line, which is the only
-supported way to get these numbers. It reads only what Claude Code passes to its status line,
-never your login. The status line itself shows something like `Opus 5.5 | 5h 37% | 7d 12%`.
+flyout while the pointer is over Claude Code. Where those numbers come from is up to you: open the
+settings page (the gear in the footer), choose **Claude Code**, and pick under **Usage limits**.
 
-Setting up replaces any status line you already had, and backs up Claude Code's `settings.json`
-first, next to the original (`settings.json.agentdock-<date>.bak`). Claude Code only refreshes
-its status line while a session is running, so the flyout says how old the numbers are. If you
-move Agent Dock, the flyout notices and offers to update the path.
+**Read them from the status line** (the default). Click **Set up** in the drawer the first time. Agent Dock then
+becomes Claude Code's status line, the supported way to get these numbers. It reads only what
+Claude Code passes to its status line, never your login. The status line itself shows something
+like `Opus 5.5 | 5h 37% | 7d 12%`. Setting up replaces any status line you already had, and backs
+up Claude Code's `settings.json` first, next to the original (`settings.json.agentdock-<date>.bak`).
+Claude Code only refreshes its status line while a session is running, so the flyout says how old
+the numbers are. If you move Agent Dock, the flyout notices and offers to update the path.
+
+**Ask Claude for them directly.** The drawer checks your limits itself when you hover over Claude Code,
+at most every three minutes, so the numbers are current even when no session is running. It makes
+the same call Claude Code's `/usage` command makes, which is **not a published Anthropic API** and
+can stop working whenever Anthropic changes it. To make it, Agent Dock reads the access token in
+Claude Code's own `.credentials.json` (or `CLAUDE_CODE_OAUTH_TOKEN` if you set it). It never
+refreshes that sign-in, never changes the file, and never saves or shows the token. If the sign-in
+has expired, open Claude Code once and it renews it. Anthropic's terms describe subscription sign-ins
+as being for Claude Code and claude.ai, which is why this is off unless you choose it. If a check
+fails, the drawer keeps showing the last saved numbers and says why. A status line you set up
+earlier keeps working alongside it.
 
 The drawer also lists the last five folders you opened Claude Code in, under the usage. Click one
 to open Claude Code there again. Opening a folder that's already in the list moves it to the top
-and shifts the others down. At most five are kept, and only as many as fit in the drawer. Turn
-this off with **Remember recents** on the settings page (the gear in the footer). That choice,
-and the folders, are saved in `state.json`.
+and shifts the others down. At most five are kept, and only as many as fit in the drawer.
+Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.
+On the settings page, **Remember recents** turns the list off, and **Clear recents** forgets every
+folder (it asks first). Those choices, the usage source, and the folders are saved in `state.json`.
 
 ### Codex usage limits
 

@@ -40,6 +40,19 @@ public static class RecentLaunches
         return ListFor(state, agentId, create: false);
     }
 
+    /// <summary>Takes one folder out of this agent's list. Returns whether it was there.</summary>
+    public static bool Forget(DockState state, string agentId, string folder)
+    {
+        var list = ListFor(state, agentId, create: false);
+        return list.RemoveAll(existing => SamePath(existing, folder)) > 0;
+    }
+
+    /// <summary>Whether any agent has recent folders saved (even with remembering turned off).</summary>
+    public static bool Any(DockState state) => state.RecentLaunches.Values.Any(list => list.Count > 0);
+
+    /// <summary>Forgets every agent's recent folders.</summary>
+    public static void Clear(DockState state) => state.RecentLaunches.Clear();
+
     private static bool IsClaude(string? command) =>
         string.Equals(Path.GetFileNameWithoutExtension(command?.Trim().Trim('"')), "claude", StringComparison.OrdinalIgnoreCase);
 
