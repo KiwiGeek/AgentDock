@@ -31,7 +31,7 @@ internal static class ThemeColors
         ["droid"] = Hex(0x4A6A9A),           // denim
         ["gemini"] = Hex(0x4B4FC4),          // indigo
         ["goose"] = Hex(0x4C6B3A),           // green shorts
-        ["grok"] = Hex(0x9E1F2A),            // crimson skirt
+        ["grok"] = Hex(0xC81E32),            // red neon and hair streaks on black
         ["hermes"] = Hex(0x1F6B4A),          // green top
         ["kiro"] = Hex(0x7B4FD0),            // violet
         ["opencode"] = Hex(0x2E9E6A),        // green neon
