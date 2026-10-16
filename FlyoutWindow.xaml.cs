@@ -317,8 +317,8 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private void ScheduleBannerReset()
     {
-        // A recent folder's menu took the pointer; the drawer (and its agent's colour) stays.
-        if (_drawerMenuOpen)
+        // A pop-up (a menu, a confirmation) took the pointer; the drawer and the agent's colour stay.
+        if (_popupsOpen > 0)
             return;
         if (_bannerResetTimer is null)
         {
@@ -560,12 +560,16 @@ public sealed partial class FlyoutWindow : Window
         _sinceShellRefresh.Restart();
         var settings = _settings;
         var inMemory = AllItems.Select(a => a.IconSource).Where(s => _icons.Has(s)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Known agents not in the list, to offer any that have been installed since.
+        var notInList = new DockSettings { Agents = KnownAgents.All().Where(k => !KnownAgents.IsInList(k, settings.Agents)).ToList() };
 
         try
         {
-            var (agents, extracted) = await StartMenuApps.RunOnStaThread(() =>
+            var (agents, extracted, newlyFound) = await StartMenuApps.RunOnStaThread(() =>
             {
-                var resolved = AgentCatalog.Resolve(settings, AgentCatalog.FromStartMenu(StartMenuApps.Load()));
+                var startMenu = AgentCatalog.FromStartMenu(StartMenuApps.Load());
+                var resolved = AgentCatalog.Resolve(settings, startMenu);
+                var found = AgentCatalog.Resolve(notInList, startMenu).Where(a => a.IsAgentAvailable).ToList();
                 var pixels = resolved
                     .Select(a => a.IconSource)
                     .OfType<string>()
@@ -574,7 +578,7 @@ public sealed partial class FlyoutWindow : Window
                     .Select(s => (Source: s, Pixels: ShellIcons.Extract(s)))
                     .Where(x => x.Pixels is not null)
                     .ToList();
-                return (resolved, pixels);
+                return (resolved, pixels, found);
             });
 
             // Back on the UI thread.
@@ -600,6 +604,14 @@ public sealed partial class FlyoutWindow : Window
 
                 foreach (var item in AllItems.Where(i => i.Icon is null))
                     item.Icon = _icons.Get(item.IconSource);
+
+                if (_state.AgentSetupDone && MainPage.Visibility == Visibility.Visible)
+                {
+                    var wasOpen = NewAgentOffer.IsOpen;
+                    OfferNewAgents(newlyFound);
+                    if (AppWindow.IsVisible && wasOpen != NewAgentOffer.IsOpen)
+                        PlaceWindow();
+                }
             }
 
             JumpList.Update(_presets, _cli.Concat(_desktop), CurrentFolder);
@@ -642,7 +654,167 @@ public sealed partial class FlyoutWindow : Window
         CliList.Visibility = CliHeader.Visibility;
         DesktopHeader.Visibility = _desktop.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         DesktopList.Visibility = DesktopHeader.Visibility;
-        EmptyText.Visibility = _presets.Count + _cli.Count + _desktop.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        // An empty list gets the welcome (or "no agents yet"); a list with nothing installed, the hint.
+        EmptyText.Visibility = _settings.Agents.Count > 0 && _presets.Count + _cli.Count + _desktop.Count == 0
+            ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSetupPanel();
+    }
+
+    // ---------- Setting up the agent list ----------
+
+    /// <summary>
+    /// The welcome on first run (nothing in the list, never set up), and "no agents yet" once the
+    /// user has chosen. Hidden when agents.json couldn't be read: the list there isn't really empty,
+    /// and adding agents would write over it.
+    /// </summary>
+    private void UpdateSetupPanel()
+    {
+        var show = _settings.Agents.Count == 0 && _settingsError is null;
+        SetupPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show)
+            return;
+        NewAgentOffer.IsOpen = false;
+        if (_state.AgentSetupDone)
+        {
+            SetupTitle.Text = "No agents yet";
+            SetupText.Text = "Find the AI agents installed on this PC, or add your own command in settings.";
+            SetupSkipButton.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            SetupTitle.Text = "Welcome to Agent Dock";
+            SetupText.Text = "Agent Dock can look for the AI agents installed on this PC. You choose which ones appear here.";
+            SetupSkipButton.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void FindAgents_Click(object sender, RoutedEventArgs e)
+    {
+        ShowSettingsPage();
+        _addAgentsFromSetup = true;
+        ShowAddAgents();
+    }
+
+    private void SetupSkip_Click(object sender, RoutedEventArgs e)
+    {
+        _state.AgentSetupDone = true;
+        _store.SaveState(_state);
+        UpdateSetupPanel();
+    }
+
+    /// <summary>
+    /// Saves the agent list and shows it as saved: the list, its icons and Start menu lookups, and
+    /// the jump list. False (nothing saved) when agents.json couldn't be read this time, so a hand
+    /// edit with a mistake in it is never written over.
+    /// </summary>
+    private bool SaveAgentList()
+    {
+        if (_settingsError is not null)
+            return false;
+        _store.SaveSettings(_settings);
+        if (!_state.AgentSetupDone)
+        {
+            _state.AgentSetupDone = true;
+            _store.SaveState(_state);
+        }
+        ShowAgents(AgentCatalog.Resolve(_settings, def => _state.DesktopApps.GetValueOrDefault(def.Id)));
+        foreach (var item in AllItems.Where(i => i.Icon is null))
+            item.Icon = _icons.Get(item.IconSource);
+        _ = RefreshFromShellAsync(_generation); // desktop apps, icons, the jump list
+        return true;
+    }
+
+    /// <summary>
+    /// Known agents that are installed and not in the list yet. The Start menu is read on an STA
+    /// thread, so this can take a moment.
+    /// </summary>
+    private async Task<List<AgentItem>> FindNewAgentsAsync()
+    {
+        var known = KnownAgents.All().Where(k => !KnownAgents.IsInList(k, _settings.Agents)).ToList();
+        try
+        {
+            var found = await StartMenuApps.RunOnStaThread(() =>
+                AgentCatalog.Resolve(new DockSettings { Agents = known }, AgentCatalog.FromStartMenu(StartMenuApps.Load())));
+            return found.Where(a => a.IsAgentAvailable).ToList();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return [];
+        }
+    }
+
+    // New agents installed since: offered once, from the slow pass.
+
+    private List<AgentItem> _offeredAgents = [];
+
+    /// <summary>
+    /// After the list is set up, a known agent that's installed, not in the list, and not turned
+    /// down before is offered at the top of the flyout. Never added without asking.
+    /// </summary>
+    private void OfferNewAgents(IEnumerable<AgentItem> found)
+    {
+        _offeredAgents = found
+            .Where(a => !_state.DismissedAgentOffers.Contains(a.Definition.Catalog ?? a.Definition.Id, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        if (_offeredAgents.Count == 0 || _settings.Agents.Count == 0 || _settingsError is not null)
+        {
+            NewAgentOffer.IsOpen = false;
+            return;
+        }
+        if (_offeredAgents.Count == 1)
+        {
+            NewAgentOffer.Title = $"{_offeredAgents[0].Definition.Name} is installed";
+            NewAgentOffer.Message = "Add it to your agents?";
+            NewAgentOfferButton.Content = "Add";
+        }
+        else
+        {
+            NewAgentOffer.Title = $"{_offeredAgents.Count} more agents are installed";
+            NewAgentOffer.Message = string.Join(", ", _offeredAgents.Select(a => a.Definition.Name));
+            NewAgentOfferButton.Content = "Choose";
+        }
+        NewAgentOffer.IsOpen = true;
+    }
+
+    private void NewAgentOfferButton_Click(object sender, RoutedEventArgs e)
+    {
+        NewAgentOffer.IsOpen = false;
+        if (_offeredAgents.Count == 1)
+        {
+            AddAgents([_offeredAgents[0].Definition]);
+            if (AppWindow.IsVisible)
+                PlaceWindow();
+            return;
+        }
+        ShowSettingsPage();
+        ShowAddAgents();
+    }
+
+    private void NewAgentOffer_CloseButtonClick(InfoBar sender, object args)
+    {
+        DismissOffers(_offeredAgents.Select(a => a.Definition));
+        if (AppWindow.IsVisible)
+            PlaceWindow();
+    }
+
+    private void DismissOffers(IEnumerable<AgentDefinition> agents)
+    {
+        foreach (var id in agents.Select(a => a.Catalog ?? a.Id))
+            if (!_state.DismissedAgentOffers.Contains(id, StringComparer.OrdinalIgnoreCase))
+                _state.DismissedAgentOffers.Add(id);
+        _store.SaveState(_state);
+    }
+
+    /// <summary>Adds known agents (copies, with ids that don't clash) to the end of the list.</summary>
+    private void AddAgents(IEnumerable<AgentDefinition> definitions)
+    {
+        foreach (var definition in definitions)
+        {
+            var copy = definition.Clone();
+            copy.Id = KnownAgents.UniqueId(copy.Id, _settings.Agents);
+            _settings.Agents.Add(copy);
+        }
+        SaveAgentList();
     }
 
     // ---------- Folders ----------
@@ -780,24 +952,26 @@ public sealed partial class FlyoutWindow : Window
 
     private void SettingsBack_Click(object sender, RoutedEventArgs e) => SettingsBack();
 
-    /// <summary>Up one level: from an agent's page to the general settings, from there to the list.</summary>
+    /// <summary>Up one level: from an agent's page or Add agents to the general settings, from there to the list.</summary>
     private void SettingsBack()
     {
-        if (_settingsAgent is not null)
-            ShowSettingsGeneral(focusRowFor: _settingsAgent);
+        if (_editingAgent is not null || AddAgentsPage.Visibility == Visibility.Visible)
+            ShowSettingsGeneral(focusRowFor: _editingAgent);
         else
             ShowMainPage();
     }
 
-    // ---------- Per-agent settings ----------
+    // ---------- Agents: the list in settings, each agent's page, adding ----------
 
-    /// <summary>The agent whose own settings page is showing, if one is.</summary>
-    private AgentItem? _settingsAgent;
+    /// <summary>The agent whose page is showing (the object in <see cref="DockSettings.Agents"/>), if one is.</summary>
+    private AgentDefinition? _editingAgent;
+    /// <summary>Add agents was opened from the welcome, so adding goes straight back to the list.</summary>
+    private bool _addAgentsFromSetup;
 
     /// <summary>
-    /// An agent's own settings page, by command name. To give another agent settings, add a panel to
-    /// the settings page in the XAML (like ClaudeSettings), return it here, and fill it in
-    /// <see cref="ShowSettingsPage"/>.
+    /// Settings that only some agents have, shown under the agent's page, by command name. To give
+    /// another agent some, add a panel to the settings page in the XAML (like ClaudeSettings), return
+    /// it here, list it in <see cref="AgentSettingsPanels"/>, and fill it in <see cref="ShowSettingsPage"/>.
     /// </summary>
     private FrameworkElement? AgentSettingsPanelFor(string? command) => command switch
     {
@@ -807,29 +981,37 @@ public sealed partial class FlyoutWindow : Window
 
     private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings];
 
-    /// <summary>A row for each installed agent with a settings page of its own (one per page).</summary>
+    /// <summary>A row for each agent in the list, in order, leading to its page.</summary>
     private void BuildAgentSettingsRows()
     {
         AgentSettingsRows.Children.Clear();
-        var seen = new HashSet<FrameworkElement>();
-        foreach (var agent in _agents.Where(a => a.Preset is null && a.IsAvailable))
+        foreach (var definition in _settings.Agents)
         {
-            if (AgentSettingsPanelFor(CommandName(agent.Definition.Command)) is not { } panel || !seen.Add(panel))
-                continue;
-
-            var icon = agent.Icon is { } source
+            var item = _agents.FirstOrDefault(a => a.Preset is null && ReferenceEquals(a.Definition, definition));
+            var icon = item?.Icon is { } source
                 ? (UIElement)new Image { Source = source, Width = 24, Height = 24 }
-                : new FontIcon { Glyph = agent.Glyph, FontSize = 18 };
-            var chevron = new FontIcon { Glyph = "", FontSize = 12, Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"] };
+                : new FontIcon { Glyph = definition.Kind == AgentKind.Cli ? "" : "", FontSize = 18, Width = 24 };
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock { Text = definition.Name, TextTrimming = TextTrimming.CharacterEllipsis });
+            if (item is { IsAgentAvailable: false })
+                text.Children.Add(new TextBlock
+                {
+                    Text = "Not installed", Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                    Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+                });
+            Grid.SetColumn(text, 1);
+            var chevron = new FontIcon
+            {
+                Glyph = "", FontSize = 12,
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+            };
             Grid.SetColumn(chevron, 2);
-            var name = new TextBlock { Text = agent.Definition.Name, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
-            Grid.SetColumn(name, 1);
             var row = new Button
             {
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 Padding = new Thickness(8, 6, 8, 6),
-                Tag = agent,
+                Tag = definition,
                 Content = new Grid
                 {
                     ColumnSpacing = 12,
@@ -839,43 +1021,347 @@ public sealed partial class FlyoutWindow : Window
                         new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
                         new ColumnDefinition { Width = GridLength.Auto }
                     },
-                    Children = { icon, name, chevron }
+                    Children = { icon, text, chevron }
                 }
             };
-            AutomationProperties.SetName(row, $"{agent.Definition.Name} settings");
-            row.Click += (_, _) => ShowAgentSettings(agent);
+            AutomationProperties.SetName(row, $"{definition.Name} settings");
+            row.Click += (_, _) => ShowAgentSettings(definition);
             AgentSettingsRows.Children.Add(row);
         }
-        AgentSettingsHeader.Visibility = AgentSettingsRows.Visibility =
-            AgentSettingsRows.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Agents.json that couldn't be read isn't really empty; changing the list would overwrite it.
+        var editable = _settingsError is null;
+        AddAgentsButtons.Visibility = editable ? Visibility.Visible : Visibility.Collapsed;
+        AgentListNote.Visibility = !editable || _settings.Agents.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        AgentListNote.Text = !editable
+            ? "agents.json couldn't be read, so your agents can't be changed here. Fix it with the pencil button, or delete it to start again."
+            : "No agents yet.";
     }
 
-    private void ShowAgentSettings(AgentItem agent)
+    private void ShowAgentSettings(AgentDefinition definition)
     {
-        if (AgentSettingsPanelFor(CommandName(agent.Definition.Command)) is not { } panel)
-            return;
-        _settingsAgent = agent;
-        SettingsGeneral.Visibility = Visibility.Collapsed;
+        _editingAgent = definition;
+        var isCli = definition.Kind == AgentKind.Cli;
+        var command = CommandName(definition.Command);
+
+        _settingsToggleReady = false;
+        AgentNameBox.Text = definition.Name;
+        AgentArgumentsBox.Text = definition.Arguments ?? "";
+        _settingsToggleReady = true;
+        AgentArgumentsBox.Visibility = isCli ? Visibility.Visible : Visibility.Collapsed;
+        AgentCommandText.Text = isCli
+            ? $"Runs {definition.Command}{(string.IsNullOrWhiteSpace(definition.Arguments) ? "" : " " + definition.Arguments)} in a terminal."
+            : "A desktop app, opened from the Start menu.";
+        AgentEnvSection.Visibility = isCli ? Visibility.Visible : Visibility.Collapsed;
+        AgentEnvNote.Text = command switch
+        {
+            "claude" => @"Set when this agent starts. For a second Claude account, duplicate it and set CLAUDE_CONFIG_DIR to its own folder, such as %USERPROFILE%\.claude-work. Write %NAME% to use a value from Windows, so keys stay out of agents.json.",
+            "codex" => @"Set when this agent starts. For a second Codex account, duplicate it and set CODEX_HOME to its own folder, such as %USERPROFILE%\.codex-work. Write %NAME% to use a value from Windows, so keys stay out of agents.json.",
+            _ => "Set when this agent starts. Write %NAME% to use a value from Windows, so keys stay out of agents.json."
+        };
+        FillEnvRows();
+        EnvNameBox.Text = EnvValueBox.Text = "";
+        var index = _settings.Agents.IndexOf(definition);
+        MoveUpButton.IsEnabled = index > 0;
+        MoveDownButton.IsEnabled = index >= 0 && index < _settings.Agents.Count - 1;
+        RemoveAgentText.Text = $"Remove {definition.Name} from your agents? Presets for it stay until you remove them.";
+
+        SettingsGeneral.Visibility = AddAgentsPage.Visibility = Visibility.Collapsed;
+        AgentEditor.Visibility = Visibility.Visible;
+        var panel = isCli ? AgentSettingsPanelFor(command) : null;
         foreach (var other in AgentSettingsPanels)
             other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
-        SettingsTitle.Text = agent.Definition.Name;
+        SettingsTitle.Text = definition.Name;
+        SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
         PlaceWindow();
         DispatcherQueue.TryEnqueue(() => SettingsBackButton.Focus(FocusState.Programmatic));
     }
 
-    /// <summary>The first level of settings. Coming back from an agent's page focuses its row.</summary>
-    private void ShowSettingsGeneral(AgentItem? focusRowFor = null)
+    private void FillEnvRows()
     {
-        _settingsAgent = null;
+        AgentEnvRows.Children.Clear();
+        foreach (var (name, value) in (_editingAgent?.Env ?? []).OrderBy(v => v.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
+            label.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            label.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = " = " + value });
+            ToolTipService.SetToolTip(label, $"{name} = {value}");
+            var remove = new Button { Width = 32, Height = 28, Padding = new Thickness(0), Content = new FontIcon { Glyph = "", FontSize = 12 } };
+            ToolTipService.SetToolTip(remove, "Remove");
+            AutomationProperties.SetName(remove, $"Remove {name}");
+            remove.Click += (_, _) =>
+            {
+                if (_editingAgent?.Env is not { } env || !env.Remove(name))
+                    return;
+                if (env.Count == 0)
+                    _editingAgent.Env = null;
+                SaveAgentList();
+                FillEnvRows();
+                PlaceWindow();
+            };
+            Grid.SetColumn(remove, 1);
+            AgentEnvRows.Children.Add(new Grid
+            {
+                ColumnSpacing = 8,
+                ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, new ColumnDefinition { Width = GridLength.Auto } },
+                Children = { label, remove }
+            });
+        }
+    }
+
+    private void AddEnv_Click(object sender, RoutedEventArgs e) => AddEnv();
+
+    private void EnvBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter)
+            return;
+        AddEnv();
+        e.Handled = true;
+    }
+
+    private void AddEnv()
+    {
+        if (_editingAgent is null)
+            return;
+        var name = EnvNameBox.Text.Trim();
+        // Letters, digits and underscores, not starting with a digit: what both shells accept.
+        if (name.Length == 0 || char.IsDigit(name[0]) || !name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'))
+        {
+            EnvNameBox.Focus(FocusState.Programmatic);
+            EnvNameBox.SelectAll();
+            return;
+        }
+        _editingAgent.Env ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        _editingAgent.Env[name] = EnvValueBox.Text;
+        SaveAgentList();
+        FillEnvRows();
+        EnvNameBox.Text = EnvValueBox.Text = "";
+        EnvNameBox.Focus(FocusState.Programmatic);
+        PlaceWindow();
+    }
+
+    private void EditorBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter)
+            return;
+        if (ReferenceEquals(sender, AgentNameBox))
+            CommitAgentName();
+        else
+            CommitAgentArguments();
+        e.Handled = true;
+    }
+
+    private void AgentNameBox_LostFocus(object sender, RoutedEventArgs e) => CommitAgentName();
+
+    private void AgentArgumentsBox_LostFocus(object sender, RoutedEventArgs e) => CommitAgentArguments();
+
+    private void CommitAgentName()
+    {
+        if (!_settingsToggleReady || _editingAgent is null)
+            return;
+        var name = AgentNameBox.Text.Trim();
+        if (name.Length == 0)
+        {
+            AgentNameBox.Text = _editingAgent.Name; // a name is required; put it back
+            return;
+        }
+        if (name == _editingAgent.Name)
+            return;
+        _editingAgent.Name = name;
+        SettingsTitle.Text = name;
+        SaveAgentList();
+    }
+
+    private void CommitAgentArguments()
+    {
+        if (!_settingsToggleReady || _editingAgent is null)
+            return;
+        var arguments = AgentArgumentsBox.Text.Trim() is { Length: > 0 } text ? text : null;
+        if (arguments == _editingAgent.Arguments)
+            return;
+        _editingAgent.Arguments = arguments;
+        SaveAgentList();
+        AgentCommandText.Text = $"Runs {_editingAgent.Command}{(arguments is null ? "" : " " + arguments)} in a terminal.";
+    }
+
+    private void MoveAgent_Click(object sender, RoutedEventArgs e)
+    {
+        if (_editingAgent is null || sender is not Button { Tag: string step })
+            return;
+        var from = _settings.Agents.IndexOf(_editingAgent);
+        var to = from + int.Parse(step, System.Globalization.CultureInfo.InvariantCulture);
+        if (from < 0 || to < 0 || to >= _settings.Agents.Count)
+            return;
+        _settings.Agents.RemoveAt(from);
+        _settings.Agents.Insert(to, _editingAgent);
+        SaveAgentList();
+        MoveUpButton.IsEnabled = to > 0;
+        MoveDownButton.IsEnabled = to < _settings.Agents.Count - 1;
+        // Keep focus on the button that was used, unless it just became disabled.
+        ((Control)(sender is Button { IsEnabled: true } used ? used : SettingsBackButton)).Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// A second copy, right after the original, with its own id and name, e.g. for another account.
+    /// It keeps the original's catalog id, so it has the same icon and picture. Opens the copy.
+    /// </summary>
+    private void DuplicateAgent_Click(object sender, RoutedEventArgs e)
+    {
+        if (_editingAgent is not { } original)
+            return;
+        var copy = original.Clone();
+        copy.Id = KnownAgents.UniqueId(original.Catalog ?? original.Id, _settings.Agents);
+        copy.Catalog ??= original.Catalog;
+        copy.Name = $"{original.Name} (copy)";
+        _settings.Agents.Insert(_settings.Agents.IndexOf(original) + 1, copy);
+        if (!SaveAgentList())
+            return;
+        ShowAgentSettings(copy);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            AgentNameBox.Focus(FocusState.Programmatic);
+            AgentNameBox.SelectAll();
+        });
+    }
+
+    private void RemoveAgent_Click(object sender, RoutedEventArgs e)
+    {
+        RemoveAgentFlyout.Hide();
+        if (_editingAgent is not { } removed)
+            return;
+        _settings.Agents.Remove(removed);
+        SaveAgentList();
+        ShowSettingsGeneral();
+    }
+
+    private void AddAgents_Click(object sender, RoutedEventArgs e)
+    {
+        _addAgentsFromSetup = false;
+        ShowAddAgents();
+    }
+
+    private void ScanAgain_Click(object sender, RoutedEventArgs e) => ShowAddAgents();
+
+    /// <summary>The same page, scrolled to the form for a command of your own.</summary>
+    private void AddCustomAgent_Click(object sender, RoutedEventArgs e)
+    {
+        _addAgentsFromSetup = false;
+        ShowAddAgents();
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            CustomNameBox.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = false });
+            CustomNameBox.Focus(FocusState.Programmatic);
+        });
+    }
+
+    /// <summary>The Add agents page: a scan for known agents not in the list, and a command of your own.</summary>
+    private async void ShowAddAgents()
+    {
+        _editingAgent = null;
+        SettingsGeneral.Visibility = AgentEditor.Visibility = Visibility.Collapsed;
         foreach (var panel in AgentSettingsPanels)
             panel.Visibility = Visibility.Collapsed;
+        AddAgentsPage.Visibility = Visibility.Visible;
+        SettingsTitle.Text = "Add agents";
+        CustomNote.Visibility = Visibility.Collapsed;
+        FoundAgentsList.Children.Clear();
+        AddFoundButton.Visibility = Visibility.Collapsed;
+        FoundAgentsNote.Text = "Looking for agents on this PC…";
+        SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
+        PlaceWindow();
+        DispatcherQueue.TryEnqueue(() => SettingsBackButton.Focus(FocusState.Programmatic));
+
+        var found = await FindNewAgentsAsync();
+        if (AddAgentsPage.Visibility != Visibility.Visible || SettingsPage.Visibility != Visibility.Visible)
+            return;
+        foreach (var agent in found)
+        {
+            agent.Icon ??= _icons.Get(agent.IconSource)
+                           ?? (agent.IconSource is { } source && ShellIcons.IsOnDisk(source) ? await _icons.LoadFromDiskAsync(source) : null);
+            var icon = agent.Icon is { } image
+                ? (UIElement)new Image { Source = image, Width = 24, Height = 24 }
+                : new FontIcon { Glyph = agent.Glyph, FontSize = 18, Width = 24 };
+            var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            label.Children.Add(icon);
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock { Text = agent.Definition.Name });
+            text.Children.Add(new TextBlock
+            {
+                Text = agent.IsCli ? agent.Definition.Command : "Desktop app",
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+            });
+            label.Children.Add(text);
+            var box = new CheckBox { IsChecked = true, Content = label, Tag = agent.Definition, Padding = new Thickness(8, 4, 0, 4) };
+            AutomationProperties.SetName(box, agent.Definition.Name);
+            FoundAgentsList.Children.Add(box);
+        }
+        FoundAgentsNote.Text = found.Count > 0
+            ? "These are installed and not in your list yet. Untick any you don't want."
+            : "Nothing else Agent Dock knows about is installed. You can add your own command below.";
+        AddFoundButton.Visibility = found.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        PlaceWindow();
+    }
+
+    private void AddFound_Click(object sender, RoutedEventArgs e)
+    {
+        var boxes = FoundAgentsList.Children.OfType<CheckBox>().ToList();
+        var chosen = boxes.Where(b => b.IsChecked == true).Select(b => (AgentDefinition)b.Tag).ToList();
+        // Unticked ones aren't offered again; they can still be added from here.
+        DismissOffers(boxes.Where(b => b.IsChecked != true).Select(b => (AgentDefinition)b.Tag));
+        AddAgents(chosen);
+        if (_addAgentsFromSetup)
+            ShowMainPage();
+        else
+            ShowSettingsGeneral();
+    }
+
+    private void AddCustom_Click(object sender, RoutedEventArgs e)
+    {
+        var name = CustomNameBox.Text.Trim();
+        var command = CustomCommandBox.Text.Trim();
+        if (name.Length == 0 || command.Length == 0)
+        {
+            CustomNote.Text = "Give it a name and a command.";
+            CustomNote.Visibility = Visibility.Visible;
+            (name.Length == 0 ? CustomNameBox : CustomCommandBox).Focus(FocusState.Programmatic);
+            return;
+        }
+        var slug = new string(name.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-').ToArray()).Trim('-');
+        _settings.Agents.Add(new AgentDefinition
+        {
+            Id = KnownAgents.UniqueId(slug.Length > 0 ? slug : "agent", _settings.Agents),
+            Name = name,
+            Command = command,
+            Arguments = CustomArgumentsBox.Text.Trim() is { Length: > 0 } arguments ? arguments : null
+        });
+        if (!SaveAgentList())
+            return;
+        CustomNameBox.Text = CustomCommandBox.Text = CustomArgumentsBox.Text = "";
+        if (_addAgentsFromSetup)
+            ShowMainPage();
+        else
+            ShowSettingsGeneral();
+    }
+
+    /// <summary>The first level of settings. Coming back from an agent's page focuses its row.</summary>
+    private void ShowSettingsGeneral(AgentDefinition? focusRowFor = null)
+    {
+        _editingAgent = null;
+        foreach (var panel in AgentSettingsPanels)
+            panel.Visibility = Visibility.Collapsed;
+        AgentEditor.Visibility = AddAgentsPage.Visibility = Visibility.Collapsed;
         SettingsGeneral.Visibility = Visibility.Visible;
         SettingsTitle.Text = "Settings";
         if (!AppWindow.IsVisible || SettingsPage.Visibility != Visibility.Visible)
             return;
+        BuildAgentSettingsRows();
         PlaceWindow();
         var row = AgentSettingsRows.Children.OfType<Button>().FirstOrDefault(b => b.Tag == focusRowFor);
-        DispatcherQueue.TryEnqueue(() => ((Control?)row ?? HoverBackgroundsSwitch).Focus(FocusState.Programmatic));
+        if (row is not null)
+            DispatcherQueue.TryEnqueue(() => row.Focus(FocusState.Programmatic));
+        else
+            SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
     }
 
     private void ClaudeUsageSource_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -904,21 +1390,20 @@ public sealed partial class FlyoutWindow : Window
         HoverBackgroundsSwitch.IsOn = _state.ShowHoverBackgrounds;
         RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
         HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
-        // Lives in agents.json, which is only changed when it reads cleanly (TrySetHideUnavailable).
+        // Lives in agents.json, which isn't written while it can't be read.
         HideUnavailableSwitch.IsEnabled = _settingsError is null;
         HideUnavailableNote.Text = _settingsError is null
-            ? "Hide agents that aren't installed, instead of showing them dimmed."
+            ? "Hide agents in your list that aren't installed any more, instead of showing them dimmed."
             : "Fix agents.json to change this here.";
         ClearRecentsButton.IsEnabled = RecentLaunches.Any(_state);
         // Claude Code's page.
         ClaudeUsageSourceButtons.SelectedIndex = _state.ClaudeUsageSource == ClaudeUsageSource.Api ? 1 : 0;
         _settingsToggleReady = true;
 
-        BuildAgentSettingsRows();
-        ShowSettingsGeneral();
         MainPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
-        HeightGrip.Visibility = Visibility.Collapsed;
+        ShowSettingsGeneral();
+        BuildAgentSettingsRows();
         PlaceWindow();
         DispatcherQueue.TryEnqueue(() => HoverBackgroundsSwitch.Focus(FocusState.Programmatic));
     }
@@ -931,7 +1416,6 @@ public sealed partial class FlyoutWindow : Window
         ShowSettingsGeneral();
         SettingsPage.Visibility = Visibility.Collapsed;
         MainPage.Visibility = Visibility.Visible;
-        HeightGrip.Visibility = Visibility.Visible;
         if (!AppWindow.IsVisible)
             return;
         PlaceWindow();
@@ -953,17 +1437,13 @@ public sealed partial class FlyoutWindow : Window
     {
         if (!_settingsToggleReady || _settings.HideUnavailable == HideUnavailableSwitch.IsOn)
             return;
-        if (!_store.TrySetHideUnavailable(HideUnavailableSwitch.IsOn))
-        {
-            _settingsToggleReady = false;
-            HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
-            _settingsToggleReady = true;
-            HideUnavailableNote.Text = "agents.json couldn't be changed. Edit hideUnavailable there instead.";
-            return;
-        }
         _settings.HideUnavailable = HideUnavailableSwitch.IsOn;
-        // The list behind the settings page; it's sized again on the way back.
-        ShowAgents(_agents.ToList());
+        if (SaveAgentList())
+            return;
+        _settings.HideUnavailable = !HideUnavailableSwitch.IsOn;
+        _settingsToggleReady = false;
+        HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
+        _settingsToggleReady = true;
     }
 
     private void RecentFoldersSwitch_Toggled(object sender, RoutedEventArgs e)
@@ -1058,21 +1538,65 @@ public sealed partial class FlyoutWindow : Window
             menu.Items.Add(MenuItem("Rename", "", () => StartRename(preset, anchor)));
             menu.Items.Add(MenuItem("Remove", "", () => RemovePreset(preset)));
         }
-        else if (item.IsCli)
-        {
-            var folder = CurrentFolder;
-            menu.Items.Add(MenuItem($"Save as preset for {new FolderItem(folder).Name}", "", () => SavePreset(item, folder)));
-        }
         else
         {
-            return; // Desktop apps don't open in a folder, so there's nothing to offer.
+            // Desktop apps don't open in a folder, so they can't be presets.
+            if (item.IsCli)
+            {
+                var folder = CurrentFolder;
+                menu.Items.Add(MenuItem($"Save as preset for {new FolderItem(folder).Name}", "\uE718", () => SavePreset(item, folder)));
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+            menu.Items.Add(MenuItem("Settings", "\uE713", () =>
+            {
+                ShowSettingsPage();
+                ShowAgentSettings(item.Definition);
+            }));
+            var remove = MenuItem("Remove from list", "\uE74D", () => ConfirmRemoveAgent(item, anchor));
+            remove.IsEnabled = _settingsError is null; // agents.json that couldn't be read isn't written
+            menu.Items.Add(remove);
         }
 
+        HoldWhileOpen(menu);
         if (e.TryGetPosition(anchor, out var point))
             menu.ShowAt(anchor, point);
         else
             menu.ShowAt(anchor);
         e.Handled = true;
+    }
+
+    /// <summary>Asks beside the row, then takes the agent out of the list. Its presets stay.</summary>
+    private void ConfirmRemoveAgent(AgentItem item, FrameworkElement anchor)
+    {
+        var confirm = new Button { Content = "Remove", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var flyout = new Flyout
+        {
+            Content = new StackPanel
+            {
+                Spacing = 12, MaxWidth = 260,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = $"Remove {item.Definition.Name} from your agents? You can add it again from settings.",
+                        TextWrapping = TextWrapping.Wrap
+                    },
+                    confirm
+                }
+            }
+        };
+        confirm.Click += (_, _) =>
+        {
+            flyout.Hide();
+            if (!_settings.Agents.Remove(item.Definition))
+                return;
+            SaveAgentList();
+            if (AppWindow.IsVisible)
+                PlaceWindow();
+            DispatcherQueue.TryEnqueue(FocusFirstAgent);
+        };
+        HoldWhileOpen(flyout);
+        flyout.ShowAt(anchor);
     }
 
     private static ListViewItem? ContainerOf(DependencyObject? element)
@@ -1165,6 +1689,7 @@ public sealed partial class FlyoutWindow : Window
             box.Focus(FocusState.Programmatic);
             box.SelectAll();
         };
+        HoldWhileOpen(flyout);
         flyout.ShowAt(anchor);
     }
 
@@ -1212,8 +1737,11 @@ public sealed partial class FlyoutWindow : Window
     // Loaded on the first hover after each show (ReloadData clears them), so opening stays fast.
     private ClaudeStatusLine.Setup? _claudeSetup;
     private PlanUsage? _claudeUsage;
-    private PlanUsage? _codexUsage;
-    private bool _codexUsageLoaded;
+    // Codex is asked directly (CodexUsage), so like Copilot's its answer is kept across shows.
+    private CodexUsageFetch? _codexCheck;
+    private DateTimeOffset _codexCheckedAt;
+    private bool _codexChecking;
+    private PlanUsage? _codexSaved;
     // Copilot's comes over the network, so it's fetched in the background and kept across shows.
     private static readonly TimeSpan CopilotUsageMaxAge = TimeSpan.FromMinutes(5);
     private CopilotUsageResult? _copilotUsage;
@@ -1234,8 +1762,7 @@ public sealed partial class FlyoutWindow : Window
     private void ClearUsageCache(bool sourceChanged = false)
     {
         _claudeSetup = null;
-        _claudeUsage = _codexUsage = null;
-        _codexUsageLoaded = false;
+        _claudeUsage = _codexSaved = null;
         if (!sourceChanged)
             return;
         _claudeCheck = null;
@@ -1253,20 +1780,28 @@ public sealed partial class FlyoutWindow : Window
         if (!item.IsCli || !item.IsAgentAvailable)
             return false;
 
+        // A copy set up for another account or provider: plan usage would be someone else's numbers.
+        if (UsesOwnAccount(item.Definition) is { } title)
+        {
+            _drawerItem = item;
+            UsageOffer.IsOpen = false;
+            ShowUsage(title, null, "Usage isn't shown for an agent with its own account settings yet.");
+            if (CommandName(item.Definition.Command) == "claude")
+                ShowClaudeRecents(item);
+            return true;
+        }
+
         switch (CommandName(item.Definition.Command))
         {
             case "claude":
                 return PrepareClaudeDrawer(item);
             case "codex":
-                if (!_codexUsageLoaded)
-                {
-                    _codexUsage = CodexUsage.Load();
-                    _codexUsageLoaded = true;
-                }
                 _drawerItem = item;
                 UsageOffer.IsOpen = false;
-                // Codex writes its usage to its session logs only while a session runs.
-                ShowUsage("Codex usage", _codexUsage, "Your limits appear here after your next Codex reply.");
+                // Live from Codex in the background, at most every few minutes; what's known shows meanwhile.
+                if (!_codexChecking && (_codexCheck is null || DateTimeOffset.UtcNow - _codexCheckedAt > CodexUsage.MinInterval))
+                    _ = CheckCodexUsageAsync();
+                ShowCodexCheck();
                 return true;
             case "copilot":
                 _drawerItem = item;
@@ -1278,6 +1813,24 @@ public sealed partial class FlyoutWindow : Window
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// The drawer's title if <paramref name="definition"/> is Claude Code or Codex with environment
+    /// variables that change whose account it uses (another config folder, an API key, another
+    /// endpoint), else null. Usage is only checked for the default account so far.
+    /// </summary>
+    private static string? UsesOwnAccount(AgentDefinition definition)
+    {
+        if (definition.Env is not { Count: > 0 } env)
+            return null;
+        return CommandName(definition.Command) switch
+        {
+            "claude" when env.Keys.Any(k => k.ToUpperInvariant() is "CLAUDE_CONFIG_DIR" or "ANTHROPIC_API_KEY" or "ANTHROPIC_AUTH_TOKEN"
+                or "ANTHROPIC_BASE_URL" or "CLAUDE_CODE_OAUTH_TOKEN" or "CLAUDE_CODE_USE_BEDROCK" or "CLAUDE_CODE_USE_VERTEX") => "Claude usage",
+            "codex" when env.Keys.Any(k => k.ToUpperInvariant() is "CODEX_HOME" or "OPENAI_API_KEY" or "OPENAI_BASE_URL") => "Codex usage",
+            _ => null
+        };
     }
 
     /// <summary>
@@ -1369,22 +1922,62 @@ public sealed partial class FlyoutWindow : Window
             ShowClaudeCheck();
     }
 
-    /// <summary>The newest numbers available, with a note when the check failed or is still running.</summary>
     private void ShowClaudeCheck()
     {
         var check = _claudeCheck;
-        var usage = check?.Usage ?? (_claudeUsage ??= ClaudeStatusLine.Load());
-        var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
+        ShowCheckedUsage("Claude usage", check?.Usage ?? (_claudeUsage ??= ClaudeStatusLine.Load()),
+            _claudeChecking, check?.Problem, ClaudeUsageApi.Checking, ClaudeUsageApi.NoWindows, ClaudeUsageApi.ShowingSaved);
+    }
 
+    private async Task CheckCodexUsageAsync()
+    {
+        var shown = _generation;
+        _codexChecking = true;
+        CodexUsageFetch result;
+        try
+        {
+            result = await CodexUsage.FetchAsync(); // resumes on the UI thread; never throws
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            result = new CodexUsageFetch(null, CodexUsage.Unreachable);
+        }
+        _codexChecking = false;
+        _codexCheck = result;
+        _codexCheckedAt = DateTimeOffset.UtcNow;
+        if (result.Usage is not null)
+            _codexSaved = null; // just saved; read it again next time
+
+        // Fill in the drawer only if it's still showing Codex, in the same show.
+        if (shown == _generation && _drawerOpen && !_drawerClosing && _drawerItem is { } item
+            && CommandName(item.Definition.Command) == "codex")
+            ShowCodexCheck();
+    }
+
+    private void ShowCodexCheck()
+    {
+        var check = _codexCheck;
+        ShowCheckedUsage("Codex usage", check?.Usage ?? (_codexSaved ??= CodexUsage.LoadSaved()),
+            _codexChecking, check?.Problem, CodexUsage.Checking, CodexUsage.NoWindows, CodexUsage.ShowingSaved);
+    }
+
+    /// <summary>
+    /// Usage that's checked over the network: the newest numbers available, with a note when the
+    /// check failed (under saved numbers, or on its own) or is still running with nothing to show.
+    /// </summary>
+    private void ShowCheckedUsage(string title, PlanUsage? usage, bool checking, string? problem,
+        string checkingNote, string noWindowsNote, string showingSaved)
+    {
+        var hasData = usage is { FiveHour: not null } or { SevenDay: not null };
         string? note;
-        if (_claudeChecking && check?.Problem is null)
-            note = hasData ? null : ClaudeUsageApi.Checking; // saved numbers stay as they are
-        else if (check?.Problem is { } problem)
-            note = hasData ? $"{problem} {ClaudeUsageApi.ShowingSaved}" : problem;
+        if (checking && problem is null)
+            note = hasData ? null : checkingNote; // saved numbers stay as they are
+        else if (problem is not null)
+            note = hasData ? $"{problem} {showingSaved}" : problem;
         else
             note = null;
 
-        ShowUsage("Claude usage", usage, hasData ? "" : note ?? ClaudeUsageApi.NoWindows, hasData ? note : null);
+        ShowUsage(title, usage, hasData ? "" : note ?? noWindowsNote, hasData ? note : null);
     }
 
     /// <summary>The folders currently offered for the hovered agent, newest first, at most five.</summary>
@@ -1446,20 +2039,67 @@ public sealed partial class FlyoutWindow : Window
             var remove = new MenuFlyoutItem { Text = "Remove from recents", Icon = new FontIcon { Glyph = "" }, Tag = folder };
             remove.Click += RemoveRecent_Click;
             var menu = new MenuFlyout { Items = { remove } };
-            // The menu is a popup, so the pointer "leaves" the drawer while it's open. Keep it open.
-            menu.Opened += (_, _) =>
-            {
-                _drawerMenuOpen = true;
-                _drawerCloseTimer?.Stop();
-            };
-            menu.Closed += (_, _) => _drawerMenuOpen = false;
+            // Shown by WinUI itself, so the hold starts as it opens.
+            menu.Opening += (_, _) => HoldWhileOpen(menu);
             button.ContextFlyout = menu;
             RecentRows.Children.Add(button);
         }
     }
 
-    /// <summary>A recent folder's menu is open; the drawer mustn't close under it.</summary>
-    private bool _drawerMenuOpen;
+    /// <summary>
+    /// Pop-ups open over the flyout: menus, confirmations, renaming. While any is open the drawer,
+    /// the picture and the banner's colour hold.
+    /// </summary>
+    private int _popupsOpen;
+
+    /// <summary>
+    /// Call as <paramref name="flyout"/> is shown. A pop-up takes the pointer, so the row or drawer
+    /// under it sees the pointer leave. Without this the drawer would start closing, and closing it
+    /// resizes the window, which makes Windows close the pop-up (and the cursor spin meanwhile).
+    /// When it closes, things settle as if the pointer had just left, unless it's still over a row
+    /// or the drawer.
+    /// </summary>
+    private void HoldWhileOpen(Microsoft.UI.Xaml.Controls.Primitives.FlyoutBase flyout)
+    {
+        _popupsOpen++;
+        _drawerCloseTimer?.Stop();
+        _bannerResetTimer?.Stop();
+
+        void OnClosed(object? sender, object e)
+        {
+            flyout.Closed -= OnClosed;
+            _popupsOpen = Math.Max(0, _popupsOpen - 1);
+            // After any follow-up (Remove → its confirmation) has had the chance to open.
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (_popupsOpen > 0 || PointerOverRowOrDrawer())
+                    return;
+                _hoverItem = null;
+                if (_state.ShowHoverBackgrounds && !_drawerOpen)
+                    FadeBackdrop(null);
+                ScheduleDrawerClose();
+                ScheduleBannerReset();
+            });
+        }
+        flyout.Closed += OnClosed;
+    }
+
+    /// <summary>Whether the mouse is over an agent row or the drawer right now (no pointer event says so after a pop-up).</summary>
+    private bool PointerOverRowOrDrawer()
+    {
+        if (!AppWindow.IsVisible || Root.XamlRoot is null || !Win32.GetCursorPos(out var cursor) || !Win32.ScreenToClient(_hwnd, ref cursor))
+            return false;
+        var scale = Root.XamlRoot.RasterizationScale;
+        var point = new Windows.Foundation.Point(cursor.X / scale, cursor.Y / scale);
+        foreach (var element in Microsoft.UI.Xaml.Media.VisualTreeHelper.FindElementsInHostCoordinates(point, Root))
+        {
+            if (element == DrawerHost)
+                return true;
+            if (element is ListViewItem)
+                return true;
+        }
+        return false;
+    }
 
     private void RemoveRecent_Click(object sender, RoutedEventArgs e)
     {
@@ -1746,7 +2386,7 @@ public sealed partial class FlyoutWindow : Window
         ScheduleBannerReset();
         // Moving into the drawer should keep the picture. It fades when the drawer actually closes,
         // or straight away when the row had no drawer.
-        if (_state.ShowHoverBackgrounds && !_drawerOpen)
+        if (_state.ShowHoverBackgrounds && !_drawerOpen && _popupsOpen == 0)
             FadeBackdrop(null);
         ScheduleDrawerClose();
     }
@@ -1969,7 +2609,7 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private void ScheduleDrawerClose()
     {
-        if (!_drawerOpen || _drawerClosing || _drawerMenuOpen)
+        if (!_drawerOpen || _drawerClosing || _popupsOpen > 0)
             return;
         if (_drawerCloseTimer is null)
         {
@@ -2167,11 +2807,16 @@ public sealed partial class FlyoutWindow : Window
         Root.Measure(new Windows.Foundation.Size(ListWidthDip + drawerDip, double.PositiveInfinity));
         var workHeightDip = (work.Height - 2 * gap) / scale;
         var fitDip = Root.DesiredSize.Height > 1 ? Root.DesiredSize.Height : AppWindow.ClientSize.Height / scale;
-        // The list keeps the height the user dragged it to (it scrolls if the content is taller).
-        // The settings page always fits its content.
-        var heightDip = MainPage.Visibility == Visibility.Visible && _state.FlyoutHeight is { } chosen
+        // The height the user dragged to, for the list and settings alike (both scroll if their
+        // content is taller). Without one, the list fits its content and settings matches the list.
+        var onList = MainPage.Visibility == Visibility.Visible;
+        var heightDip = _state.FlyoutHeight is { } chosen
             ? Math.Clamp(chosen, Math.Min(MinHeightDip, workHeightDip), workHeightDip)
-            : Math.Min(fitDip, Math.Min(MaxHeightDip, workHeightDip));
+            : !onList && _listHeightDip is { } listHeight
+                ? Math.Min(listHeight, workHeightDip)
+                : Math.Min(fitDip, Math.Min(MaxHeightDip, workHeightDip));
+        if (onList)
+            _listHeightDip = heightDip;
         // The grip goes on the edge away from the taskbar; the edge by the taskbar stays put.
         _gripAtTop = !(_anchor.Y < work.Top && !work.Contains(_anchor));
         HeightGrip.VerticalAlignment = _gripAtTop ? VerticalAlignment.Top : VerticalAlignment.Bottom;
@@ -2208,6 +2853,8 @@ public sealed partial class FlyoutWindow : Window
     // ---------- Resizing the height ----------
 
     private bool _gripAtTop = true;
+    /// <summary>The list's height last time it was placed, which settings matches when no height was dragged.</summary>
+    private double? _listHeightDip;
     private bool _resizing;
     private int _resizeStartCursorY;
     private RectInt32 _resizeStart;

@@ -71,6 +71,10 @@ internal static partial class Win32
     public static partial bool GetCursorPos(out POINT point);
 
     [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ScreenToClient(nint hwnd, ref POINT point);
+
+    [LibraryImport("user32.dll")]
     public static partial nint MonitorFromPoint(POINT point, uint flags);
 
     [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]

@@ -9,18 +9,21 @@ update this file in the same commit.
 A Windows 11 taskbar app. The user pins `AgentDock.exe`; clicking it opens a Fluent acrylic flyout
 just above the taskbar button, listing AI agents:
 
-- **CLI agents** (Claude Code, Codex, Gemini CLI, GitHub Copilot CLI, OpenCode by default) launch
-  in Windows Terminal, in a working folder chosen from a recent-folders drop-down or a folder picker.
-- **Desktop agents** (Claude, ChatGPT, Copilot, Perplexity by default) launch directly.
-- Placeholder defaults (Aider, Qwen Code, Cursor CLI, Amp, Kiro CLI, Goose, Crush, Factory Droid,
-  Grok Build, Hermes Agent, DeepSeek Harness, Cursor desktop) were added 2026-10-16 and are under review: see `tasks.md`.
+- **CLI agents** launch in Windows Terminal, in a working folder chosen from a recent-folders
+  drop-down or a folder picker.
+- **Desktop agents** launch directly.
+- **The user chooses the agents** (owner's decision, 2026-10-16). A fresh install has an empty list
+  and a welcome offering **Find agents**, which scans for the agents in `Services/KnownAgents.cs`
+  (Claude Code, Codex, Gemini CLI, Copilot CLI, OpenCode, Aider, Qwen Code, Cursor CLI, Amp, Kiro,
+  Goose, Crush, Factory Droid, Grok Build, Hermes Agent, DeepSeek Harness; Claude, ChatGPT,
+  Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
 - There is no separate Codex desktop app: OpenAI merged it into the ChatGPT desktop app (July 2026).
   It's installed as `OpenAI.Codex_2p2nqsd0c76g0!App` but named "ChatGPT", so `chatgpt-desktop` finds it.
   A chatgpt.com site installed from Edge has the same Start menu name; `StartMenuApps.Load` prefers the
   real app over such web apps (`IsWebApp`).
 
-Agents that aren't installed are hidden. On startup, if the exe isn't pinned to the taskbar,
-it asks the user to pin it and quits if they decline (see "Pin prompt" below). The list is user-editable in `agents.json`. Right-clicking
+On startup, if the exe isn't pinned to the taskbar,
+it asks the user to pin it and quits if they decline (see "Pin prompt" below). The list lives in `agents.json`, managed from the settings page. Right-clicking
 the taskbar icon shows the same agents as a jump list. The two goals that drive most decisions:
 **looks native to Windows 11**, and **opens fast**.
 
@@ -136,13 +139,13 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   Taskbar edge is inferred from where the cursor sits outside the work area. If the cursor is
   inside the work area (launched from a terminal), the flyout centres. Height comes from
   `Root.Measure(380 DIP, ∞)`, capped at 640 DIP and the work area.
-- **Height can be dragged** (owner's request, 2026-10-16), on the list only. `HeightGrip` (a
+- **Height can be dragged** (owner's request, 2026-10-16), on the list and settings. `HeightGrip` (a
   `ResizeGrip`, a `Grid` subclass because only a subclass can set `ProtectedCursor`) is a 6 DIP strip
   on the edge away from the taskbar (bottom if the taskbar is at the top); the edge by the taskbar
   stays put. The drag works in screen pixels (`GetCursorPos`) because the grip moves with the window.
   The result is saved as `DockState.FlyoutHeight` (client DIPs), which `PlaceWindow` uses instead
   of fitting the content (min 240 DIP, max the work area; the 640 DIP cap applies only to fitting).
-  Double-clicking the grip clears it. The settings page has no grip and always fits its content.
+  Double-clicking the grip clears it. Settings uses the same height and grip (owner, 2026-10-16): the dragged height, or with none, the list's last height (`_listHeightDip`); its body scrolls.
   The window itself stays non-resizable. Not yet verified in-app.
 - **Hide on deactivation**, except while the folder picker is open (`_keepOpen`).
 - **Toggle guard**: clicking the taskbar icon while open deactivates (hides) on mouse-down,
@@ -154,17 +157,20 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - Number keys 1–9 launch the corresponding available agent. Up/Down cross between the two lists.
   Neither does anything while the settings page is open.
 - **Settings page:** the gear in the footer swaps the list for a page in the same window (so
-  placement, acrylic and hide-on-deactivate stay as they are). The page resizes the flyout to its
+  placement, acrylic and hide-on-deactivate stay as they are). The page keeps the list's height (see "Height can be dragged"), not its
   content. Two levels (owner's request, 2026-10-16):
   - **General**: Waifu backgrounds, Hide unavailable agents, Remember recents and **Clear recents**
     (a confirm flyout; disabled when nothing is saved). Remember recents is general on purpose,
     and its text doesn't name Claude: Claude is just the only agent recorded so far (owner,
-    2026-10-16). Below it, **Agents**: a row for each installed agent that has a page of its own
-    (`BuildAgentSettingsRows`), with its icon and a chevron.
-  - **An agent's page** (`ShowAgentSettings`): the header shows the agent's name. Today only Claude
-    Code has one (`ClaudeSettings`: "Usage limits", how Claude usage is found: "Read them from the status line" or "Ask Claude for them directly"). To add another, add a
+    2026-10-16). Below it, **Agents**: a row for every agent in the list, in order
+    (`BuildAgentSettingsRows`), with its icon, "Not installed" if so, and a chevron; then **Add agents**.
+  - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Agent-specific settings show
+    under it; today only Claude Code has some (`ClaudeSettings`: "Usage limits", how Claude usage is
+    found: "Read them from the status line" or "Ask Claude for them directly"). To add another, add a
     panel in the XAML, return it from `AgentSettingsPanelFor` (by command name), list it in
     `AgentSettingsPanels`, and fill it in `ShowSettingsPage`.
+  - **Add agents** (`ShowAddAgents`): the scan and a custom command; see "Agent list".
+  - The page body scrolls (`SettingsScroller`), since an agent's page can be long.
   - The back button and Esc go up one level (`SettingsBack`). Hiding the flyout returns to the
     list, and settings reopens at the first level.
   - Verified by screenshot (2026-10-16, driven through UI Automation): both levels render.
@@ -217,6 +223,49 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   `.cmd` shims work and the user lands at a prompt afterwards. Windows Terminal via `wt.exe -d <folder>`
   with `;` escaped as `\;` (wt treats bare `;` as a command separator); otherwise a console window.
   Desktop: exe via `UseShellExecute`, or `shell:AppsFolder\<appId>`.
+  - **`env`** (CLI only) is set *inside* the shell command, in front of the agent:
+    `${env:NAME} = "…"; claude` for PowerShell, `set "NAME=…" && claude` for cmd. Not on the
+    process: when Windows Terminal is already running, wt.exe hands the tab to that Terminal, which
+    starts it with its own environment. `%NAME%` in a value stays a reference
+    (`${env:NAME}` in PowerShell; cmd expands `%NAME%` itself), so keys kept in Windows'
+    environment never appear in agents.json or in Agent Dock's command lines.
+
+### Agent list (owner's decision, 2026-10-16)
+
+- **Known agents** (`KnownAgents`, compiled in) are templates: id, name, command or Start menu names.
+  Icons, pictures and banner colours are matched by these ids. A new agent ships by being added there.
+  Nothing appears in the flyout until the user adds it.
+- **The user's list** is `DockSettings.Agents` in agents.json, now **app-owned**: written by
+  `SettingsStore.SaveSettings` (comments are lost; it's still hand-editable JSON). Added agents keep
+  `catalog` (the known id), so a renamed or duplicated copy keeps its icon, picture and colour
+  (`AgentIcons.Find`/`FindBackground` try id, then catalog, then the CLI command name).
+  `SaveAgentList` refuses while agents.json failed to load (`_settingsError`), so a broken hand edit
+  is never written over; settings then says why and hides Add agents.
+- **First run:** an empty list and `DockState.AgentSetupDone` false shows the welcome
+  (`UpdateSetupPanel`): **Find agents** opens Add agents and returns to the list after adding;
+  **Not now** sets `AgentSetupDone`, after which an empty list shows "No agents yet" with Find agents.
+  An older agents.json with agents in it simply is the list.
+- **Add agents** (settings → Agents → "Scan for new agents", or "Add your own command", which scrolls to the form; "Scan again" on the page): `FindNewAgentsAsync` resolves known agents not already in the list
+  (`KnownAgents.IsInList`: same catalog id, CLI command or Start menu name) against PATH and the Start
+  menu (STA thread), shown ticked. Unticked ones go into `DismissedAgentOffers`. Also a custom
+  command form (name, command, arguments).
+- **Offers:** the slow pass (`RefreshFromShellAsync`) also resolves known agents not in the list;
+  installed ones not dismissed are offered in an InfoBar at the top of the list ("Amp is installed.
+  Add it?" with Add, or "N more agents are installed" with Choose). Closing it dismisses them. Never
+  added automatically.
+- **An agent's page** (`ShowAgentSettings`, settings → Agents → row): name, arguments (CLI), command
+  shown, **environment variables** (CLI; add with name + value, remove with ×; names are letters,
+  digits and underscores), move up/down, **Duplicate** (a copy right after it, id from
+  `KnownAgents.UniqueId`, same catalog, name "… (copy)", opened with its name selected), **Remove**
+  (confirms; presets for it stay). Changes save immediately. The flyout's right-click menu on an agent also has **Settings** (opens this page) and **Remove from list** (`ConfirmRemoveAgent`, a confirm flyout beside the row). Agent-specific panels (Claude's usage
+  source) show under it.
+- **Copies for another account:** the env note suggests `CLAUDE_CONFIG_DIR` / `CODEX_HOME`. Usage is
+  only checked for the default account so far: a Claude or Codex agent whose env changes the account
+  or provider (`UsesOwnAccount`: config dir, API keys, base URLs, Bedrock/Vertex) gets a drawer saying
+  usage isn't shown for it yet, rather than another account's numbers. Per-account usage is in `tasks.md`.
+- Verified 2026-10-16 by screenshots (UI Automation): the welcome, and Add agents finding the
+  owner's installed agents with icons. Not yet verified: adding, the agent page, duplicate,
+  environment variables reaching an agent, the offer.
 
 ### Shell interop
 
@@ -283,6 +332,7 @@ there degrade to a missing icon or entry, never an error.
 | `Models/AgentItem.cs` | View model for an agent row (`INotifyPropertyChanged`); `FolderItem` |
 | `Services/SettingsStore.cs` | `%APPDATA%\AgentDock\agents.json` and `state.json`; atomic writes via temp file |
 | `Services/AgentCatalog.cs` | Definition → resolved item |
+| `Services/KnownAgents.cs` | The agents Agent Dock can find and offer (templates; ids match icons and pictures) |
 | `Services/PathResolver.cs` | PATH/PATHEXT lookup |
 | `Services/Launcher.cs` | Starts agents and plain shells |
 | `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
@@ -296,7 +346,7 @@ there degrade to a missing icon or entry, never an error.
 | `Services/ClaudeStatusLine.cs` | `--statusline` mode, saved Claude usage, and setting up Claude Code's status line |
 | `Services/ClaudeUsageApi.cs` | "Ask Claude directly": the one usage GET, its token handling, rate limits and parser |
 | `Services/ClaudeConfig.cs` | Claude Code's config folder (`CLAUDE_CONFIG_DIR` or `~\.claude`), shared |
-| `Services/CodexUsage.cs` | Codex plan usage, read from Codex's own session logs |
+| `Services/CodexUsage.cs` | Codex plan usage, asked live of Codex's app server; last answer saved |
 | `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
 | `Services/CopilotUsage.cs` | GitHub Copilot premium requests this month, via `gh api` (billing API) |
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
@@ -307,14 +357,11 @@ there degrade to a missing icon or entry, never an error.
 
 ## Config and data
 
-- `%APPDATA%\AgentDock\agents.json`: user-edited. Comments and trailing commas allowed.
-  A malformed file is never overwritten: defaults are used for that session and the footer shows
-  the error with a line number. Schema is documented in `README.md`; keep the two in sync.
-  - The app never re-serialises it (that would drop comments). The one exception is the settings
-    page's "Hide unavailable agents" switch: `SettingsStore.TrySetHideUnavailable` replaces just
-    that value in the text (or adds it after the opening brace), checks the result reads back,
-    then writes. It refuses if the file is malformed or the property appears more than once
-    (e.g. also in a comment), and the switch reverts with a note. Not yet verified in-app.
+- `%APPDATA%\AgentDock\agents.json`: the agent list and global settings, **written by the app**
+  (settings page) and still hand-editable. Comments and trailing commas are read, but comments are
+  lost on the next save. A malformed file is never overwritten: an empty list is used for that
+  session, the footer shows the error with a line number, and nothing that would save it is
+  allowed. Schema is documented in `README.md`; keep the two in sync.
 - `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids,
   whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
   folders, the dragged list height, and where Claude usage comes from).
@@ -517,9 +564,16 @@ or `"api"` in state.json; missing means the status line). Both save to the same
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
   Presets of Claude share the agent's list. Only Claude is recorded so far.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
-  (`RecentLaunches.Forget`). While that menu is open the drawer and banner colour stay
-  (`_drawerMenuOpen`), since the popup takes the pointer out of the drawer. Removing the last folder
-  closes the drawer if there's no usage to show. Not yet verified in-app.
+  (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
+- **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
+  the flyout (an agent's or preset's right-click menu, a recent folder's menu, the remove
+  confirmation, the rename box) is counted while open. A pop-up takes the pointer, so the row or
+  drawer sees it leave; without the hold, the drawer starts closing, the window resizes, and Windows
+  closes the pop-up (the owner saw the menu vanish, the drawer close and a busy cursor, 2026-10-16).
+  While any is open, the drawer, picture and banner colour stay. When the last closes, they settle as
+  if the pointer had just left, unless the mouse is over a row or the drawer
+  (`PointerOverRowOrDrawer`: `GetCursorPos` → `ScreenToClient` → `FindElementsInHostCoordinates`).
+  Call it just before `ShowAt` (or from `Opening` for a `ContextFlyout`). Not yet verified in-app.
 - Placement: on the right if the grown window fits in the monitor's work area, otherwise on the
   left. Content sits against the list; the window growing uncovers it. The column is above the
   toolbar. The bar and its divider span the whole window; the buttons stay in the list's 380 DIP
@@ -550,17 +604,37 @@ or `"api"` in state.json; missing means the status line). Both save to the same
 
 ### Codex usage (`Services/CodexUsage.cs`)
 
-- **Source:** Codex writes `token_count` events into its session logs,
-  `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (`CODEX_HOME` moves the folder).
-  - Each has `payload.rate_limits.primary` / `.secondary` with `used_percent`, `window_minutes`
-    (300 and 10080 seen) and `resets_at` (Unix seconds). Older versions had `resets_in_seconds`,
-    which is also handled. The line's `timestamp` is the "updated" time.
-  - Seen with codex-cli 0.162.1. **Undocumented**, so every failure path returns null (no data).
-    Never read `auth.json`.
-- **Reading:** only the newest 3 day folders, newest log first, up to 10 logs. A session that got
-  no reply has no `rate_limits`.
-  - Only the last 512 KB of each log is read, scanning backwards for the last `"rate_limits"` line.
-  - Windows are assigned by length (a day or less is the session window), not by primary/secondary.
+- **Source: Codex itself, live** (owner's decision, 2026-10-16: the only route, no setting, no
+  other fallbacks). `codex -s read-only -a never app-server` is the local JSON-RPC interface Codex's
+  own TUI and desktop app use (JSON lines over stdin/stdout, no `"jsonrpc"` field). Agent Dock sends
+  `initialize` (clientInfo `agent-dock`), the `initialized` notification, then one
+  `account/rateLimits/read` with `excludeResetCreditDetails: true`, and closes stdin (the server
+  exits; a stuck one is killed with its process tree, since it's a .cmd shim → node → codex).
+  - `account/rateLimits/read` is a regular method in `codex-rs/app-server-protocol`, not marked
+    experimental, though `codex --help` calls `app-server` experimental as a whole. CodexBar
+    (a third-party menu-bar app) uses the same route.
+  - **Codex does its own sign-in and token refresh.** Agent Dock never reads `auth.json` or holds a
+    token. Don't call `chatgpt.com/backend-api/wham/usage` directly instead: that would mean handling
+    the token, and the owner ruled out other routes.
+  - **Live and account-wide:** the numbers come from OpenAI at the moment of the check, so they
+    don't depend on when Codex last ran on this PC, and they include use on other machines, the
+    desktop app and cloud tasks. (The old session-log source was removed: it was only as fresh as
+    the last local session, a day stale when tested.)
+- **Result:** `rateLimitsByLimitId.codex` if present, else `rateLimits`; `primary` / `secondary`
+  with `usedPercent`, `windowDurationMins` (300 and 10080 seen) and `resetsAt` (Unix seconds,
+  nullable). Windows are assigned by length (a day or less is the session), not by name. A result
+  with no windows is an empty success. `CodexUsage.Parse` is pure.
+- **When:** in the background on hover over Codex, only if the last answer is over 3 minutes old
+  (`CodexUsage.MinInterval`); the answer is kept across shows. Nothing runs while the flyout is
+  hidden. Timeouts: 10 s to start, 10 s for the reply.
+- **Saving:** each success is written to `%LOCALAPPDATA%\AgentDock\codex-usage.json` (temp file +
+  move). The drawer shows the last answer, else that file, straight away, and fills in when a check
+  returns. On failure the saved numbers stay with a note under them ("… Showing the last saved
+  limits."); with nothing saved, the note alone. Notes never include an error's text.
+  `ShowCheckedUsage` is shared with Claude's direct check.
+- **Verified 2026-10-16:** parser cases in a throwaway console project (deleted), and a real check
+  through the owner's Codex 0.163.0: 0.9 s, team plan, both windows returned and saved, no codex
+  processes left behind. The in-app drawer with it is not yet verified.
 - **Verified by the owner (2026-10-15):** the Codex picture, drawer, cross-fade between agents, and
   the seam overlap.
 

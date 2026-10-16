@@ -35,6 +35,7 @@ public static class AgentIcons
     public static string? FindBackground(AgentDefinition definition) =>
         ExistingFile(definition.Background)
         ?? BundledBackground(definition.Id)
+        ?? BundledBackground(definition.Catalog)
         ?? (definition.Kind == AgentKind.Cli ? BundledBackground(CommandName(definition.Command)) : null);
 
     public static bool IsBundledBackground(string source) => source.StartsWith(BackgroundPrefix, StringComparison.Ordinal);
@@ -49,6 +50,7 @@ public static class AgentIcons
     public static string? Find(AgentDefinition definition) =>
         Configured(definition)
         ?? Bundled(definition.Id)
+        ?? Bundled(definition.Catalog)
         ?? (definition.Kind == AgentKind.Cli ? Bundled(CommandName(definition.Command)) : null);
 
     public static bool IsBundled(string source) => source.StartsWith(BundledPrefix, StringComparison.Ordinal);

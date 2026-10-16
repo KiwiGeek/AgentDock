@@ -21,7 +21,8 @@ public static class Launcher
 
                 var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments }
                     .Where(s => !string.IsNullOrWhiteSpace(s)));
-                StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal);
+                StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal,
+                    item.Definition.Env);
             }
             else if (item.ExecutablePath is not null)
             {
@@ -59,9 +60,10 @@ public static class Launcher
     /// The agent runs inside a shell (rather than directly) so that npm .cmd shims work and you're
     /// left at a prompt in the folder when the agent exits.
     /// </summary>
-    private static void StartInTerminal(string? title, string? command, string folder, string shellSetting, string terminalSetting)
+    private static void StartInTerminal(string? title, string? command, string folder, string shellSetting, string terminalSetting,
+        IReadOnlyDictionary<string, string>? env = null)
     {
-        var (shellExe, shellArgs) = BuildShell(shellSetting, command);
+        var (shellExe, shellArgs) = BuildShell(shellSetting, command, env);
         var wt = terminalSetting.Equals("console", StringComparison.OrdinalIgnoreCase) ? null : PathResolver.Find("wt.exe");
 
         ProcessStartInfo psi;
@@ -93,7 +95,8 @@ public static class Launcher
         Process.Start(psi);
     }
 
-    private static (string Exe, List<string> Args) BuildShell(string shellSetting, string? command)
+    private static (string Exe, List<string> Args) BuildShell(string shellSetting, string? command,
+        IReadOnlyDictionary<string, string>? env = null)
     {
         var shell = shellSetting.ToLowerInvariant() switch
         {
@@ -103,12 +106,53 @@ public static class Launcher
             _ => PathResolver.Find("pwsh.exe") is not null ? "pwsh" : "powershell"
         };
 
+        // The agent's variables are set inside the shell, in front of its command. Setting them on
+        // the process wouldn't reach the agent: when Windows Terminal is already open, wt.exe hands
+        // the new tab to that Terminal, which starts it with its own environment.
+        var variables = (env ?? new Dictionary<string, string>())
+            .Where(v => IsVariableName(v.Key))
+            .ToList();
+
         if (shell == "cmd")
-            return ("cmd.exe", command is null ? [] : ["/k", command]);
+        {
+            // cmd expands %NAME% itself. "set "N=v"" keeps trailing spaces and & out of trouble.
+            var prefix = string.Concat(variables.Select(v => $"set \"{v.Key}={v.Value.Replace("\"", "")}\" && "));
+            return ("cmd.exe", command is null ? [] : ["/k", prefix + command]);
+        }
 
         var exe = shell == "pwsh" ? (PathResolver.Find("pwsh.exe") ?? "pwsh.exe") : "powershell.exe";
+        var assignments = string.Concat(variables.Select(v => $"${{env:{v.Key}}} = {PowerShellString(v.Value)}; "));
         return command is null
             ? (exe, ["-NoLogo"])
-            : (exe, ["-NoLogo", "-NoExit", "-Command", command]);
+            : (exe, ["-NoLogo", "-NoExit", "-Command", assignments + command]);
+    }
+
+    /// <summary>Letters, digits and underscores (and the parentheses of names like ProgramFiles(x86)).</summary>
+    private static bool IsVariableName(string name) =>
+        name.Length > 0 && !char.IsDigit(name[0]) && name.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '(' or ')');
+
+    /// <summary>
+    /// A double-quoted PowerShell string for a value, with <c>%NAME%</c> turned into
+    /// <c>${env:NAME}</c> so PowerShell reads it from the environment. Everything else is literal.
+    /// </summary>
+    internal static string PowerShellString(string value)
+    {
+        var text = new System.Text.StringBuilder("\"");
+        var i = 0;
+        while (i < value.Length)
+        {
+            if (value[i] == '%' && value.IndexOf('%', i + 1) is var end and > 0 && IsVariableName(value[(i + 1)..end]))
+            {
+                text.Append("${env:").Append(value[(i + 1)..end]).Append('}');
+                i = end + 1;
+                continue;
+            }
+            // Backtick escapes PowerShell's specials inside double quotes.
+            if (value[i] is '`' or '"' or '$')
+                text.Append('`');
+            text.Append(value[i]);
+            i++;
+        }
+        return text.Append('"').ToString();
     }
 }

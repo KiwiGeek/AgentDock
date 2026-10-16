@@ -4,7 +4,7 @@ using AgentDock.Models;
 namespace AgentDock.Services;
 
 /// <summary>Reads and writes %APPDATA%\AgentDock\agents.json and state.json.</summary>
-public sealed partial class SettingsStore
+public sealed class SettingsStore
 {
     public SettingsStore()
     {
@@ -54,49 +54,13 @@ public sealed partial class SettingsStore
     }
 
     /// <summary>
-    /// Sets <c>hideUnavailable</c> in agents.json from the settings page. agents.json is the user's file
-    /// and may have comments, which serialising it again would drop, so this changes just that value in
-    /// the text (or adds it after the opening brace), and only writes if the result still reads back.
-    /// False if the file couldn't be changed safely.
+    /// Writes agents.json. The app owns it now (agents are added, renamed and removed from the
+    /// settings page); it's still plain JSON that can be edited by hand, but comments don't survive.
+    /// The caller must not save over a file that failed to load (<see cref="LoadSettings"/>'s error),
+    /// or the user's edits would be lost.
     /// </summary>
-    public bool TrySetHideUnavailable(bool value)
-    {
-        try
-        {
-            var text = File.ReadAllText(SettingsPath);
-            var literal = value ? "true" : "false";
-            var matches = HideUnavailableProperty().Matches(text);
-            string updated;
-            if (matches.Count == 1)
-            {
-                var group = matches[0].Groups["value"];
-                updated = text[..group.Index] + literal + text[(group.Index + group.Length)..];
-            }
-            else if (matches.Count == 0 && text.IndexOf('{') is var brace and >= 0)
-            {
-                // A trailing comma is fine: agents.json allows them.
-                updated = text[..(brace + 1)] + $"\n  \"hideUnavailable\": {literal}," + text[(brace + 1)..];
-            }
-            else
-            {
-                return false; // more than one: don't guess which counts
-            }
-
-            var check = JsonSerializer.Deserialize(updated, DockJsonContext.Default.DockSettings);
-            if (check?.HideUnavailable != value)
-                return false;
-            TryWrite(SettingsPath, updated);
-            return true;
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
-    [System.Text.RegularExpressions.GeneratedRegex("\"hideUnavailable\"\\s*:\\s*(?<value>true|false)",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
-    private static partial System.Text.RegularExpressions.Regex HideUnavailableProperty();
+    public void SaveSettings(DockSettings settings) =>
+        TryWrite(SettingsPath, JsonSerializer.Serialize(settings, DockJsonContext.Default.DockSettings));
 
     public DockState LoadState()
     {

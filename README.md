@@ -47,8 +47,8 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Folder drop-down / folder button | Pick a recent folder or browse for a new one |
 | Terminal button (footer) | Plain shell in the working folder, no agent |
 | Pencil button (footer) | Opens `agents.json` |
-| Gear button (footer) | Settings. Esc there goes back to the list |
-| Right-click a command line agent (or Shift+F10) | **Save as preset** for the current folder |
+| Gear button (footer) | Settings, including your agents (add, rename, duplicate, remove). Esc there goes back to the list |
+| Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (command line agents), **Settings**, or **Remove from list** |
 | Right-click a preset | Rename or remove it |
 | Drag the top edge (the bottom edge if your taskbar is at the top) | Makes the list taller or shorter. Double-click the edge to fit the list again |
 | Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. In settings, Esc goes back one level first (an agent's page, then the list) |
@@ -95,12 +95,42 @@ The exe is locked while the background instance is running. If Agent Dock has st
 Quit force-closes it after about three seconds. The next click starts it from cold, which takes a
 moment longer.
 
+## Your agents
+
+The flyout shows only the agents you've chosen. The first time it opens, it offers to **Find
+agents**: Agent Dock looks for the agents it knows about (Claude Code, Codex, Gemini CLI, GitHub
+Copilot CLI, OpenCode, Aider, Qwen Code, Cursor, Amp, Kiro, Goose, Crush, Factory Droid, Grok
+Build, Hermes Agent, DeepSeek Harness, and the Claude, ChatGPT, Copilot, Perplexity and Cursor
+desktop apps), lists the ones installed, and adds the ones you leave ticked. **Not now** starts
+you with an empty list.
+
+After that, manage them on the settings page (the gear in the footer), under **Agents**:
+
+- **Scan for new agents** looks again for agents Agent Dock knows; **Add your own command** takes
+  any other command line tool (a name, a command, and optional arguments).
+- Click an agent for its page: rename it, change its arguments, set **environment variables**,
+  move it up or down, **duplicate** it, or remove it.
+- Or right-click an agent in the flyout (or press Shift+F10) for **Settings** (its page) and
+  **Remove from list**.
+- **Duplicate** makes a second copy of the same agent with its own name and variables, for example a
+  work and a personal Claude Code account: give the copy `CLAUDE_CONFIG_DIR` (or `CODEX_HOME` for
+  Codex) pointing at its own folder, and sign in once inside it. Plan usage in the drawer is shown
+  only for the default account for now; a copy set up for another account says so.
+- Environment variables are set in the terminal before the agent starts. Write `%NAME%` in a value
+  to use a variable from Windows, so a key never has to be written into `agents.json`.
+
+When an agent Agent Dock knows is installed later, the flyout offers it once ("Amp is installed.
+Add it?"). It's never added without asking, and closing the offer means it isn't offered again
+(it can still be added from **Add agents**).
+
 ## Configuration
 
-`%APPDATA%\AgentDock\agents.json` is created on first run. Comments and trailing commas are allowed.
-Agents that aren't installed are hidden unless you set `hideUnavailable` to `false`, or turn off
-**Hide unavailable agents** on the settings page (the gear in the footer). The switch changes only
-that value in `agents.json` and leaves the rest of the file, comments included, as it was.
+`%APPDATA%\AgentDock\agents.json` holds your agent list and a few settings. Agent Dock writes it
+when you change agents in settings, so comments in it aren't kept, but it's plain JSON you can still
+edit by hand (the pencil button opens it). If a hand edit breaks it, Agent Dock says so in the footer
+and won't save over it until it's fixed; deleting it starts you again with the welcome.
+**Hide unavailable agents** on the settings page hides agents in your list that aren't installed
+any more, rather than showing them dimmed.
 
 ```jsonc
 {
@@ -110,8 +140,11 @@ that value in `agents.json` and leaves the rest of the file, comments included, 
   "maxRecentFolders": 8,
   "startWithWindows": true,  // start hidden at sign-in so the first click is fast
   "agents": [
-    // CLI: resolved against PATH
-    { "id": "claude", "name": "Claude Code", "command": "claude" },
+    // CLI: resolved against PATH. "catalog" is the known agent it was added from (icon, picture, colour).
+    { "id": "claude", "name": "Claude Code", "command": "claude", "catalog": "claude" },
+    // A second account: its own config folder (%NAME% is read from Windows' environment)
+    { "id": "claude-2", "name": "Claude Code (work)", "command": "claude", "catalog": "claude",
+      "env": { "CLAUDE_CONFIG_DIR": "%USERPROFILE%\\.claude-work" } },
     { "id": "claude-resume", "name": "Claude Code (continue)", "command": "claude", "arguments": "--continue" },
     { "id": "codex-cmd", "name": "Codex", "command": "codex", "shell": "cmd" },
     // Your own icon: .png, .ico, .jpg, .bmp, or an .exe to take it from (relative to this folder)
@@ -171,11 +204,14 @@ folder (it asks first). Those choices, the usage source, and the folders are sav
 
 ### Codex usage limits
 
-Codex gets the same drawer while the pointer is over it, with nothing to set up: Codex records
-your 5-hour and weekly limits in its own session logs (`~/.codex/sessions`, or under `CODEX_HOME`),
-and Agent Dock reads the latest. It never reads Codex's login. Codex only records them during a
-session, so the drawer says how old they are. The log format isn't documented by OpenAI, so if a
-Codex update changes it, the drawer just shows no data.
+Codex gets the same drawer while the pointer is over it, with nothing to set up. Agent Dock asks
+Codex itself for your 5-hour and weekly limits, through the same local interface Codex's own apps
+use (`codex app-server`, started read-only and closed straight after). Codex uses its own sign-in,
+so Agent Dock never reads your login or handles a token. The numbers are live and cover your whole
+account, including Codex on other computers, the desktop app and cloud tasks, whether or not you've
+used Codex on this PC lately. It checks at most every three minutes, only while you're hovering
+over Codex. If a check fails (no network, or Codex needs you to sign in again with `codex login`),
+the drawer keeps showing the last numbers it got and says why.
 
 ### GitHub Copilot usage
 

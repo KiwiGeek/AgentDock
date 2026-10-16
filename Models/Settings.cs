@@ -56,11 +56,33 @@ public sealed class AgentDefinition
     /// <summary>Start menu names to look for when Path and AppId aren't set.</summary>
     public List<string>? StartMenuNames { get; set; }
 
+    /// <summary>
+    /// The known agent (<see cref="Services.KnownAgents"/>) this one was added from, so a renamed or
+    /// duplicated copy keeps its icon, picture and colour, and isn't offered again by a scan.
+    /// </summary>
+    public string? Catalog { get; set; }
+
+    /// <summary>
+    /// CLI agents: environment variables set in the shell before the agent starts, e.g.
+    /// <c>CLAUDE_CONFIG_DIR</c> or <c>CODEX_HOME</c> for a second account. <c>%NAME%</c> in a value is
+    /// read from Windows' environment by the shell, so keys don't have to be written here.
+    /// </summary>
+    public Dictionary<string, string>? Env { get; set; }
+
     /// <summary>A copy with different arguments (presets can override them).</summary>
     public AgentDefinition WithArguments(string? arguments)
     {
         var copy = (AgentDefinition)MemberwiseClone();
         copy.Arguments = arguments;
+        return copy;
+    }
+
+    /// <summary>An independent copy (lists and variables included), for adding and duplicating.</summary>
+    public AgentDefinition Clone()
+    {
+        var copy = (AgentDefinition)MemberwiseClone();
+        copy.StartMenuNames = StartMenuNames is null ? null : [.. StartMenuNames];
+        copy.Env = Env is null ? null : new Dictionary<string, string>(Env, StringComparer.OrdinalIgnoreCase);
         return copy;
     }
 }
@@ -84,37 +106,11 @@ public sealed class DockSettings
 
     public List<AgentDefinition> Agents { get; set; } = [];
 
-    public static DockSettings CreateDefault() => new()
-    {
-        Agents =
-        [
-            new() { Id = "claude",   Name = "Claude Code",        Command = "claude" },
-            new() { Id = "codex",    Name = "Codex",              Command = "codex" },
-            new() { Id = "gemini",   Name = "Gemini CLI",         Command = "gemini" },
-            new() { Id = "copilot",  Name = "GitHub Copilot CLI", Command = "copilot" },
-            new() { Id = "opencode", Name = "OpenCode",           Command = "opencode" },
-            // Placeholders under review (tasks.md): commands not yet checked, no icons yet.
-            new() { Id = "aider",    Name = "Aider",              Command = "aider" },
-            new() { Id = "qwen",     Name = "Qwen Code",          Command = "qwen" },
-            new() { Id = "cursor-cli", Name = "Cursor CLI",       Command = "cursor-agent" },
-            new() { Id = "amp",      Name = "Amp",                Command = "amp" },
-            new() { Id = "kiro",     Name = "Kiro CLI",           Command = "kiro-cli" },
-            new() { Id = "goose",    Name = "Goose",              Command = "goose" },
-            new() { Id = "crush",    Name = "Crush",              Command = "crush" },
-            new() { Id = "droid",    Name = "Factory Droid",      Command = "droid" },
-            new() { Id = "grok",     Name = "Grok Build",         Command = "grok" },
-            new() { Id = "hermes",   Name = "Hermes Agent",       Command = "hermes" },
-            // Serves a web UI and opens it in the browser; the terminal keeps the server running.
-            new() { Id = "deepseek", Name = "DeepSeek Harness",   Command = "dsh", Arguments = "web" },
-
-            new() { Id = "claude-desktop",  Name = "Claude",     Kind = AgentKind.Desktop, StartMenuNames = ["Claude"] },
-            new() { Id = "chatgpt-desktop", Name = "ChatGPT",    Kind = AgentKind.Desktop, StartMenuNames = ["ChatGPT"] },
-            new() { Id = "copilot-desktop", Name = "Copilot",    Kind = AgentKind.Desktop, StartMenuNames = ["Copilot", "Microsoft Copilot"] },
-            new() { Id = "perplexity",      Name = "Perplexity", Kind = AgentKind.Desktop, StartMenuNames = ["Perplexity"] },
-            // Placeholder under review (tasks.md).
-            new() { Id = "cursor",          Name = "Cursor",     Kind = AgentKind.Desktop, StartMenuNames = ["Cursor"] },
-        ]
-    };
+    /// <summary>
+    /// No agents: the user picks them, from a scan of what's installed (<see cref="Services.KnownAgents"/>)
+    /// or by hand. A first run with an empty list offers the scan.
+    /// </summary>
+    public static DockSettings CreateDefault() => new();
 }
 
 /// <summary>A command line agent pinned to a folder (presets.json), for work that comes up again and again.</summary>
@@ -147,7 +143,7 @@ public sealed class UsageWindow
 /// <summary>
 /// An agent's subscription usage, as shown in its drawer. For Claude Code this is also
 /// %LOCALAPPDATA%\AgentDock\claude-usage.json, written by <c>AgentDock.exe --statusline</c>;
-/// for Codex it's read from Codex's own session logs (<see cref="Services.CodexUsage"/>).
+/// for Codex it's asked of Codex's app server and saved in codex-usage.json (<see cref="Services.CodexUsage"/>).
 /// </summary>
 public sealed class PlanUsage
 {
@@ -199,6 +195,15 @@ public sealed class DockState
     /// status line: the property initializer survives deserialization.
     /// </summary>
     public ClaudeUsageSource ClaudeUsageSource { get; set; } = ClaudeUsageSource.StatusLine;
+
+    /// <summary>
+    /// The user has set up their agent list (added some, or chose "Not now"), so an empty list
+    /// shows "no agents yet" rather than the welcome.
+    /// </summary>
+    public bool AgentSetupDone { get; set; }
+
+    /// <summary>Known agents found installed that the user chose not to add. Not offered again.</summary>
+    public List<string> DismissedAgentOffers { get; set; } = [];
 }
 
 /// <summary>Where Claude Code's plan limits come from (settings page, Claude Code).</summary>
