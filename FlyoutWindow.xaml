@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="using:AgentDock.Models"
+    xmlns:local="using:AgentDock"
     Title="Agent Dock">
 
     <!-- Acrylic: the material Windows 11 uses for its own flyouts. -->
@@ -425,5 +426,15 @@
                 </Button>
             </Grid>
         </Border>
+
+        <!--
+            Drag to change the list's height; double-click to fit the content again. On the edge away from
+            the taskbar (set in PlaceWindow). Last, so it's on top of everything else. Not on the settings page.
+        -->
+        <local:ResizeGrip x:Name="HeightGrip" Grid.RowSpan="2" Height="6" VerticalAlignment="Top"
+                          PointerPressed="HeightGrip_PointerPressed" PointerMoved="HeightGrip_PointerMoved"
+                          PointerReleased="HeightGrip_PointerReleased" PointerCaptureLost="HeightGrip_PointerCaptureLost"
+                          DoubleTapped="HeightGrip_DoubleTapped"
+                          ToolTipService.ToolTip="Drag to resize. Double-click to fit." />
     </Grid>
 </Window>

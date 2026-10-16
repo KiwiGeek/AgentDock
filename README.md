@@ -50,6 +50,7 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Gear button (footer) | Settings. Esc there goes back to the list |
 | Right-click a command line agent (or Shift+F10) | **Save as preset** for the current folder |
 | Right-click a preset | Rename or remove it |
+| Drag the top edge (the bottom edge if your taskbar is at the top) | Makes the list taller or shorter. Double-click the edge to fit the list again |
 | Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. On the settings page, Esc goes back to the list first |
 
 ### Presets

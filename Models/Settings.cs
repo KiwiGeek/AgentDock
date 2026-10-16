@@ -164,6 +164,11 @@ public sealed class DockState
     public string? CurrentFolder { get; set; }
     public List<string> RecentFolders { get; set; } = [];
 
+    /// <summary>
+    /// The list's height in DIPs (client area), set by dragging the flyout's edge. Null fits the content.
+    /// </summary>
+    public double? FlyoutHeight { get; set; }
+
     /// <summary>Last known shell:AppsFolder id per desktop agent, so the menu can show them instantly.</summary>
     public Dictionary<string, string> DesktopApps { get; set; } = [];
 

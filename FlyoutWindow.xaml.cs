@@ -32,6 +32,8 @@ public sealed partial class FlyoutWindow : Window
     private const double DrawerWidthDip = 240;
     private const double HoverBackdropOpacity = 0.3;
     private const double MaxHeightDip = 640;
+    /// <summary>The shortest the user can drag the list to.</summary>
+    private const double MinHeightDip = 240;
 
     /// <summary>A click on the taskbar icon hides the open flyout on mouse-down and relaunches on mouse-up; ignore that relaunch.</summary>
     private static readonly TimeSpan ReopenGuard = TimeSpan.FromMilliseconds(600);
@@ -100,6 +102,12 @@ public sealed partial class FlyoutWindow : Window
 
         Activated += OnActivated;
         Root.Loaded += (_, _) => _rootLoaded.TrySetResult();
+        // Resizing the height changes how a picture needs to be scaled to cover the flyout.
+        Root.SizeChanged += (_, _) =>
+        {
+            if (_layers is not null)
+                LayoutBackdrop();
+        };
 
         PresetList.ItemsSource = _presets;
         CliList.ItemsSource = _cli;
@@ -192,7 +200,7 @@ public sealed partial class FlyoutWindow : Window
         AppWindow.Hide();
         SyncHearts();
         // Don't reopen with the last hover's image, the drawer, or the settings page showing.
-        FadeBackdrop(null, spansDrawer: false);
+        FadeBackdrop(null);
         CloseDrawer(animate: false);
         ShowMainPage();
     }
@@ -776,7 +784,7 @@ public sealed partial class FlyoutWindow : Window
     private void ShowSettingsPage()
     {
         CloseDrawer(animate: false);
-        FadeBackdrop(null, spansDrawer: false);
+        FadeBackdrop(null);
         _settingsToggleReady = false;
         HoverBackgroundsSwitch.IsOn = _state.ShowHoverBackgrounds;
         RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
@@ -790,6 +798,7 @@ public sealed partial class FlyoutWindow : Window
 
         MainPage.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
+        HeightGrip.Visibility = Visibility.Collapsed;
         PlaceWindow();
         DispatcherQueue.TryEnqueue(() => HoverBackgroundsSwitch.Focus(FocusState.Programmatic));
     }
@@ -800,6 +809,7 @@ public sealed partial class FlyoutWindow : Window
             return;
         SettingsPage.Visibility = Visibility.Collapsed;
         MainPage.Visibility = Visibility.Visible;
+        HeightGrip.Visibility = Visibility.Visible;
         if (!AppWindow.IsVisible)
             return;
         PlaceWindow();
@@ -814,7 +824,7 @@ public sealed partial class FlyoutWindow : Window
         _store.SaveState(_state);
         UpdateBannerHeart();
         if (!_state.ShowHoverBackgrounds)
-            FadeBackdrop(null, spansDrawer: false);
+            FadeBackdrop(null);
     }
 
     private void HideUnavailableSwitch_Toggled(object sender, RoutedEventArgs e)
@@ -1442,8 +1452,6 @@ public sealed partial class FlyoutWindow : Window
     {
         public Image Image { get; } = image;
         public string? Path { get; set; }
-        /// <summary>Sized for the list and the open drawer together.</summary>
-        public bool SpansDrawer { get; set; }
     }
 
     /// <summary>
@@ -1481,7 +1489,7 @@ public sealed partial class FlyoutWindow : Window
             ScheduleDrawerClose();
         // The settings page can turn the pictures off. The usage drawer is separate and still opens.
         if (_state.ShowHoverBackgrounds)
-            FadeBackdrop(item?.BackgroundSource, spansDrawer: drawer);
+            FadeBackdrop(item?.BackgroundSource);
     }
 
     private void AgentRow_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -1491,15 +1499,15 @@ public sealed partial class FlyoutWindow : Window
         // Moving into the drawer should keep the picture. It fades when the drawer actually closes,
         // or straight away when the row had no drawer.
         if (_state.ShowHoverBackgrounds && !_drawerOpen)
-            FadeBackdrop(null, spansDrawer: false);
+            FadeBackdrop(null);
         ScheduleDrawerClose();
     }
 
     /// <summary>
-    /// Fades the given picture in behind the flyout (and the drawer, when <paramref name="spansDrawer"/>),
-    /// cross-fading from whatever picture was showing, or fades out when <paramref name="path"/> is null.
+    /// Fades the given picture in behind the flyout, cross-fading from whatever picture was showing,
+    /// or fades out when <paramref name="path"/> is null. Where it sits follows the drawer (LayoutBackdrop).
     /// </summary>
-    private void FadeBackdrop(string? path, bool spansDrawer)
+    private void FadeBackdrop(string? path)
     {
         var layers = Layers;
         if (path is not null)
@@ -1531,7 +1539,6 @@ public sealed partial class FlyoutWindow : Window
                 incoming.Path = path;
                 incoming.Image.Source = image;
             }
-            layers[_activeLayer].SpansDrawer = spansDrawer;
             LayoutBackdrop(layers[_activeLayer]);
         }
 
@@ -1568,7 +1575,6 @@ public sealed partial class FlyoutWindow : Window
         }
         _backdropFade = storyboard;
         storyboard.Begin();
-        TraceBackdrop(path is null ? "fade-out" : "fade-in");
     }
 
     private Storyboard? _drawerContentFade;
@@ -1615,33 +1621,6 @@ public sealed partial class FlyoutWindow : Window
             LayoutBackdrop(layer);
     }
 
-    // TEMP: trace for the picture shifting while the drawer closes. Remove once fixed.
-    [Conditional("DEBUG")]
-    private void TraceBackdrop(string reason)
-    {
-        try
-        {
-            var scale = Root.XamlRoot?.RasterizationScale ?? 1;
-            var pos = AppWindow.Position;
-            var line = new System.Text.StringBuilder()
-                .Append($"{DateTime.Now:HH:mm:ss.fff} {reason,-12} win x={pos.X} y={pos.Y} w={AppWindow.Size.Width} h={AppWindow.Size.Height}")
-                .Append($" drawer={DrawerDip():0.0} side={_drawerSide} open={_drawerOpen} closing={_drawerClosing} rootH={Root.ActualHeight:0.0}");
-            for (var i = 0; i < Layers.Length; i++)
-            {
-                var layer = Layers[i];
-                var img = layer.Image;
-                var subjectScreenX = pos.X + (img.Margin.Left + img.Width * BackdropSubjectX) * scale;
-                line.Append($" | L{i}{(i == _activeLayer ? "*" : "")} {System.IO.Path.GetFileName(layer.Path ?? "-")} op={img.Opacity:0.00} span={layer.SpansDrawer}")
-                    .Append($" left={img.Margin.Left:0.0} top={img.Margin.Top:0.0} w={img.Width:0.0} subjX={subjectScreenX:0}");
-            }
-            File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "AgentDock", "backdrop-trace.log"), line.AppendLine().ToString());
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-        }
-    }
-
     /// <summary>Lays out every layer again, e.g. when the drawer opens on a different side.</summary>
     private void LayoutBackdrop()
     {
@@ -1650,35 +1629,38 @@ public sealed partial class FlyoutWindow : Window
     }
 
     /// <summary>
-    /// Sizes a picture to cover the list, or the list and the open drawer, keeping the part over the
-    /// list still while the window grows and uncovers the rest.
+    /// Places a picture by how far the drawer is open, whichever agent it belongs to. Closed: the
+    /// subject is centred in the list. Open: the picture spans the list and the drawer. In between
+    /// it slides with the drawer, so switching to an agent without a drawer doesn't leave the
+    /// closing drawer empty, and the reverse doesn't jump (owner's request).
     /// </summary>
     private void LayoutBackdrop(BackdropLayer layer)
     {
         if (layer.Image.Source is not BitmapImage { PixelWidth: > 0, PixelHeight: > 0 } image)
             return;
 
+        // Always big enough for the list and an open drawer, so sliding never needs a zoom.
         var height = Root.ActualHeight;
-        var canvasWidth = ListWidthDip + (layer.SpansDrawer ? DrawerWidthDip : 0);
-        var scale = Math.Max(canvasWidth / image.PixelWidth, height / image.PixelHeight);
+        var scale = Math.Max((ListWidthDip + DrawerWidthDip) / image.PixelWidth, height / image.PixelHeight);
         var width = image.PixelWidth * scale;
         var imageHeight = image.PixelHeight * scale;
-        // Right side: the window's left edge is the canvas left, so this margin stays put as the
-        // window grows right. Left side: keep the picture's right edge on the list's right edge,
-        // which stays put while the window grows left. No drawer: centre the subject in the list,
-        // as far as the picture still covers it. A drawer still closing on the left puts the list
-        // after it, so measure from the list: the window's left edge moves as the drawer shrinks.
-        var listLeft = _drawerOpen && _drawerSide < 0 ? DrawerDip() : 0;
-        var left = !layer.SpansDrawer
-            ? listLeft + Math.Clamp(BannerWidthDip + (ListWidthDip - BannerWidthDip) / 2 - width * BackdropSubjectX, canvasWidth - width, 0)
-            : _drawerSide < 0
-                ? ListWidthDip + DrawerDip() - width
-                : canvasWidth - width;
+
+        // Both ends in list coordinates (0 = the list's left edge, which never moves on screen).
+        // Closed: subject over the middle of the list (past the banner), as far as the picture still
+        // covers the list. Open on the right: right edge on the drawer's far edge. Open on the left:
+        // right edge on the list's right edge, so it reaches back over the drawer.
+        var closed = Math.Clamp(BannerWidthDip + (ListWidthDip - BannerWidthDip) / 2 - width * BackdropSubjectX,
+            ListWidthDip - width, 0);
+        var open = _drawerSide > 0 ? ListWidthDip + DrawerWidthDip - width : ListWidthDip - width;
+        var drawer = DrawerDip();
+        var t = Math.Clamp(drawer / DrawerWidthDip, 0, 1);
+        var leftInList = closed + (open - closed) * t;
+        // On the left the drawer comes first in the window, so the list starts that far in.
+        var listLeft = _drawerOpen && _drawerSide < 0 ? drawer : 0;
 
         layer.Image.Width = width;
         layer.Image.Height = imageHeight;
-        layer.Image.Margin = new Thickness(left, (height - imageHeight) / 2, 0, 0);
-        TraceBackdrop("layout");
+        layer.Image.Margin = new Thickness(listLeft + leftInList, (height - imageHeight) / 2, 0, 0);
     }
 
     // ---------- Drawer ----------
@@ -1704,7 +1686,7 @@ public sealed partial class FlyoutWindow : Window
         _bannerResetTimer?.Stop();
         // The row's pointer-exit may already have started fading the picture. Bring it back.
         if (_state.ShowHoverBackgrounds && _drawerItem?.BackgroundSource is { } source)
-            FadeBackdrop(source, spansDrawer: true);
+            FadeBackdrop(source);
     }
 
     private void Drawer_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -1719,8 +1701,8 @@ public sealed partial class FlyoutWindow : Window
         if (!_drawerOpen || !AppWindow.IsVisible)
             return;
         ApplyWindowForDrawer();
-        // On the left the picture is pinned to the list's right edge, so it has to move with the width.
-        if (_drawerSide < 0 && _layers is not null)
+        // The pictures slide with the drawer (LayoutBackdrop), in the same step as the window.
+        if (_layers is not null)
             LayoutBackdrop();
     }
 
@@ -1750,7 +1732,7 @@ public sealed partial class FlyoutWindow : Window
             {
                 // The pointer may have moved onto an agent without a drawer, whose picture is fading in.
                 if (_state.ShowHoverBackgrounds && _hoverItem is null)
-                    FadeBackdrop(null, spansDrawer: false);
+                    FadeBackdrop(null);
                 CloseDrawer(animate: true);
             };
         }
@@ -1817,7 +1799,6 @@ public sealed partial class FlyoutWindow : Window
 
     private void FinishDrawerClose()
     {
-        TraceBackdrop("finish-pre");
         _drawerClosing = false;
         _drawerOpen = false;
         DrawerHost.Width = 0;
@@ -1828,8 +1809,6 @@ public sealed partial class FlyoutWindow : Window
         // Back to the list on its own, including height: the status line may need to wrap again.
         if (AppWindow.IsVisible)
             PlaceWindow();
-        TraceBackdrop("finish-post");
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => TraceBackdrop("finish-later"));
     }
 
     /// <summary>
@@ -1871,7 +1850,6 @@ public sealed partial class FlyoutWindow : Window
             // Cubic ease-out while opening, ease-in while closing. Same curve as the old storyboard.
             var eased = opening ? 1 - Math.Pow(1 - t, 3) : Math.Pow(t, 3);
             DrawerHost.Width = _drawerSlideFrom + (_drawerSlideTo - _drawerSlideFrom) * eased;
-            TraceBackdrop("slide");
             if (t < 1)
                 return;
             var completed = _drawerSlideCompleted;
@@ -1939,10 +1917,16 @@ public sealed partial class FlyoutWindow : Window
         // stays about the list, so opening the drawer doesn't drag the list off the taskbar button.
         var drawerDip = DrawerDip();
         Root.Measure(new Windows.Foundation.Size(ListWidthDip + drawerDip, double.PositiveInfinity));
-        var maxHeightDip = Math.Min(MaxHeightDip, (work.Height - 2 * gap) / scale);
-        var heightDip = Root.DesiredSize.Height > 1
-            ? Math.Min(Root.DesiredSize.Height, maxHeightDip)
-            : Math.Min(AppWindow.ClientSize.Height / scale, maxHeightDip);
+        var workHeightDip = (work.Height - 2 * gap) / scale;
+        var fitDip = Root.DesiredSize.Height > 1 ? Root.DesiredSize.Height : AppWindow.ClientSize.Height / scale;
+        // The list keeps the height the user dragged it to (it scrolls if the content is taller).
+        // The settings page always fits its content.
+        var heightDip = MainPage.Visibility == Visibility.Visible && _state.FlyoutHeight is { } chosen
+            ? Math.Clamp(chosen, Math.Min(MinHeightDip, workHeightDip), workHeightDip)
+            : Math.Min(fitDip, Math.Min(MaxHeightDip, workHeightDip));
+        // The grip goes on the edge away from the taskbar; the edge by the taskbar stays put.
+        _gripAtTop = !(_anchor.Y < work.Top && !work.Contains(_anchor));
+        HeightGrip.VerticalAlignment = _gripAtTop ? VerticalAlignment.Top : VerticalAlignment.Bottom;
 
         // Window size includes the thin border around the client area.
         var borderW = AppWindow.Size.Width - AppWindow.ClientSize.Width;
@@ -1971,6 +1955,81 @@ public sealed partial class FlyoutWindow : Window
             x -= drawerPx;
 
         AppWindow.MoveAndResize(new RectInt32(x, y, w, h));
+    }
+
+    // ---------- Resizing the height ----------
+
+    private bool _gripAtTop = true;
+    private bool _resizing;
+    private int _resizeStartCursorY;
+    private RectInt32 _resizeStart;
+
+    private void HeightGrip_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!HeightGrip.CapturePointer(e.Pointer) || !Win32.GetCursorPos(out var cursor))
+            return;
+        // Screen coordinates throughout: the grip moves with the window while it's dragged.
+        _resizeStartCursorY = cursor.Y;
+        _resizeStart = new RectInt32(AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
+        _resizing = true;
+        e.Handled = true;
+    }
+
+    private void HeightGrip_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_resizing || !Win32.GetCursorPos(out var cursor) || Win32.MonitorInfoAt(_anchor, out var monitor) is not { } info)
+            return;
+
+        var scale = Win32.ScaleFor(monitor);
+        var work = info.rcWork;
+        var gap = (int)Math.Round(12 * scale);
+        var borderH = AppWindow.Size.Height - AppWindow.ClientSize.Height;
+        var minH = (int)Math.Ceiling(MinHeightDip * scale) + borderH;
+        var dy = cursor.Y - _resizeStartCursorY;
+
+        int y, h;
+        if (_gripAtTop)
+        {
+            var bottom = _resizeStart.Y + _resizeStart.Height;
+            h = Math.Clamp(_resizeStart.Height - dy, minH, Math.Max(minH, bottom - (work.Top + gap)));
+            y = bottom - h;
+        }
+        else
+        {
+            h = Math.Clamp(_resizeStart.Height + dy, minH, Math.Max(minH, work.Bottom - gap - _resizeStart.Y));
+            y = _resizeStart.Y;
+        }
+        if (h != AppWindow.Size.Height)
+            AppWindow.MoveAndResize(new RectInt32(AppWindow.Position.X, y, AppWindow.Size.Width, h));
+        e.Handled = true;
+    }
+
+    private void HeightGrip_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        HeightGrip.ReleasePointerCapture(e.Pointer);
+        EndResize();
+    }
+
+    private void HeightGrip_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => EndResize();
+
+    /// <summary>Remembers the height the list was dragged to.</summary>
+    private void EndResize()
+    {
+        if (!_resizing)
+            return;
+        _resizing = false;
+        if (Win32.MonitorInfoAt(_anchor, out var monitor) is null)
+            return;
+        _state.FlyoutHeight = Math.Round(AppWindow.ClientSize.Height / Win32.ScaleFor(monitor));
+        _store.SaveState(_state);
+    }
+
+    private void HeightGrip_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        _state.FlyoutHeight = null;
+        _store.SaveState(_state);
+        PlaceWindow();
+        e.Handled = true;
     }
 
     private void PlayOpenAnimation()

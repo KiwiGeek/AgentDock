@@ -136,6 +136,14 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   Taskbar edge is inferred from where the cursor sits outside the work area. If the cursor is
   inside the work area (launched from a terminal), the flyout centres. Height comes from
   `Root.Measure(380 DIP, ∞)`, capped at 640 DIP and the work area.
+- **Height can be dragged** (owner's request, 2026-10-16), on the list only. `HeightGrip` (a
+  `ResizeGrip`, a `Grid` subclass because only a subclass can set `ProtectedCursor`) is a 6 DIP strip
+  on the edge away from the taskbar (bottom if the taskbar is at the top); the edge by the taskbar
+  stays put. The drag works in screen pixels (`GetCursorPos`) because the grip moves with the window.
+  The result is saved as `DockState.FlyoutHeight` (client DIPs), which `PlaceWindow` uses instead
+  of fitting the content (min 240 DIP, max the work area; the 640 DIP cap applies only to fitting).
+  Double-clicking the grip clears it. The settings page has no grip and always fits its content.
+  The window itself stays non-resizable. Not yet verified in-app.
 - **Hide on deactivation**, except while the folder picker is open (`_keepOpen`).
 - **Toggle guard**: clicking the taskbar icon while open deactivates (hides) on mouse-down,
   then launches #2 on mouse-up. `ShowFlyout` ignores a show within 600 ms of a deactivation-hide.
@@ -258,6 +266,7 @@ there degrade to a missing icon or entry, never an error.
 | `Program.cs` | Entry point: hand-off or become resident |
 | `App.xaml(.cs)` | Resident instance; dispatches `DockCommand`s; jump-list launches |
 | `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard, settings page |
+| `ResizeGrip.cs` | The strip that drags the flyout's height (shows the up-down cursor) |
 | `PinPromptWindow.xaml(.cs)` | Startup prompt asking the user to pin Agent Dock; waits for the pin |
 | `Models/Settings.cs` | `AgentDefinition`, `DockSettings` (+ defaults), `DockState`, `DockJsonContext` |
 | `Models/AgentItem.cs` | View model for an agent row (`INotifyPropertyChanged`); `FolderItem` |
@@ -463,10 +472,16 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
   The width callback resizes the window to match (`ApplyWindowForDrawer`).
   - It used to be a second popup. That couldn't share the frame or the toolbar. A RenderTransform
     on that popup also made its HWND cover the list (owner's screen recording).
-- **Hover image:** one picture per layer, sized to the list plus the open drawer. On the right it
-  is positioned from the window's left edge, so growing right uncovers it. On the left it stays
-  pinned to the window's right edge. Agents without a drawer keep the list-only size.
-  Layout needs the image's pixel size, so it reruns on `ImageOpened` the first time.
+- **Hover image:** one picture per layer, always sized to cover the list plus an open drawer (so
+  it never zooms). Its position depends only on how far the drawer is open, not on which agent it
+  belongs to (owner's request, 2026-10-16): drawer closed, the subject is centred in the list;
+  fully open, the picture spans list and drawer (on the left side, its right edge stays on the
+  list's right edge); in between it slides with the drawer's width animation, in the same tick as
+  the window resize (`OnDrawerWidthChanged`). So moving from a drawer agent to one without, her
+  picture starts in the drawer layout and slides to the centre as the drawer closes, with no empty
+  grey drawer; the reverse slides the other way. Hovering a drawer agent from nothing also slides
+  (it used to stay still while the window uncovered it). Layout needs the image's pixel size, so
+  it reruns on `ImageOpened` the first time. Not yet verified in-app.
 - Hiding the flyout closes it at once.
 - Switching an open drawer to another agent fades the new content in (`FadeInDrawerContent`,
   `DrawerPanel` opacity 0 to 1 over 300 ms).
@@ -543,8 +558,8 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
   - Moving back onto the agent whose picture is still fading out fades that same layer back in.
   - Leaving a row fades both layers out. Moving into the open drawer does not: the picture stays
     until the drawer closes.
-  - Each layer's sizing is done by `LayoutBackdrop(layer)` (see Drawer). For agents without a
-    drawer, the picture is shifted so its subject is centred in the list. The built-in pictures put
+  - Each layer's sizing is done by `LayoutBackdrop(layer)` (see Drawer). With the drawer closed,
+    the picture is shifted so its subject is centred in the list. The built-in pictures put
     the character about 72% of the way across (`BackdropSubjectX`); new pictures should keep that layout.
   Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
