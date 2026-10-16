@@ -4,7 +4,7 @@ namespace AgentDock.Services;
 
 /// <summary>
 /// The last few folders an agent was launched in. Kept in state.json so agents.json (and the
-/// user's comments in it) is never rewritten. Recorded for Claude Code, Codex and Grok Build, the agents with a drawer to show them in.
+/// user's comments in it) is never rewritten. Recorded for Claude Code, Codex, Grok Build and Cursor CLI, the CLI agents with a drawer to show them in.
 /// </summary>
 public static class RecentLaunches
 {
@@ -15,9 +15,9 @@ public static class RecentLaunches
     /// list is moved there, and the ones that were ahead of it shift down by one. Returns whether
     /// the list changed, so the caller can skip saving when it didn't.
     /// </summary>
-    public static bool Remember(DockState state, string? command, string agentId, string folder)
+    public static bool Remember(DockState state, AgentDefinition agent, string agentId, string folder)
     {
-        if (!state.RememberRecentLaunches || !Records(command) || string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(folder))
+        if (!state.RememberRecentLaunches || !Records(agent) || string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(folder))
             return false;
 
         var list = ListFor(state, agentId, create: true);
@@ -53,9 +53,14 @@ public static class RecentLaunches
     /// <summary>Forgets every agent's recent folders.</summary>
     public static void Clear(DockState state) => state.RecentLaunches.Clear();
 
-    /// <summary>The agents whose drawer lists recent folders: Claude Code, Codex and Grok Build.</summary>
-    public static bool Records(string? command) =>
-        Path.GetFileNameWithoutExtension(command?.Trim().Trim('"'))?.ToLowerInvariant() is "claude" or "codex" or "grok";
+    /// <summary>
+    /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build and Cursor CLI.
+    /// Cursor CLI's command can also be plain "agent", so its catalog id counts too.
+    /// </summary>
+    public static bool Records(AgentDefinition agent) =>
+        agent.Kind == AgentKind.Cli
+        && (Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"'))?.ToLowerInvariant() is "claude" or "codex" or "grok" or "cursor-agent"
+            || string.Equals(agent.Catalog ?? agent.Id, "cursor-cli", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// The deserializer builds an ordinary dictionary, so a lookup has to ignore case itself.

@@ -202,7 +202,7 @@ earlier keeps working alongside it. Asking directly also shows any per-model wee
 Sonnet's) as extra bars, and your extra usage when it's turned on. Under the title, the drawer names
 the model your last session used, when the status line has reported it.
 
-The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's and Grok Build's drawers do the same for them). Click one
+The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's and Cursor CLI's drawers do the same for them). Click one
 to open the agent there again. Opening a folder that's already in the list moves it to the top
 and shifts the others down. At most five are kept, and only as many as fit in the drawer.
 Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.

@@ -951,15 +951,15 @@ public sealed partial class FlyoutWindow : Window
         }
     }
 
-    /// <summary>Claude Code only, so far. A folder already in the list moves to the front.</summary>
-    public void RememberLaunch(string? command, string agentId, string folder)
+    /// <summary>Only for the agents in <see cref="RecentLaunches.Records"/>. A folder already in the list moves to the front.</summary>
+    public void RememberLaunch(AgentDefinition agent, string agentId, string folder)
     {
-        if (RecentLaunches.Remember(_state, command, agentId, folder))
+        if (RecentLaunches.Remember(_state, agent, agentId, folder))
             _store.SaveState(_state);
     }
 
     private void RememberLaunch(AgentItem item, string folder) =>
-        RememberLaunch(item.Definition.Command, item.Preset?.Agent ?? item.Definition.Id, folder);
+        RememberLaunch(item.Definition, item.Preset?.Agent ?? item.Definition.Id, folder);
 
     private void OpenShell_Click(object sender, RoutedEventArgs e)
     {

@@ -103,7 +103,7 @@ public partial class App : Application
         if (Launcher.Launch(item, preset.Folder, settings) is { } error)
             _flyout?.ShowFlyout(error);
         else
-            _flyout?.RememberLaunch(item.Definition.Command, preset.Agent, preset.Folder);
+            _flyout?.RememberLaunch(item.Definition, preset.Agent, preset.Folder);
     }
 
     /// <summary>Jump list entries launch directly, without showing the flyout unless something goes wrong.</summary>
@@ -130,6 +130,6 @@ public partial class App : Application
         if (Launcher.Launch(item, folder, settings) is { } error)
             _flyout?.ShowFlyout(error);
         else
-            _flyout?.RememberLaunch(definition.Command, definition.Id, folder);
+            _flyout?.RememberLaunch(definition, definition.Id, folder);
     }
 }

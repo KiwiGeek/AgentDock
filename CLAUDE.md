@@ -610,14 +610,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex or Grok Build (each copy separately) was launched
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build or Cursor CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex and Grok Build (`RecentLaunches.Records`), the agents with a drawer; Codex and Grok added at the owner's request, 2026-10-16. Grok shows them under its usage.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build and Cursor CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok and Cursor CLI added at the owner's request, 2026-10-16. Cursor desktop has none (it's launched without a folder).
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
