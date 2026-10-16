@@ -34,12 +34,6 @@ public sealed class AgentDefinition
     /// </summary>
     public string? Color { get; set; }
 
-    /// <summary>
-    /// GitHub Copilot: premium requests included in the plan each month (e.g. 300 for Copilot Pro).
-    /// GitHub's API reports only what's been used, so this turns that into a bar.
-    /// </summary>
-    public int? MonthlyAllowance { get; set; }
-
     // CLI agents
     /// <summary>Command to run, resolved against PATH (e.g. "claude").</summary>
     public string? Command { get; set; }

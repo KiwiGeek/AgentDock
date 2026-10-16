@@ -1893,7 +1893,8 @@ public sealed partial class FlyoutWindow : Window
                 UsageOffer.IsOpen = false;
                 if (!_copilotFetching && (_copilotUsage is null || DateTimeOffset.UtcNow - _copilotUsage.FetchedAt > CopilotUsageMaxAge))
                     _ = FetchCopilotUsageAsync();
-                ShowCopilotUsage(item);
+                ShowCopilotUsage();
+                ShowRecents(item);
                 return true;
             default:
                 return false;
@@ -2288,24 +2289,25 @@ public sealed partial class FlyoutWindow : Window
         }
         // Still showing Copilot? Fill in what arrived.
         if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && CommandName(item.Definition.Command) == "copilot")
-            ShowCopilotUsage(item);
+            ShowCopilotUsage();
     }
 
     /// <summary>
-    /// Copilot's single monthly window: premium requests used, as a bar when the plan's allowance is
-    /// known ("monthlyAllowance"), otherwise just the count. It resets at 00:00 UTC on the 1st.
+    /// Copilot's single monthly window: AI credits (or, on GitHub's legacy billing, premium
+    /// requests) used against the plan's entitlement, as GitHub reports both. Without an entitlement
+    /// (unlimited, or none given) it's just the count. Overage shows underneath when allowed.
     /// </summary>
-    private void ShowCopilotUsage(AgentItem item)
+    private void ShowCopilotUsage()
     {
         UsageTitle.Text = "Copilot usage";
         UsagePanel.Visibility = Visibility.Visible;
         WeekGroup.Visibility = Visibility.Collapsed;
         SessionLabel.Visibility = SessionText.Visibility = Visibility.Visible; // Grok hides them
         ShowUsageExtras(null, DateTimeOffset.UtcNow);
-        SessionLabel.Text = "Premium requests";
 
         var usage = _copilotUsage;
         var hasData = usage?.Used is not null;
+        SessionLabel.Text = usage is { Unit.Length: > 0 } ? char.ToUpperInvariant(usage.Unit[0]) + usage.Unit[1..] : "Premium usage";
         UsageRows.Visibility = hasData ? Visibility.Visible : Visibility.Collapsed;
         UsageNote.Visibility = hasData ? Visibility.Collapsed : Visibility.Visible;
         UsageNote.Text = usage?.Problem ?? "Checking GitHub…";
@@ -2314,20 +2316,33 @@ public sealed partial class FlyoutWindow : Window
             return;
 
         var now = DateTimeOffset.UtcNow;
-        var reset = new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
-        var used = usage!.Used!.Value;
-        if (item.Definition.MonthlyAllowance is > 0 and var allowance)
+        // GitHub resets on the 1st at 00:00 UTC; its own date is used when it gives one.
+        var reset = usage!.ResetsAt ?? new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
+        var used = usage.Used!.Value;
+        var counts = System.Globalization.CultureInfo.CurrentCulture;
+        if (usage.Unlimited)
+        {
+            SessionBar.Visibility = Visibility.Collapsed;
+            SessionText.Text = $"Unlimited · {used.ToString("N0", counts)} used";
+        }
+        else if (usage.Entitlement is { } entitlement)
         {
             SessionBar.Visibility = Visibility.Visible;
             ShowWindow(SessionBar, SessionText,
-                new UsageWindow { UsedPercentage = used * 100 / allowance, ResetsAt = reset.ToUnixTimeSeconds() }, now);
-            SessionText.Text = $"{used:0} of {allowance} · resets {ResetTime(reset)}";
+                new UsageWindow { UsedPercentage = Math.Min(100, used * 100 / entitlement), ResetsAt = reset.ToUnixTimeSeconds() }, now);
+            SessionText.Text = $"{used.ToString("N0", counts)} of {entitlement.ToString("N0", counts)} · resets {ResetTime(reset)}";
         }
         else
         {
             SessionBar.Visibility = Visibility.Collapsed;
-            SessionText.Text = $"{used:0} used · resets {ResetTime(reset)}";
+            SessionText.Text = $"{used.ToString("N0", counts)} used · resets {ResetTime(reset)}";
         }
+
+        var overage = usage.OveragePermitted
+            ? usage.Overage > 0 ? $"Over the plan: {usage.Overage.ToString("N0", counts)} {usage.Unit}" : "Usage over the plan is allowed"
+            : null;
+        ExtraUsageText.Text = overage ?? "";
+        ExtraUsageText.Visibility = overage is null ? Visibility.Collapsed : Visibility.Visible;
         UsageUpdatedText.Text = UpdatedAgo(usage.FetchedAt, now);
     }
 

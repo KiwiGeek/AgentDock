@@ -202,7 +202,7 @@ earlier keeps working alongside it. Asking directly also shows any per-model wee
 Sonnet's) as extra bars, and your extra usage when it's turned on. Under the title, the drawer names
 the model your last session used, when the status line has reported it.
 
-The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's and Cursor CLI's drawers do the same for them). Click one
+The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
 to open the agent there again. Opening a folder that's already in the list moves it to the top
 and shifts the others down. At most five are kept, and only as many as fit in the drawer.
 Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.
@@ -246,19 +246,12 @@ minutes, only while you're hovering. Not a published Cursor API, so it can stop 
 
 ### GitHub Copilot usage
 
-Copilot's drawer shows the premium requests you've used this month, which reset at 00:00 UTC on
-the 1st. Copilot keeps no copy of that on your PC, so Agent Dock asks GitHub's billing API through
-the GitHub CLI (`gh`), using gh's own sign-in. That API needs one extra permission, which you grant
-once:
-
-```powershell
-gh auth refresh -h github.com -s user
-```
-
-GitHub reports only how many requests you've used, not your plan's allowance. To get a bar instead
-of a count, add your plan's monthly allowance to Copilot's entry in `agents.json`, for example
-`"monthlyAllowance": 300` for Copilot Pro. It only works for plans you pay for yourself; usage of a
-plan provided by an organisation isn't available this way. Results are cached for five minutes.
+Copilot's drawer shows this month's usage against your plan: AI credits (or premium requests, on
+GitHub's older billing) used out of what the plan includes, and when it resets. Copilot keeps no
+copy of that on your PC, so Agent Dock asks GitHub the way Copilot's own apps do, through the
+GitHub CLI (`gh`) with gh's own sign-in. Sign in to gh once (`gh auth login`); no extra permission
+is needed. This isn't a published GitHub API, so it can stop working. Results are cached for five
+minutes. (The `monthlyAllowance` setting of earlier versions is no longer used.)
 
 ### Icons
 

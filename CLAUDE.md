@@ -389,7 +389,7 @@ there degrade to a missing icon or entry, never an error.
 | `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
 | `Services/GrokUsage.cs` | Grok Build usage from grok.com (gRPC-web, with Grok Build's own sign-in from `~\.grok\auth.json`) |
 | `Services/CursorUsage.cs` | Cursor usage from cursor.com (`/api/usage-summary`, with Cursor CLI's sign-in from `%APPDATA%\cursor\auth.json`) |
-| `Services/CopilotUsage.cs` | GitHub Copilot premium requests this month, via `gh api` (billing API) |
+| `Services/CopilotUsage.cs` | GitHub Copilot usage this month (AI credits against the plan), via `gh api copilot_internal/user` |
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
@@ -601,7 +601,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   doesn't go blank.
   - Today: Claude Code (usage, or the setup or update offer), Codex (usage), Grok Build (week,
     extra usage credits and a pie of what it went on), Cursor CLI and Cursor desktop (the billing
-    period) and GitHub Copilot (premium requests), plus their presets, matched by command name
+    period) and GitHub Copilot (AI credits against the plan), plus their presets, matched by command name
     (`CommandName`), or for Cursor by catalog id too (`IsCursor`; the only desktop agent with a drawer).
   - Moving between two drawer agents swaps the content in place.
   - Usage is loaded on the first hover after each show and cached until the next show
@@ -610,14 +610,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build or Cursor CLI (each copy separately) was launched
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Cursor CLI or Copilot CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build and Cursor CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok and Cursor CLI added at the owner's request, 2026-10-16. Cursor desktop has none (it's launched without a folder).
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, Cursor CLI and Copilot CLI added at the owner's request, 2026-10-16. Cursor desktop has none (it's launched without a folder).
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
@@ -770,34 +770,32 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 
 ### GitHub Copilot usage (`Services/CopilotUsage.cs`)
 
-- **No local source:** Copilot CLI (1.0.95) keeps no quota. `~/.copilot/logs` have nothing, and
-  `data.db` only has `session_context_usage` (context window). `data.db`'s `accounts` table holds
-  the access token: never read it.
-- **Source:** GitHub's documented billing API,
-  `GET users/{login}/settings/billing/premium_request/usage` (current month by default). The used
-  count is the sum of `usageItems[].grossQuantity`.
-  - It's run through `gh api` (no window, 15 s timeout, `GH_PROMPT_DISABLED`), so gh's own sign-in
-    is used and Agent Dock never handles a token.
-  - Needs gh's **`user` scope**. The owner runs `gh auth refresh -h github.com -s user` themselves:
-    widening a token's access is their call. Until then the drawer shows that command.
-  - 404 without a scope message means a plan provided by an organisation; the API only covers plans
-    the user pays for themselves.
+- **No local source:** Copilot CLI (1.0.98) keeps no quota. `~/.copilot/logs` have nothing, and
+  `data.db` only has `session_context_usage` (context window). It has no usage command for scripts:
+  `copilot help billing` is a help topic; usage shows in its footer, `/usage`, and its custom status
+  line (`statusLine` in its config gets session JSON on stdin; not used).
+- **Source (owner's decision, 2026-10-16):** `GET copilot_internal/user`, what Copilot's own clients
+  call (undocumented), through `gh api` (no window, 15 s timeout, `GH_PROMPT_DISABLED`), so gh's own
+  sign-in is used and Agent Dock never handles a token. **No extra scope:** it works with gh's
+  `gist, read:org, repo, workflow`.
+  - Reply: `token_based_billing` (true means AI credits; false, the legacy premium requests),
+    `quota_reset_date` ("2026-11-01") / `quota_reset_date_utc`, `copilot_plan` (`individual_pro`),
+    `access_type_sku`, and `quota_snapshots.premium_interactions` with `entitlement` (7000),
+    `remaining`, `percent_remaining`, `credits_used` (5552), `unlimited`, `overage_permitted`,
+    `overage_count`. `chat` and `completions` were unlimited. `CopilotUsage.Parse` is pure.
+  - Plan names aren't shown: `copilot_plan` said `individual_pro` while the sku said
+    `plus_monthly_subscriber_quota`, so the plan couldn't be named reliably.
+  - Replaced the documented billing API (`users/{login}/settings/billing/premium_request/usage`),
+    which needed gh's `user` scope (the owner's refresh never went through), only covered plans the
+    user pays for, and had no allowance (the removed `monthlyAllowance` setting; old agents.json
+    files with it still load, since unknown properties are ignored).
   - Don't pass a leading slash to `gh api` from Git Bash, which rewrites it into a file path.
-- **Allowance:** the API has no allowance field, so `AgentDefinition.MonthlyAllowance` (agents.json
-  `"monthlyAllowance"`) gives a bar ("42 of 300"). Without it the drawer shows a count only.
-- **Display:** one row ("Premium requests"), resetting at 00:00 UTC on the 1st (`WeekGroup`
-  hidden). Fetched in the background on hover and cached 5 minutes across shows; the drawer shows
-  "Checking GitHub…" and fills in when the result arrives.
-- **OPEN ISSUE (end of 2026-10-15): the owner reports it "did not work".** At that point
-  `gh auth status` still listed only `gist, read:org, repo, workflow`, with no `user`, so the refresh
-  apparently hadn't gone through, and the drawer would show the permission message.
-  - Next session, check in order: did `gh auth refresh -h github.com -s user` finish (browser device
-    flow)? Then `gh api users/KiwiGeek/settings/billing/premium_request/usage`.
-  - Then check what the drawer actually shows. Is the message clear? Does the background fetch
-    complete? It's unverified in-app.
-  - If the API is still 404 with the scope, the plan may be provided by an organisation, or the
-    endpoint may need `X-GitHub-Api-Version`.
-  - The owner is on Copilot Pro: `"monthlyAllowance": 300` is set in their agents.json.
+- **Display:** one row, "AI credits" (or "Premium requests"): a bar and "5,552 of 7,000 · resets
+  1 Nov"; "Unlimited · N used" or a plain count without an entitlement; "Over the plan: …" under it
+  when overage is allowed. `WeekGroup` hidden. Fetched in the background on hover and cached 5 minutes
+  across shows; "Checking GitHub…" until it arrives.
+- Verified 2026-10-16 through the real `CopilotUsage.FetchAsync` (throwaway console project, deleted):
+  5552 of 7000 AI credits, resets 2026-11-01 00:00 UTC, no overage. **Not yet verified:** the drawer.
 
 ### Hover background (owner's request)
 
