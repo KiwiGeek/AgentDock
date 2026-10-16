@@ -138,6 +138,11 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   extraction on a background STA thread) runs at most every 2 minutes or when icons are missing.
   A generation counter discards results from an earlier show.
 - Number keys 1–9 launch the corresponding available agent. Up/Down cross between the two lists.
+  Neither does anything while the settings page is open.
+- **Settings page:** the gear in the footer swaps the list for a page in the same window (so
+  placement, acrylic and hide-on-deactivate stay as they are). Esc there goes back to the list;
+  hiding the flyout does too, so the next click opens the list. The page resizes the flyout to
+  its content. Not yet verified in the running app (the build is clean).
 - Open animation: 250 ms slide + fade, skipped when Windows animations are off.
 
 ### Pin prompt (`PinPromptWindow.xaml(.cs)`, `Interop/TaskbarPins.cs`)
@@ -227,7 +232,7 @@ there degrade to a missing icon or entry, never an error.
 | --- | --- |
 | `Program.cs` | Entry point: hand-off or become resident |
 | `App.xaml(.cs)` | Resident instance; dispatches `DockCommand`s; jump-list launches |
-| `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard |
+| `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard, settings page |
 | `PinPromptWindow.xaml(.cs)` | Startup prompt asking the user to pin Agent Dock; waits for the pin |
 | `Models/Settings.cs` | `AgentDefinition`, `DockSettings` (+ defaults), `DockState`, `DockJsonContext` |
 | `Models/AgentItem.cs` | View model for an agent row (`INotifyPropertyChanged`); `FolderItem` |
@@ -256,7 +261,8 @@ there degrade to a missing icon or entry, never an error.
 - `%APPDATA%\AgentDock\agents.json`: user-edited. Comments and trailing commas allowed.
   A malformed file is never overwritten: defaults are used for that session and the footer shows
   the error with a line number. Schema is documented in `README.md`; keep the two in sync.
-- `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids).
+- `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids,
+  whether waifu backgrounds are on).
 - `%LOCALAPPDATA%\AgentDock\Icons\`: PNG icon cache.
 
 ## Conventions
@@ -379,8 +385,10 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 
 ### Drawer (owner's request: "only appear when Claude CLI is moused over")
 
-- A windowed `Popup` (`ShouldConstrainToRootBounds=False`) with its own `DesktopAcrylicBackdrop`,
-  beside the flyout. The flyout window itself stays 380 DIP wide.
+- A column of the flyout window (`DrawerHost`), not a second window. The flyout grows by
+  `DrawerWidthDip` (240) when it opens, so there is one frame, one acrylic and one toolbar.
+  The list stays 380 DIP. `_listScreenX` is the list's left edge: opening right keeps it, opening
+  left moves the window's left edge so the list doesn't slide.
 - `AgentRow_PointerEntered` opens it when `PrepareDrawer(item)` returns true. That method also
   fills the drawer, and leaves it untouched for agents with nothing to show, so a closing drawer
   doesn't go blank.
@@ -392,35 +400,27 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
   - Add new agents in `PrepareDrawer`.
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up.
-- Placement: no gap (per the owner), on the right if it fits in the monitor's work area, otherwise
-  on the left. The touching side has square corners and no border. Its height matches the flyout.
-  - It tucks `DrawerOverlapDip` (8) under the flyout's edge. The flyout window keeps DWM's rounded
-    corners, which left a notch at each end of the seam (owner's screenshot); the overlap covers them.
-    That strip of the flyout is only padding.
-  - Changing the flyout's DWM corner preference instead would have squared its outer corners too.
-- **Opening animates `DrawerContent.Width`** from 1 to 248 DIP (240 plus the overlap; 250 ms
-  ease-out), and closing goes back (200 ms ease-in), with `EnableDependentAnimation`. The popup
-  window grows and shrinks with it, acrylic and all. On the left side, `DrawerContent_SizeChanged`
-  keeps `HorizontalOffset = overlap - width`, so the drawer grows leftwards.
-  - **Don't slide the content with a RenderTransform.** That was the first version: the windowed
-    popup grows its HWND to cover the transformed bounds, so mid-slide the drawer's window sat
-    *over* the flyout and clipped its list. The owner's screen recording showed it.
-  - `DrawerPanel` (the content, fixed width) is anchored to the outer edge, so it slides out with it.
-- **Shared hover image:** while the hovered agent has a drawer, `LayoutBackdrop` sizes the
-  background image across the flyout and drawer together (UniformToFill, right-aligned, vertically
-  centred). Each layer's flyout and drawer images get a negative margin for their slice, so the
-  two halves line up (allowing for the overlap).
-  - The drawer images are anchored to the drawer edge that touches the flyout, which doesn't move.
-    So the picture stays lined up and is uncovered as the drawer grows.
-  - Agents without a drawer keep the flyout-only layout.
-  - Layout needs the image's pixel size, so it reruns on `ImageOpened` the first time.
+- Placement: on the right if the grown window fits in the monitor's work area, otherwise on the
+  left. Content sits against the list; the window growing uncovers it. The column is above the
+  toolbar. The bar and its divider span the whole window; the buttons stay in the list's 380 DIP
+  (`FooterContent`), so they don't travel with the window edge.
+- Windows' own resize animation is disabled on this window (`DWMWA_TRANSITIONS_FORCEDISABLED`).
+  Leaving it on made the list slide and then settle while the drawer grew.
+- **Opening steps `DrawerHost.Width`** from 0 to 240 DIP (250 ms ease-out), and closing goes
+  back (200 ms ease-in), from a dispatcher timer rather than a dependent storyboard. A storyboard
+  changed the width during layout and the list slid sideways (owner's recording, 2026-10-15).
+  The width callback resizes the window to match (`ApplyWindowForDrawer`).
+  - It used to be a second popup. That couldn't share the frame or the toolbar. A RenderTransform
+    on that popup also made its HWND cover the list (owner's screen recording).
+- **Hover image:** one picture per layer, sized to the list plus the open drawer. On the right it
+  is positioned from the window's left edge, so growing right uncovers it. On the left it stays
+  pinned to the window's right edge. Agents without a drawer keep the list-only size.
+  Layout needs the image's pixel size, so it reruns on `ImageOpened` the first time.
 - Hiding the flyout closes it at once.
 - Switching an open drawer to another agent fades the new content in (`FadeInDrawerContent`,
   `DrawerPanel` opacity 0 to 1 over 300 ms).
-- **Verified by the owner:** the drawer opens on hover without hiding the flyout, with acrylic and
-  rounded corners (screenshot, 2026-10-15). A recording then confirmed no gap and the shared image,
-  but showed the overlap while sliding. That was fixed by animating the width, and the owner
-  confirmed it opens and closes well.
+- **Verified by the owner (popup version):** the drawer opens on hover without hiding the flyout.
+  The single-window version (the window itself grows) is not yet verified.
 
 ### Codex usage (`Services/CodexUsage.cs`)
 
@@ -481,8 +481,11 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
     and `grok-backgorund` became `grok-background`.
 - An optional `background` per agent in `agents.json` overrides the built-in one: an image path,
   resolved like `icon` (`AgentIcons.ExistingFile`). Presets inherit it from their agent.
+- **Turned off from the settings page** (gear in the footer): "Waifu backgrounds" writes
+  `DockState.ShowHoverBackgrounds` (`state.json`, default true). A missing property stays on, so
+  older state files keep the pictures. Off skips the fade; the usage drawer still opens.
 - **Two layers** (`BackdropLayer`): `HoverImageA`/`B` in `HoverBackdrop`, behind all content, and
-  `DrawerImageA`/`B` in the drawer.
+  one image per layer across the whole window (see Drawer).
   - Moving to another agent puts its picture on the inactive layer and cross-fades: the new layer
     to 0.3 over 900 ms, the old to 0 over 600 ms (owner asked for "a fade between the two agents";
     timings tuned with the owner).
@@ -497,4 +500,5 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 ## Possible next steps (none requested yet; ask before starting)
 
 - ARM64 build in CI (needs ARM64 MSVC tools on the runner for Native AOT cross-compilation).
-- A settings UI instead of hand-editing `agents.json`.
+- More of the settings page. It exists (gear in the footer) and so far only turns waifu backgrounds
+  on or off. Editing `agents.json` from the UI is still not built.

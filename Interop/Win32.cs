@@ -63,6 +63,8 @@ internal static partial class Win32
     public const uint MONITOR_DEFAULTTONEAREST = 2;
     public const int MDT_EFFECTIVE_DPI = 0;
     public const int ASFW_ANY = -1;
+    /// <summary>Stops Windows animating a resize. The flyout grows itself for the drawer, and that animation slides the content.</summary>
+    public const int DWMWA_TRANSITIONS_FORCEDISABLED = 3;
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -101,6 +103,9 @@ internal static partial class Win32
 
     [LibraryImport("user32.dll")]
     public static partial int ReleaseDC(nint hwnd, nint hdc);
+
+    [LibraryImport("dwmapi.dll")]
+    public static partial int DwmSetWindowAttribute(nint hwnd, int attribute, ref int value, int size);
 
     public static MONITORINFO? MonitorInfoAt(POINT point, out nint monitor)
     {

@@ -47,9 +47,10 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Folder drop-down / folder button | Pick a recent folder or browse for a new one |
 | Terminal button (footer) | Plain shell in the working folder, no agent |
 | Pencil button (footer) | Opens `agents.json` |
+| Gear button (footer) | Settings. Esc there goes back to the list |
 | Right-click a command line agent (or Shift+F10) | **Save as preset** for the current folder |
 | Right-click a preset | Rename or remove it |
-| Esc, click elsewhere, or click the taskbar icon again | Closes the flyout |
+| Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. On the settings page, Esc goes back to the list first |
 
 ### Presets
 
@@ -177,10 +178,12 @@ menu shows. Anything else gets a plain terminal or app symbol.
 
 Hover pictures are built in the same way, as `Assets\Agents\<agent id>-background.png` (currently
 Aider, Claude Code, Codex, Copilot, DeepSeek, Gemini, Grok, OpenCode, Perplexity and Qwen), matched
-by agent id or command name. A `background` setting overrides one.
+by agent id or command name. A `background` setting overrides one. Turn them off with **Waifu
+backgrounds** on the settings page (the gear in the footer). That choice is saved in `state.json`.
 
-`state.json` in the same folder holds recent folders and cached app ids. Start menu icons are
-cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's icon changes.
+`state.json` in the same folder holds recent folders, cached app ids, and whether waifu backgrounds
+are on. Start menu icons are cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if
+an app's icon changes.
 
 ## How it's put together
 

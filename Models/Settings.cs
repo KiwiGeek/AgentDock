@@ -148,6 +148,13 @@ public sealed class DockState
 
     /// <summary>The user closed the "show Claude usage" offer.</summary>
     public bool ClaudeUsageOfferDismissed { get; set; }
+
+    /// <summary>
+    /// Fade in each agent's picture while the pointer is over it. The settings page writes this.
+    /// It lives here because the app saves it, and rewriting agents.json would drop the user's comments.
+    /// Missing from an older state.json means on: the property initializer survives deserialization.
+    /// </summary>
+    public bool ShowHoverBackgrounds { get; set; } = true;
 }
 
 /// <summary>Source-generated serializers (no reflection, so Native AOT is happy).</summary>

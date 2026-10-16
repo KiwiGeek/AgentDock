@@ -59,22 +59,39 @@
         </Grid.Resources>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <!--
             An agent's "background" picture, faded in while the pointer is over that agent. Two layers, so
             moving between agents cross-fades. Size and offset are set in code (LayoutBackdrop) so that,
-            with the drawer open, one picture spans both panels.
+            with the drawer open, one picture spans both panels. A Canvas, because those pictures are
+            larger than the flyout and must not change its height.
         -->
-        <Grid x:Name="HoverBackdrop" Grid.RowSpan="3" IsHitTestVisible="False">
+        <Canvas x:Name="HoverBackdrop" Grid.RowSpan="2" IsHitTestVisible="False">
             <Image x:Name="HoverImageA" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
             <Image x:Name="HoverImageB" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
-        </Grid>
+        </Canvas>
+
+        <!--
+            The list and the drawer are columns of this one window. The window grows by the drawer's
+            width, so the frame, the acrylic and the toolbar are real rather than a second window
+            pretending to be attached.
+        -->
+        <Grid x:Name="Body" Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid x:Name="ListColumn" Width="380">
+        <Grid x:Name="MainPage">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
         <!-- Working folder -->
-        <StackPanel Margin="16,16,16,8" Spacing="6">
+        <StackPanel Grid.Row="0" Margin="16,16,16,8" Spacing="6">
             <TextBlock Text="Working folder" Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             <Grid ColumnSpacing="8">
@@ -137,35 +154,77 @@
                            Text="No agents found. Install a CLI such as Claude Code, or add one under Edit agents." />
             </StackPanel>
         </ScrollViewer>
+        </Grid>
 
-        <!--
-            The drawer: a separate, windowed popup beside the flyout that slides out while the pointer is
-            over an agent with something to show (for now, Claude Code's plan usage). Offsets and height
-            are set in code when it opens.
-        -->
-        <Popup x:Name="Drawer" Grid.RowSpan="3" ShouldConstrainToRootBounds="False" IsLightDismissEnabled="False">
-            <Popup.SystemBackdrop>
-                <DesktopAcrylicBackdrop />
-            </Popup.SystemBackdrop>
+        <!-- Settings. Same window as the list, so placement, acrylic and hide-on-deactivate stay as they are. -->
+        <StackPanel x:Name="SettingsPage" Grid.Row="0" Visibility="Collapsed" VerticalAlignment="Top">
+            <Grid Padding="8,12,16,0" ColumnSpacing="8">
+                <Grid.Resources>
+                    <!-- Same borderless buttons as the footer. -->
+                    <ResourceDictionary>
+                        <ResourceDictionary.ThemeDictionaries>
+                            <ResourceDictionary x:Key="Default">
+                                <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                                <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                                <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                                <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="Light">
+                                <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                                <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                                <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                                <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                            </ResourceDictionary>
+                        </ResourceDictionary.ThemeDictionaries>
+                    </ResourceDictionary>
+                </Grid.Resources>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="SettingsBackButton" Width="36" Height="32" Padding="0"
+                        Click="SettingsBack_Click"
+                        ToolTipService.ToolTip="Back" AutomationProperties.Name="Back">
+                    <FontIcon Glyph="&#xE72B;" FontSize="16" />
+                </Button>
+                <TextBlock Grid.Column="1" Text="Settings" VerticalAlignment="Center"
+                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+            </Grid>
+
+            <TextBlock Text="Appearance" Style="{StaticResource SectionHeaderStyle}" />
+            <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="Waifu backgrounds" />
+                    <TextBlock Text="Show a picture behind the flyout while the pointer is over an agent."
+                               TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <ToggleSwitch x:Name="HoverBackgroundsSwitch" Grid.Column="1" MinWidth="0"
+                              VerticalAlignment="Center" OffContent="" OnContent=""
+                              Toggled="HoverBackgroundsSwitch_Toggled"
+                              AutomationProperties.Name="Waifu backgrounds"
+                              AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
+            </Grid>
+        </StackPanel>
+            </Grid>
+
             <!--
-                The drawer opens by animating this border's Width from 1 to 240, growing outwards from the
-                flyout's edge. (Moving the content with a transform instead makes the popup window grow to
-                cover it, which put the drawer over the flyout.) Corners and border on the side touching the
-                flyout, and the alignments below, are set in code (OpenDrawer) for the side it opens on.
+                Grows from the list. Its width is animated; the window size follows (DrawerHost_SizeChanged).
+                Content sits against the list, so the growing window uncovers it.
             -->
-            <Border x:Name="DrawerContent" Width="240" Background="Transparent" CornerRadius="8" BorderThickness="1"
-                    BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" SizeChanged="DrawerContent_SizeChanged"
+            <Border x:Name="DrawerHost" Grid.Column="1" Width="0" Visibility="Collapsed"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    SizeChanged="DrawerHost_SizeChanged"
                     PointerEntered="Drawer_PointerEntered" PointerExited="Drawer_PointerExited">
-                <Grid>
-                    <!-- The drawer's slices of the two hover picture layers, anchored to the flyout's edge so they
-                         line up with the flyout's half and are uncovered as the drawer grows. -->
-                    <Image x:Name="DrawerImageA" Opacity="0" IsHitTestVisible="False"
-                           HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
-                    <Image x:Name="DrawerImageB" Opacity="0" IsHitTestVisible="False"
-                           HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
-
-                    <!-- Full-width content, anchored to the drawer's outer edge so it slides out with it. -->
-                    <Grid x:Name="DrawerPanel" Width="238" HorizontalAlignment="Right">
+                <Grid x:Name="DrawerPanel" Width="240" HorizontalAlignment="Left">
                     <!-- Plan usage for the hovered agent (Services/ClaudeStatusLine.cs, CodexUsage.cs, CopilotUsage.cs) -->
                     <StackPanel x:Name="UsagePanel" Padding="16,16,16,12" Spacing="4" Visibility="Collapsed">
                         <TextBlock x:Name="UsageTitle" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
@@ -195,16 +254,18 @@
                             <Button x:Name="UsageOfferButton" Click="UsageOfferButton_Click" />
                         </InfoBar.ActionButton>
                     </InfoBar>
-                    </Grid>
                 </Grid>
             </Border>
-        </Popup>
+        </Grid>
 
-        <!-- Footer -->
-        <Border Grid.Row="2" Padding="16,6,8,6" BorderThickness="0,1,0,0"
+        <!--
+            The bar and its divider span the whole window, including the drawer. The buttons stay in the
+            list's width (FooterContent), so growing the window doesn't carry them along.
+        -->
+        <Border x:Name="FooterBar" Grid.Row="1" BorderThickness="0,1,0,0"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}">
-            <Grid ColumnSpacing="4">
+            <Grid x:Name="FooterContent" Width="380" HorizontalAlignment="Left" Padding="16,6,8,6" ColumnSpacing="4">
                 <Grid.Resources>
                     <!-- Lightweight styling: borderless buttons, like the Start menu's footer. -->
                     <ResourceDictionary>
@@ -232,6 +293,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <TextBlock x:Name="StatusText" VerticalAlignment="Center" TextWrapping="Wrap"
@@ -245,6 +307,10 @@
                 <Button Grid.Column="2" Width="36" Height="32" Padding="0" Click="EditAgents_Click"
                         ToolTipService.ToolTip="Edit agents" AutomationProperties.Name="Edit agents">
                     <FontIcon Glyph="&#xE70F;" FontSize="16" />
+                </Button>
+                <Button Grid.Column="3" Width="36" Height="32" Padding="0" Click="Settings_Click"
+                        ToolTipService.ToolTip="Settings" AutomationProperties.Name="Settings">
+                    <FontIcon Glyph="&#xE713;" FontSize="16" />
                 </Button>
             </Grid>
         </Border>
