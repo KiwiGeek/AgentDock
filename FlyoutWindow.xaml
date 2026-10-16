@@ -312,6 +312,24 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="Usage overview" />
+                        <TextBlock Text="Show every agent's usage beside the list while the pointer isn't over one, to help pick an agent."
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="UsageSummarySwitch" Grid.Column="1" MinWidth="0"
+                                  VerticalAlignment="Center" OffContent="" OnContent=""
+                                  Toggled="UsageSummarySwitch_Toggled"
+                                  AutomationProperties.Name="Usage overview"
+                                  AutomationProperties.HelpText="Show every agent's usage beside the list while the pointer isn't over one, to help pick an agent." />
+                </Grid>
+
+                <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
                         <TextBlock Text="Remember recents" />
                         <TextBlock Text="Remember the last five folders you opened each agent in. Right-click one in the drawer to remove it."
                                    TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
@@ -555,6 +573,18 @@
                     PointerEntered="Drawer_PointerEntered" PointerExited="Drawer_PointerExited">
                 <StackPanel x:Name="DrawerPanel" Width="240" Background="Transparent"
                             HorizontalAlignment="Left" VerticalAlignment="Stretch">
+                <!-- Every agent's usage in brief, while no agent with a drawer is hovered (ShowSummary). -->
+                <StackPanel x:Name="SummaryPanel" Padding="8,16,8,12" Spacing="2" Visibility="Collapsed">
+                    <TextBlock Text="Usage" Margin="8,0,8,6" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <StackPanel x:Name="SummaryRows" Spacing="2" />
+                    <!-- The agent with the most room for this point in its limits (SuggestAgent). -->
+                    <StackPanel x:Name="SummarySuggestion" Margin="8,10,8,0" Spacing="2" Visibility="Collapsed">
+                        <TextBlock x:Name="SummarySuggestionTitle" TextWrapping="Wrap" FontWeight="SemiBold" />
+                        <TextBlock x:Name="SummarySuggestionNote" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
                 <Grid>
                     <!-- Plan usage for the hovered agent (Services/ClaudeStatusLine.cs, CodexUsage.cs, CopilotUsage.cs) -->
                     <StackPanel x:Name="UsagePanel" Padding="16,16,16,12" Spacing="4" Visibility="Collapsed">

@@ -1,10 +1,144 @@
-# Agent Dock: handoff for coding sessions
+# Agent Dock: handoff for coding agents
 
-Read this before changing anything. It records what exists, why it was built this way, and what
-has and hasn't been verified. Keep it current: when a decision changes or something gets verified,
-update this file in the same commit.
+Read this before changing anything. The first sections are the catch-up: the owner's rules, lessons
+learned, and where each agent stands. **Reference** below is the detail: architecture, every
+decision, and what has and hasn't been verified. `tasks.md` is agreed work not yet started. Keep
+both current: when a decision changes or something gets verified, update them in the same commit.
 
-## What it is
+Agent Dock is a Windows 11 taskbar flyout (WinUI 3, unpackaged, Native AOT, C#) that launches AI
+agents: CLI agents in Windows Terminal in a chosen folder, desktop agents directly. On hover, a
+drawer beside the list shows the agent's plan usage and recent folders; with nothing hovered it
+shows a usage overview of every agent with a suggestion of which to use.
+
+## The owner's rules
+
+**Git and releases**
+
+- **Never credit an AI in git history.** No `Co-Authored-By` trailers, no "Generated with …" lines
+  in commits or PR descriptions, no `claude/` (or similar) branch prefixes. Commits use the owner's
+  git identity only. This overrides any tool's default attribution.
+- Commit and push only when the owner asks. Don't commit `AgentDock.slnx` (the owner's untracked
+  Visual Studio file).
+- The owner isn't confident with release workflows: any change to how releases work goes, step by
+  step, into `RELEASING.md`, and when asking them to push or tag, give the exact commands.
+- Bump `<Version>` in the `.csproj` only as part of a release.
+
+**Working on the code**
+
+- **After every build, stop any running Agent Dock and relaunch the new build**, so the owner sees
+  the change at once:
+  ```powershell
+  $exe = "W:\AgentDock\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe"
+  Get-Process AgentDock -ErrorAction SilentlyContinue | ForEach-Object { & $_.Path --quit }
+  Get-Process AgentDock -ErrorAction SilentlyContinue | Stop-Process -Force
+  dotnet build W:\AgentDock\AgentDock.csproj -nologo -v q
+  Start-Process $exe -ArgumentList '--background'
+  ```
+- **Build the `.csproj`, not the folder.** A bare `dotnet build` picks up `AgentDock.slnx`, whose
+  default platform is ARM64, and fails with NETSDK1032. `-p:Platform=x64` "works" but builds into
+  `bin\x64\Debug`, which isn't the copy Claude Code's status line runs.
+- Primary stack is C#, with ReSharper. Built-in WinUI controls only (no Telerik, no new NuGet
+  packages without a clear reason).
+- Hard constraints (details under Reference → "Hard constraints"): Native AOT (no reflection, no `dynamic`, JSON only via
+  the source-generated `DockJsonContext`, COM via `[GeneratedComInterface]`/`[LibraryImport]`,
+  `x:Bind` only); `Program.Main` stays WinUI-free; the resident process must never crash; don't name
+  members anything the XAML compiler generates (`_contentLoaded`, `Bindings`, …).
+- Style: file-scoped namespaces, nullable on, XML doc comments that say *why*. UI text: sentence
+  case, plain words, no exclamation marks.
+- When behaviour changes, update `README.md` and this file in the same commit.
+- Downloaded icons come from the agent's official site or brand kit, recorded under Reference
+  ("Done: agent icons"), scaled to at most 256 px.
+
+**Product decisions**
+
+- **The user chooses their agents.** A fresh install has an empty list; Find agents offers the
+  known ones (`Services/KnownAgents.cs`). Known agents that weren't found can still be added
+  ("Not found on this PC"), and are looked for again on every open (PATH is re-read from the
+  registry each show).
+- **Usage may read a CLI's own sign-in token** (owner's decision, 2026-10-16) when that's the only
+  practical route: Cursor CLI's and Grok Build's `auth.json`. Rules for any token: read only; never
+  refresh it (refresh tokens are single-use and the CLI would be signed out); never write the file;
+  never log, show or save the token; an expired token sends nothing. Prefer a route where the agent
+  or another CLI does the sign-in (Codex's app server, `gh api`), and keep using those where they exist.
+- **Claude's direct usage check** is one GET of the user's own limits, off by default, with the
+  terms caveat stated in the UI. Don't widen it (no other endpoint, no refresh, no cookies).
+- Drawer and overview behaviour the owner corrected: the usage overview shows only while **no agent**
+  is pointed at; hovering an agent without a drawer (e.g. Claude or ChatGPT desktop) closes the
+  drawer and shrinks the window.
+- Reordering is by dragging only (the Move up/down buttons were removed on request).
+- Gemini CLI was removed (Google stopped serving personal accounts, June 2026); Antigravity CLI
+  (`agy`) replaced it.
+
+## Things learned the hard way
+
+- The flyout window doesn't get `WS_EX_TOPMOST`, so without foreground rights it sits behind other
+  windows. Screen captures of it then show whatever is on top; `PrintWindow` on a 200% monitor came
+  out scaled wrong. **Check the UI through UI Automation instead** (rows and bars have automation
+  names, e.g. "Open Codex: 1% session · 0% week").
+- Opening the flyout from a script: run the exe with no arguments (it hands off to the resident
+  copy over the pipe). A second run within 600 ms of a hide counts as a toggle.
+- `gh api` from Git Bash: no leading slash (MSYS rewrites it into a file path).
+- PowerShell: `foreach` can't sit inside `( … )`; use `$( … )` or assign it.
+- Hand-set `Cookie` headers need `SocketsHttpHandler { UseCookies = false }`.
+- A failed C# compile makes the XAML compiler report misleading WMC0909/WMC1509 errors; fix the C#
+  error first.
+- Verify network parsers against the real service with a throwaway console project in the
+  scratchpad that compiles the service file(s) directly, then delete it. Print numbers, never tokens.
+
+## Agents: where each one stands
+
+"Done" means everything that applies is built and verified against the real service: found and
+launched, built-in icon and hover picture, usage in the drawer and the overview, recent folders.
+Details per agent are under Reference; what's still to review per agent is in `tasks.md`.
+
+### Command line
+
+- [x] **Claude Code** (`claude`): icon, picture, usage (status line, or asked directly), recents,
+  overview. Usage per account (`CLAUDE_CONFIG_DIR`).
+- [x] **Codex** (`codex`): icon, picture, live usage from Codex's app server, recents, overview.
+  Usage per account (`CODEX_HOME`).
+- [x] **Grok Build** (`grok`): icon, picture, usage from grok.com with Grok Build's token, recents,
+  overview. Its token lasts hours, so the drawer often shows saved numbers between Grok runs.
+- [x] **Cursor CLI** (`cursor-agent`, or plain `agent`): icon, picture, usage from cursor.com with
+  the CLI's token, recents, overview.
+- [x] **GitHub Copilot CLI** (`copilot`): icon, picture, usage (AI credits) via
+  `gh api copilot_internal/user`, recents, overview.
+- [ ] **Antigravity CLI** (`agy`): known agent and icon only. Not installed on the owner's PC; no
+  picture, no usage, not verified to launch.
+- [ ] **OpenCode** (`opencode`): icon and picture only.
+- [ ] **Aider** (`aider`): icon and picture only.
+- [ ] **Qwen Code** (`qwen`): icon and picture only.
+- [ ] **Amp** (`amp`): icon and picture only.
+- [ ] **Kiro CLI** (`kiro-cli`): icon and picture only.
+- [ ] **Goose** (`goose`): icon and picture only.
+- [ ] **Crush** (`crush`): icon and picture only.
+- [ ] **Factory Droid** (`droid`): icon and picture only.
+- [ ] **Hermes Agent** (`hermes`): icon and picture only.
+- [ ] **DeepSeek Harness** (`dsh web`): icon and picture only.
+
+### Desktop
+
+- [x] **Cursor** (Start menu "Cursor"): icon, picture, usage (shares Cursor CLI's account). No
+  recents: desktop apps launch without a folder.
+- [ ] **Claude** (desktop): icon, picture, launch. No usage of its own (same plan as Claude Code,
+  not wired up).
+- [ ] **ChatGPT** (desktop, includes Codex): icon, picture, launch. No usage.
+- [ ] **Copilot** (desktop): icon, picture, launch. No usage.
+- [ ] **Perplexity** (desktop): icon, picture, launch. No usage.
+
+## Not done, across the app
+
+- **CI and releases:** `.github/workflows/build.yml` and `RELEASING.md` are referenced but were
+  never committed.
+- **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
+  overview row; the new Cursor, Grok and Copilot drawers; drag to reorder; the published Native AOT
+  build. See "Verify first" under Reference.
+
+## Reference
+
+The detailed handoff: what exists, why it was built this way, and what has and hasn't been verified.
+
+### What it is
 
 A Windows 11 taskbar app. The user pins `AgentDock.exe`; clicking it opens a Fluent acrylic flyout
 just above the taskbar button, listing AI agents:
@@ -33,17 +167,7 @@ the taskbar icon shows the same agents as a jump list. The two goals that drive 
 
 Repo: `KiwiGeek/AgentDock` on GitHub. The `.csproj` is at the repo root (CI depends on that).
 
-## Working with the owner
-
-- Primary stack is C#. Uses ReSharper; has Telerik toolkits but they are deliberately not used
-  here (built-in WinUI controls match the OS better and avoid a licence dependency).
-- **Never credit Claude in git history.** No `Co-Authored-By` trailers, no "Generated with Claude"
-  lines in commit messages or PR descriptions, no `claude/` or similar prefixes in branch names.
-  Commits are authored by the owner's git identity only.
-- Not confident with git release workflows. Any change to how releases work must be reflected,
-  step by step, in `RELEASING.md`. When telling the owner to push or tag, give exact commands.
-
-## Status
+### Status
 
 | Area | State |
 | --- | --- |
@@ -55,7 +179,7 @@ Repo: `KiwiGeek/AgentDock` on GitHub. The `.csproj` is at the repo root (CI depe
 History: first built as WPF, then rewritten in WinUI 3 at the owner's request for a more native look.
 Data files (`agents.json`, `state.json`, icon cache) are compatible across both versions.
 
-## Verify first
+### Verify first
 
 Build and run, then check these in order. Results from the first run (2026-10-15, Debug build,
 4-monitor setup) are marked ✅ passed or ⚠️ problem found; unmarked items are not yet tested.
@@ -88,7 +212,7 @@ Most likely to need work: 3 (focus), 5 (sizing via `Root.Measure` on a hidden wi
 and `PrepareAsync`'s off-screen warm-up (content may not load from `AppWindow.Show(false)`;
 there's a 2-second timeout fallback).
 
-## Build, run, publish
+### Build, run, publish
 
 ```powershell
 dotnet run                                   # Debug, JIT, centred on screen
@@ -103,9 +227,9 @@ dotnet publish -c Release -r win-x64 -o C:\Tools\AgentDock   # Native AOT
 - Debug builds don't write the sign-in Run key (`#if DEBUG` in `Autostart.cs`).
 - Releases: push a `v*` tag; `.github/workflows/build.yml` builds and attaches the zip. See `RELEASING.md`.
 
-## Architecture
+### Architecture
 
-### Process model (why it opens fast)
+#### Process model (why it opens fast)
 
 ```
 click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe──▶ AgentDock.exe #1 (resident)
@@ -134,7 +258,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   are intercepted to hide; only `Quit` closes it (`App.IsExiting`).
 - `startWithWindows` (default true) writes `HKCU\...\Run\AgentDock = "<exe>" --background`.
 
-### Flyout behaviour (`FlyoutWindow.xaml.cs`)
+#### Flyout behaviour (`FlyoutWindow.xaml.cs`)
 
 - `AppWindow` with `OverlappedPresenter`: no title bar, not resizable, always on top,
   `IsShownInSwitchers = false` (no taskbar button, not in Alt+Tab). `DesktopAcrylicBackdrop`.
@@ -168,14 +292,15 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - **Settings page:** the gear in the footer swaps the list for a page in the same window (so
   placement, acrylic and hide-on-deactivate stay as they are). The page keeps the list's height (see "Height can be dragged"), not its
   content. Two levels (owner's request, 2026-10-16):
-  - **General**: Waifu backgrounds, Hide unavailable agents, Remember recents and **Clear recents**
+  - **General**: Waifu backgrounds, Hide unavailable agents, Usage overview (see Drawer), Remember recents and **Clear recents**
     (a confirm flyout; disabled when nothing is saved). Remember recents is general on purpose,
     and its text doesn't name Claude: only Claude Code, Codex and Grok Build are recorded so far (owner,
     2026-10-16). Below it, **Agents**: a row for every agent in the list, in order
     (`BuildAgentSettingsRows`), with its icon, "Not installed" if so, and a chevron; then **Add agents**.
   - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Agent-specific settings show
-    under it; today only Claude Code has some (`ClaudeSettings`: "Usage limits", how Claude usage is
-    found: "Read them from the status line" or "Ask Claude for them directly"). To add another, add a
+    under it: Claude Code's (`ClaudeSettings`: "Usage limits", how Claude usage is found: "Read them
+    from the status line" or "Ask Claude for them directly"), and text-only notes for Grok Build
+    (`GrokSettings`) and Cursor CLI / desktop (`CursorSettings`) saying where usage comes from. To add another, add a
     panel in the XAML, return it from `AgentSettingsPanelFor` (by command name), list it in
     `AgentSettingsPanels`, and fill it in `ShowSettingsPage`.
   - **Add agents** (`ShowAddAgents`): the scan and a custom command; see "Agent list".
@@ -204,7 +329,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   - Verified by screenshot (2026-10-16): dark theme, translucent fill, sideways heart, white text.
     **Not yet verified:** the colour change on hover, the heart animation, light theme.
 
-### Pin prompt (`PinPromptWindow.xaml(.cs)`, `Interop/TaskbarPins.cs`)
+#### Pin prompt (`PinPromptWindow.xaml(.cs)`, `Interop/TaskbarPins.cs`)
 
 - The taskbar icon is the only way to open the flyout, so `App.StartAsync` calls
   `PinPromptWindow.EnsurePinnedAsync()` before building the flyout. Declining (the Quit button or
@@ -221,7 +346,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - Debug builds skip the check unless `AGENTDOCK_PIN_CHECK=1`, so `dotnet run` doesn't need its own pin.
 - Verified: pinning closes the prompt and opens the flyout; Quit and closing the window both exit.
 
-### Agents
+#### Agents
 
 - `AgentCatalog.Resolve` turns `AgentDefinition`s into `AgentItem`s.
   CLI: `PathResolver.Find` (PATH + PATHEXT, like cmd). Desktop, in priority order: explicit
@@ -239,7 +364,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     (`${env:NAME}` in PowerShell; cmd expands `%NAME%` itself), so keys kept in Windows'
     environment never appear in agents.json or in Agent Dock's command lines.
 
-### Agent list (owner's decision, 2026-10-16)
+#### Agent list (owner's decision, 2026-10-16)
 
 - **Known agents** (`KnownAgents`, compiled in) are templates: id, name, command or Start menu names.
   Icons, pictures and banner colours are matched by these ids. A new agent ships by being added there.
@@ -304,7 +429,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   owner's installed agents with icons. Not yet verified: adding, the agent page, duplicate,
   environment variables reaching an agent, the offer.
 
-### Shell interop
+#### Shell interop
 
 - Start menu enumeration: `SHCreateItemFromParsingName("shell:AppsFolder")` →
   `BindToHandler(BHID_EnumItems)` → `IEnumShellItems`. Name = `SIGDN_NORMALDISPLAY`,
@@ -330,7 +455,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   `ICustomDestinationList` directly. Entry text comes from the link's `PKEY_Title` property.
   `AppendCategory` can fail when the user has disabled recent items; that failure is ignored by design.
 
-## Hard constraints (don't undo these without discussing)
+### Hard constraints (don't undo these without discussing)
 
 **Native AOT compatibility.** `PublishAot` is on. Therefore:
 - No reflection-based APIs. No `dynamic` (the WPF version used `dynamic` for Shell.Application;
@@ -356,7 +481,7 @@ there degrade to a missing icon or entry, never an error.
 
 **Unpackaged, self-contained Windows App SDK.** No MSIX, nothing for the user to install.
 
-## Files
+### Files
 
 | Path | Purpose |
 | --- | --- |
@@ -394,9 +519,10 @@ there degrade to a missing icon or entry, never an error.
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
-| `tasks.md` | Agreed work not yet started (placeholder agents, API-credit agents like DeepSeek) |
+| `AGENTS.md` | This handoff: the owner's rules, lessons learned, which agents are done, and the reference |
+| `tasks.md` | Agreed work not yet started (agents to review, API-credit profiles, custom groups) |
 
-## Config and data
+### Config and data
 
 - `%APPDATA%\AgentDock\agents.json`: the agent list and global settings, **written by the app**
   (settings page) and still hand-editable. Comments and trailing commas are read, but comments are
@@ -408,7 +534,7 @@ there degrade to a missing icon or entry, never an error.
   folders, the dragged list height, and where Claude usage comes from).
 - `%LOCALAPPDATA%\AgentDock\Icons\`: PNG icon cache.
 
-## Conventions
+### Conventions
 
 - Match the existing style: file-scoped namespaces, nullable enabled, XML doc comments that
   explain *why* rather than restating the code.
@@ -418,11 +544,11 @@ there degrade to a missing icon or entry, never an error.
 - Bump `<Version>` in the `.csproj` only as part of a release (see `RELEASING.md`).
 - When behaviour changes, update `README.md` and this file in the same commit.
 
-## Planned work (agreed with the owner 2026-10-15)
+### Planned work (agreed with the owner 2026-10-15)
 
 Order: icons (done), then presets (done), then Claude usage (built). Each is its own commit.
 
-### Done: agent icons
+#### Done: agent icons
 
 Built-in icons are compiled in (see "Shell interop"). Where each one came from (2026-10-15):
 
@@ -450,7 +576,7 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
   - `antigravity`: antigravity.google/assets/image/antigravity-logo.png (276 px, transparent), the
     site's largest icon.
 
-### Built: presets (an agent pinned to a folder, for work that repeats)
+#### Built: presets (an agent pinned to a folder, for work that repeats)
 
 - **Storage:** `%APPDATA%\AgentDock\presets.json` (`PresetList` / `Preset` in `Models/Settings.cs`).
   - It's separate from `agents.json` because the app writes it, and rewriting `agents.json` would
@@ -485,7 +611,7 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
   automated try, before `ContainerOf` replaced the `DataContext` lookup), and actually launching a
   preset into a terminal.
 
-### Built: Claude usage limits (replaces the owner's dead WaifuOps status line)
+#### Built: Claude usage limits (replaces the owner's dead WaifuOps status line)
 
 `Services/ClaudeStatusLine.cs` and `Services/ClaudeUsageApi.cs`, plus the drawer in `FlyoutWindow`.
 Two sources, chosen on Claude Code's settings page (`DockState.ClaudeUsageSource`, `"statusLine"`
@@ -590,7 +716,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   runs that exe. A build can hit a short lock (MSBuild retries), and while the exe is mid-rebuild
   the status line may be blank for a moment.
 
-### Drawer (owner's request: "only appear when Claude CLI is moused over")
+#### Drawer (owner's request: "only appear when Claude CLI is moused over")
 
 - A column of the flyout window (`DrawerHost`), not a second window. The flyout grows by
   `DrawerWidthDip` (240) when it opens, so there is one frame, one acrylic and one toolbar.
@@ -607,6 +733,32 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   - Usage is loaded on the first hover after each show and cached until the next show
     (`ClearUsageCache` in `ReloadData`), so opening stays fast.
   - Add new agents in `PrepareDrawer`.
+- **Usage overview** (owner's request, 2026-10-16; `ShowSummary`, `SummaryPanel`): while no agent with a
+  drawer is hovered, the drawer shows every listed agent's usage in brief. One row per account
+  (`SummaryEntries`: copies share a row, presets are left out, Cursor CLI and desktop share one),
+  each a button with the icon, name, a bar for the most-used limit, and "85% session · 49% week"
+  ("13% month" for Cursor, "79% of AI credits" for Copilot). Clicking launches the agent. Rows only
+  for agents with usage or a check running, so with none the drawer stays shut.
+  - Opening the flyout starts every agent's check (`StartSummaryChecks`, through the same
+    `Start…Check` helpers and intervals as hovering; Claude only when asked directly) and opens the
+    overview once the window is placed. A finished check rebuilds it (`RunLiveCheckAsync`, Copilot's fetch).
+  - Only while **no agent** is pointed at (owner's correction, 2026-10-16: hovering Claude or ChatGPT
+    desktop left it open). The close timer decides: over an agent without a drawer it closes (the
+    window shrinks to the list); over no agent it shows the overview (`ShowSummary` returns false when
+    it's off, on settings, with a pop-up open, or with no rows), else closes. So `ScheduleDrawerClose`
+    also runs with the drawer shut when the overview is on, to bring it back after such a hover. Hovering a drawer agent swaps its content in
+    with the fade (`PrepareDrawer` wraps `PrepareAgentDrawer` and hides the overview). Returning from
+    settings brings it back.
+  - **Suggestion** under the rows (`ShowSuggestion`, owner's request): the agent with the least quota
+    used for how far it is through each limit's window. Per limit, pace = % used − % of the window
+    gone (`PaceWindows`: session 5 h, week 7 d, month = the month before the reset for Cursor and
+    Copilot; an unknown reset counts as 0% gone; a window already reset is 0/0). An agent counts by
+    its tightest limit (highest pace); lowest wins. Any limit at 100% rules an agent out; unlimited
+    Copilot always has room. Shown only with two agents or more with numbers. "Suggested: Codex /
+    0% of the week used, with 16% of it gone." Icons in the rows are centred vertically.
+  - Settings → General → **Usage overview** (`DockState.ShowUsageSummary`, default on, missing = on).
+  - Verified 2026-10-16 through UI Automation: the five rows above with the right bar states.
+    **Not yet verified by eye:** the look, hover swaps, clicking a row.
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
@@ -657,7 +809,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Verified by the owner (popup version):** the drawer opens on hover without hiding the flyout.
   The single-window version (the window itself grows) is not yet verified.
 
-### Codex usage (`Services/CodexUsage.cs`)
+#### Codex usage (`Services/CodexUsage.cs`)
 
 - **Source: Codex itself, live** (owner's decision, 2026-10-16: the only route, no setting, no
   other fallbacks). `codex -s read-only -a never app-server` is the local JSON-RPC interface Codex's
@@ -695,7 +847,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Verified by the owner (2026-10-15):** the Codex picture, drawer, cross-fade between agents, and
   the seam overlap.
 
-### Grok Build usage (`Services/GrokUsage.cs`; owner's request, 2026-10-16)
+#### Grok Build usage (`Services/GrokUsage.cs`; owner's request, 2026-10-16)
 
 - **No CLI source.** Grok Build 1.0.60 has no usage command or call: `grok usage` is one session's
   tokens and cost, its status line gets only context and tokens, and it only learns of a limit from
@@ -739,7 +891,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   the real `GrokUsage.FetchAsync` in a throwaway console project (deleted): 100%, resets Wed 21 Oct
   11:11, $1.50, the breakdown. **Not yet verified:** the drawer with the new route, the pie on screen.
 
-### Cursor usage (`Services/CursorUsage.cs`; owner's request, 2026-10-16)
+#### Cursor usage (`Services/CursorUsage.cs`; owner's request, 2026-10-16)
 
 - **No CLI source.** Cursor CLI (2026.10.16) has no usage command; `about` / `status` give only the
   plan tier and email, and `/usage` is interactive only.
@@ -768,7 +920,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Verified 2026-10-16 through the real `CursorUsage.FetchAsync` (throwaway console project, deleted):
   Pro+, 12.7% total, Auto + Composer 13.7%, API 1.6%, resets 10 Nov. **Not yet verified:** the drawer.
 
-### GitHub Copilot usage (`Services/CopilotUsage.cs`)
+#### GitHub Copilot usage (`Services/CopilotUsage.cs`)
 
 - **No local source:** Copilot CLI (1.0.98) keeps no quota. `~/.copilot/logs` have nothing, and
   `data.db` only has `session_context_usage` (context window). It has no usage command for scripts:
@@ -797,7 +949,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Verified 2026-10-16 through the real `CopilotUsage.FetchAsync` (throwaway console project, deleted):
   5552 of 7000 AI credits, resets 2026-11-01 00:00 UTC, no overage. **Not yet verified:** the drawer.
 
-### Hover background (owner's request)
+#### Hover background (owner's request)
 
 - **Compiled in** (owner's decision, 2026-10-15): `Assets/Agents/<agent id>-background.png` are
   `EmbeddedResource`s named `AgentBackgrounds.<id>-background.png`. The csproj excludes
@@ -828,9 +980,11 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Not yet verified in-app:** loading from the embedded resources. The build embeds all 10, but
   nobody has hovered since.
 
-## Possible next steps (none requested yet; ask before starting)
+### Possible next steps (none requested yet; ask before starting)
 
 - ARM64 build in CI (needs ARM64 MSVC tools on the runner for Native AOT cross-compilation).
-- More of the settings page. It exists (gear in the footer): general settings plus per-agent pages
-  (only Claude Code has one so far). Pages for Codex or Copilot (e.g. Copilot's monthly allowance),
-  and editing the agent list from the UI, are still not built.
+- More of the settings page. It exists (gear in the footer): general settings, the agent list
+  (add, remove, duplicate, rename, arguments, environment variables, drag to reorder), and per-agent
+  pages. Only Claude Code has real settings there; Codex and Copilot have none.
+- Usage for the agents not done yet (see "Agents: where each one stands" and `tasks.md`), and for the Claude and
+  ChatGPT desktop apps from their CLI counterparts' accounts.

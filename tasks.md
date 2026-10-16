@@ -1,18 +1,25 @@
 # Tasks
 
 Work agreed with the owner but not started. Remove an item when it's done (and record the result
-in `CLAUDE.md`).
+in `AGENTS.md`, and tick the agent there).
+
+## Agent status
+
+Which agents are fully done (usage, recents, icons, verified) is the checklist in `AGENTS.md`.
+Done as of 2026-10-16: Claude Code, Codex, Grok Build, Cursor CLI and Cursor desktop, GitHub
+Copilot CLI. Everything below is still to do.
 
 ## Review the agents Agent Dock knows (added 2026-10-16)
 
 These are in `Services/KnownAgents.cs` (offered by Find agents, not added by default). For each:
-confirm the command (or Start menu name), and keep or remove it.
+confirm the command (or Start menu name), keep or remove it, and look for a usage source.
 
 | Id | Name | Command / Start menu name | Hover background | Notes |
 | --- | --- | --- | --- | --- |
+| `antigravity` | Antigravity CLI | `agy` | no | Google's replacement for Gemini CLI (added 2026-10-16). Not installed on the owner's PC, so not verified to launch. Has an icon; needs a picture. Usage: its quota is shared with the Antigravity IDE; no source found yet |
+| `opencode` | OpenCode | `opencode` | yes | |
 | `aider` | Aider | `aider` | yes | |
 | `qwen` | Qwen Code | `qwen` | yes | |
-| `cursor-cli` | Cursor CLI | `cursor-agent` | yes | Check whether it's been renamed to `cursor` |
 | `amp` | Amp | `amp` | yes | Sourcegraph |
 | `kiro` | Kiro CLI | `kiro-cli` | yes | Formerly Amazon Q Developer CLI (`q`). Decide whether `q` needs its own entry |
 | `goose` | Goose | `goose` | yes | Block |
@@ -20,8 +27,14 @@ confirm the command (or Start menu name), and keep or remove it.
 | `droid` | Factory Droid | `droid` | yes | |
 | `deepseek` | DeepSeek Harness | `dsh web` | yes | DeepSeek's own agent (github.com/deepseek-ai/deepseek-harness, first released 2026-08-13, developer preview). `web` serves a UI at 127.0.0.1:3080 and opens the browser; the terminal keeps the server running. Install with `npm i -g @deepseek-ai/dsh`. Check: does it use the launch folder as its workspace? Where does the API key go? |
 | `hermes` | Hermes Agent | `hermes` | yes | Nous Research. A general agent, not just coding. Installed natively on the owner's PC. Bring-your-own API key, so a candidate host for DeepSeek |
-| `grok` | Grok Build | `grok` | yes | Renamed from "Grok CLI" by the owner (2026-10-16). Installed at `~/.grok/bin/grok.exe`. Also check for a Grok desktop app |
-| `cursor` | Cursor (desktop) | Start menu "Cursor" | yes | The IDE |
+| `grok` | Grok Build | `grok` | yes | Done (usage, recents). Still to check: is there a Grok desktop app? |
+| `claude-desktop` | Claude | Start menu "Claude" | yes | Launch only. Could show Claude Code's usage (same plan), not wired up |
+| `chatgpt-desktop` | ChatGPT | Start menu "ChatGPT" | yes | Launch only. Includes Codex; could show Codex's usage (same account), not wired up |
+| `copilot-desktop` | Copilot | Start menu "Copilot" | yes | Launch only. Microsoft Copilot, not GitHub's |
+| `perplexity` | Perplexity | Start menu "Perplexity" | yes | Launch only |
+
+Answered: Cursor CLI's command is still `cursor-agent` (2026.10.16), with `agent` as an alias;
+`IsCursor` and `RecentLaunches.Records` match it by catalog id too.
 
 ## Maybe later: profiles for API credits
 
@@ -53,4 +66,5 @@ Up/Down and jump list categories into a dynamic set of groups.
 ## Left over from earlier sessions
 
 - CI: `.github/workflows/build.yml` and `RELEASING.md` were never committed.
-- GitHub Copilot usage: the owner reported it "did not work". See `CLAUDE.md`.
+- The flyout never gets `WS_EX_TOPMOST` (see "Verify first" in `AGENTS.md`), so without foreground
+  rights it sits behind other windows.

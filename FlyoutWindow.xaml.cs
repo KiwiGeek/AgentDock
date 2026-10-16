@@ -185,6 +185,13 @@ public sealed partial class FlyoutWindow : Window
         PlayOpenAnimation();
         SyncHearts();
         DispatcherQueue.TryEnqueue(FocusFirstAgent);
+        // The overview opens beside the list once it's placed, and its checks start meanwhile.
+        if (_state.ShowUsageSummary)
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                StartSummaryChecks();
+                ShowSummary();
+            });
 
         // A desktop agent in the list that wasn't found may have been installed since: look every time.
         if (!_sinceShellRefresh.IsRunning || _sinceShellRefresh.Elapsed > ShellRefreshInterval
@@ -1452,6 +1459,7 @@ public sealed partial class FlyoutWindow : Window
         _settingsToggleReady = false;
         HoverBackgroundsSwitch.IsOn = _state.ShowHoverBackgrounds;
         RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
+        UsageSummarySwitch.IsOn = _state.ShowUsageSummary;
         HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
         // Lives in agents.json, which isn't written while it can't be read.
         HideUnavailableSwitch.IsEnabled = _settingsError is null;
@@ -1481,6 +1489,8 @@ public sealed partial class FlyoutWindow : Window
             return;
         PlaceWindow();
         DispatcherQueue.TryEnqueue(FocusFirstAgent);
+        // Back from settings: the overview returns, after the window has its list size again.
+        DispatcherQueue.TryEnqueue(() => ShowSummary());
     }
 
     private void HoverBackgroundsSwitch_Toggled(object sender, RoutedEventArgs e)
@@ -1512,6 +1522,14 @@ public sealed partial class FlyoutWindow : Window
         if (!_settingsToggleReady || _state.RememberRecentLaunches == RecentFoldersSwitch.IsOn)
             return;
         _state.RememberRecentLaunches = RecentFoldersSwitch.IsOn;
+        _store.SaveState(_state);
+    }
+
+    private void UsageSummarySwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsToggleReady || _state.ShowUsageSummary == UsageSummarySwitch.IsOn)
+            return;
+        _state.ShowUsageSummary = UsageSummarySwitch.IsOn;
         _store.SaveState(_state);
     }
 
@@ -1837,6 +1855,16 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private bool PrepareDrawer(AgentItem item)
     {
+        if (!PrepareAgentDrawer(item))
+            return false;
+        // The agent's own content replaces the overview.
+        _summaryShowing = false;
+        SummaryPanel.Visibility = Visibility.Collapsed;
+        return true;
+    }
+
+    private bool PrepareAgentDrawer(AgentItem item)
+    {
         RecentSection.Visibility = Visibility.Collapsed;
         if (!item.IsAgentAvailable)
             return false;
@@ -1845,8 +1873,7 @@ public sealed partial class FlyoutWindow : Window
         {
             _drawerItem = item;
             UsageOffer.IsOpen = false;
-            StartLiveCheck(CursorCheckKey, CursorUsage.MinInterval, CursorUsage.FetchAsync, CursorUsage.Unreachable,
-                shown => IsCursor(shown.Definition), ShowCursorCheck);
+            StartCursorCheck();
             ShowCursorCheck();
             ShowRecents(item);
             return true;
@@ -1874,8 +1901,7 @@ public sealed partial class FlyoutWindow : Window
                 _drawerItem = item;
                 UsageOffer.IsOpen = false;
                 // Live from Codex, as this account, at most every few minutes; what's known shows meanwhile.
-                StartLiveCheck(account!.Key, CodexUsage.MinInterval, () => CodexUsage.FetchAsync(account), CodexUsage.Unreachable,
-                    shown => OnAccount(shown, account), () => ShowCodexCheck(account));
+                StartCodexCheck(account!);
                 ShowCodexCheck(account!);
                 ShowRecents(item);
                 return true;
@@ -1883,16 +1909,14 @@ public sealed partial class FlyoutWindow : Window
                 // From grok.com, with Grok Build's own sign-in.
                 _drawerItem = item;
                 UsageOffer.IsOpen = false;
-                StartLiveCheck(GrokCheckKey, GrokUsage.MinInterval, GrokUsage.FetchAsync, GrokUsage.Unreachable,
-                    shown => CommandName(shown.Definition.Command) == "grok", ShowGrokCheck);
+                StartGrokCheck();
                 ShowGrokCheck();
                 ShowRecents(item);
                 return true;
             case "copilot":
                 _drawerItem = item;
                 UsageOffer.IsOpen = false;
-                if (!_copilotFetching && (_copilotUsage is null || DateTimeOffset.UtcNow - _copilotUsage.FetchedAt > CopilotUsageMaxAge))
-                    _ = FetchCopilotUsageAsync();
+                StartCopilotCheck();
                 ShowCopilotUsage();
                 ShowRecents(item);
                 return true;
@@ -1950,8 +1974,7 @@ public sealed partial class FlyoutWindow : Window
         if (SourceFor(account) == ClaudeUsageSource.Api)
         {
             UsageOffer.IsOpen = false;
-            StartLiveCheck(account.Key, ClaudeUsageApi.MinInterval, () => ClaudeUsageApi.FetchAsync(account), ClaudeUsageApi.Unreachable,
-                shown => OnAccount(shown, account) && SourceFor(account) == ClaudeUsageSource.Api, () => ShowClaudeCheck(account));
+            StartClaudeCheck(account);
             ShowClaudeCheck(account);
             ShowRecents(item);
             _drawerItem = item;
@@ -2030,13 +2053,362 @@ public sealed partial class FlyoutWindow : Window
         if (result.Usage is not null)
             _savedUsage.Remove(key); // the file was just written; read it again when needed
 
-        if (shown == _generation && _drawerOpen && !_drawerClosing && _drawerItem is { } item && showing(item))
+        if (shown != _generation)
+            return;
+        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && showing(item))
             show();
+        else if (_summaryShowing)
+            ShowSummary();
     }
 
     /// <summary>Grok and Cursor have one account each, their CLI's sign-in.</summary>
     private const string GrokCheckKey = "grok";
     private const string CursorCheckKey = "cursor";
+
+    // Each starts its agent's check unless one is running or fresh, and fills the drawer if it's
+    // still on that agent when the answer comes (else the overview, if that's showing).
+
+    private void StartClaudeCheck(UsageAccount account) =>
+        StartLiveCheck(account.Key, ClaudeUsageApi.MinInterval, () => ClaudeUsageApi.FetchAsync(account), ClaudeUsageApi.Unreachable,
+            shown => OnAccount(shown, account) && SourceFor(account) == ClaudeUsageSource.Api, () => ShowClaudeCheck(account));
+
+    private void StartCodexCheck(UsageAccount account) =>
+        StartLiveCheck(account.Key, CodexUsage.MinInterval, () => CodexUsage.FetchAsync(account), CodexUsage.Unreachable,
+            shown => OnAccount(shown, account), () => ShowCodexCheck(account));
+
+    private void StartGrokCheck() =>
+        StartLiveCheck(GrokCheckKey, GrokUsage.MinInterval, GrokUsage.FetchAsync, GrokUsage.Unreachable,
+            shown => CommandName(shown.Definition.Command) == "grok", ShowGrokCheck);
+
+    private void StartCursorCheck() =>
+        StartLiveCheck(CursorCheckKey, CursorUsage.MinInterval, CursorUsage.FetchAsync, CursorUsage.Unreachable,
+            shown => IsCursor(shown.Definition), ShowCursorCheck);
+
+    private void StartCopilotCheck()
+    {
+        if (!_copilotFetching && (_copilotUsage is null || DateTimeOffset.UtcNow - _copilotUsage.FetchedAt > CopilotUsageMaxAge))
+            _ = FetchCopilotUsageAsync();
+    }
+
+    // ---------- Usage overview (the drawer while no agent with usage is hovered) ----------
+
+    /// <summary>The drawer is showing the overview rather than one agent.</summary>
+    private bool _summaryShowing;
+
+    /// <summary>One line of the overview: an agent's usage, by account.</summary>
+    private sealed record SummaryEntry(string Key, AgentItem Item, PlanUsage? Usage, bool Checking, string WeekWord,
+        CopilotUsageResult? Copilot = null);
+
+    /// <summary>
+    /// The agents in the list with usage to show, one per account (copies on one account share a
+    /// line, named after the first). Presets are left out; their agent stands for them.
+    /// </summary>
+    private List<SummaryEntry> SummaryEntries()
+    {
+        var entries = new List<SummaryEntry>();
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in _cli.Concat(_desktop).Where(i => i.IsAgentAvailable))
+            if (SummaryEntryFor(item) is { } entry && keys.Add(entry.Key))
+                entries.Add(entry);
+        return entries;
+    }
+
+    private SummaryEntry? SummaryEntryFor(AgentItem item)
+    {
+        LiveCheck? Check(string key) => _liveChecks.GetValueOrDefault(key);
+        PlanUsage? SavedFor(string key, Func<PlanUsage?> load)
+        {
+            if (!_savedUsage.TryGetValue(key, out var saved))
+                _savedUsage[key] = saved = load();
+            return saved;
+        }
+
+        if (IsCursor(item.Definition))
+        {
+            var check = Check(CursorCheckKey);
+            return new SummaryEntry(CursorCheckKey, item, check?.Result?.Usage ?? SavedFor(CursorCheckKey, CursorUsage.LoadSaved),
+                check?.Running == true, "month");
+        }
+        if (!item.IsCli)
+            return null;
+
+        var account = UsageAccount.For(item.Definition);
+        if (account is { UsesOtherProvider: true })
+            return null;
+        switch (CommandName(item.Definition.Command))
+        {
+            case "claude":
+            {
+                var check = SourceFor(account!) == ClaudeUsageSource.Api ? Check(account!.Key) : null;
+                return new SummaryEntry(account!.Key, item, check?.Result?.Usage ?? Saved(account), check?.Running == true, "week");
+            }
+            case "codex":
+            {
+                var check = Check(account!.Key);
+                return new SummaryEntry(account.Key, item, check?.Result?.Usage ?? Saved(account), check?.Running == true, "week");
+            }
+            case "grok":
+            {
+                var check = Check(GrokCheckKey);
+                return new SummaryEntry(GrokCheckKey, item, check?.Result?.Usage ?? SavedFor(GrokCheckKey, GrokUsage.LoadSaved),
+                    check?.Running == true, "week");
+            }
+            case "copilot":
+                return new SummaryEntry("copilot", item, null, _copilotFetching && _copilotUsage is null, "month", _copilotUsage);
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>Starts every listed agent's check (each at most as often as its drawer would), so the overview fills in.</summary>
+    private void StartSummaryChecks()
+    {
+        if (!_state.ShowUsageSummary)
+            return;
+        foreach (var item in _cli.Concat(_desktop).Where(i => i.IsAgentAvailable))
+        {
+            if (IsCursor(item.Definition))
+            {
+                StartCursorCheck();
+                continue;
+            }
+            if (!item.IsCli || UsageAccount.For(item.Definition) is { UsesOtherProvider: true })
+                continue;
+            var account = UsageAccount.For(item.Definition);
+            switch (CommandName(item.Definition.Command))
+            {
+                case "claude" when SourceFor(account!) == ClaudeUsageSource.Api:
+                    StartClaudeCheck(account!);
+                    break;
+                case "codex":
+                    StartCodexCheck(account!);
+                    break;
+                case "grok":
+                    StartGrokCheck();
+                    break;
+                case "copilot":
+                    StartCopilotCheck();
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Shows the overview in the drawer (opening it if needed), when it's turned on, the list is
+    /// showing, and some agent has usage or a check under way. Returns false, changing nothing, otherwise.
+    /// </summary>
+    private bool ShowSummary()
+    {
+        if (!_state.ShowUsageSummary || !AppWindow.IsVisible || MainPage.Visibility != Visibility.Visible || _popupsOpen > 0)
+            return false;
+
+        var now = DateTimeOffset.UtcNow;
+        var entries = SummaryEntries();
+        var rows = entries.Select(entry => SummaryRow(entry, now)).OfType<UIElement>().ToList();
+        if (rows.Count == 0)
+        {
+            // Everything it showed went away (signed out, say): nothing to keep the drawer open for.
+            if (_summaryShowing && _drawerOpen && !_drawerClosing)
+                CloseDrawer(animate: true);
+            return false;
+        }
+
+        var wasShowing = _summaryShowing && _drawerOpen && !_drawerClosing;
+        SummaryRows.Children.Clear();
+        foreach (var row in rows)
+            SummaryRows.Children.Add(row);
+        ShowSuggestion(entries, now);
+        UsagePanel.Visibility = RecentSection.Visibility = Visibility.Collapsed;
+        UsageOffer.IsOpen = false;
+        SummaryPanel.Visibility = Visibility.Visible;
+        _drawerItem = null;
+        _summaryShowing = true;
+        if (_drawerOpen && !_drawerClosing && !wasShowing)
+            FadeInDrawerContent(); // coming back from an agent's drawer
+        OpenDrawer();
+        return true;
+    }
+
+    /// <summary>One limit of an agent, for the suggestion: how much is used, and how much of its window has gone (0–100; null if its reset time isn't known).</summary>
+    private sealed record PaceWindow(string Word, double Used, double? Elapsed)
+    {
+        /// <summary>How far ahead of an even pace it is. Negative: room to spare.</summary>
+        public double Pace => Used - (Elapsed ?? 0);
+    }
+
+    /// <summary>
+    /// The agent's limits with how far through each window it is: a session is five hours, a week
+    /// seven days, a month (Cursor's billing period, Copilot's) the month before its reset.
+    /// </summary>
+    private static List<PaceWindow> PaceWindows(SummaryEntry entry, DateTimeOffset now)
+    {
+        static double? Elapsed(DateTimeOffset start, DateTimeOffset end, DateTimeOffset now) =>
+            end > start ? Math.Clamp((now - start) / (end - start) * 100, 0, 100) : null;
+
+        var windows = new List<PaceWindow>();
+        if (entry.Copilot is { } copilot)
+        {
+            if (copilot is { Used: { } used, Unlimited: false, Entitlement: { } entitlement })
+            {
+                var reset = copilot.ResetsAt ?? new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
+                windows.Add(new PaceWindow("month", Math.Clamp(used * 100 / entitlement, 0, 100), Elapsed(reset.AddMonths(-1), reset, now)));
+            }
+            return windows;
+        }
+
+        void Add(UsageWindow? window, string word, Func<DateTimeOffset, DateTimeOffset> startOf)
+        {
+            if (window is null)
+                return;
+            if (window.ResetsAt <= 0)
+            {
+                windows.Add(new PaceWindow(word, Math.Clamp(window.UsedPercentage, 0, 100), null));
+                return;
+            }
+            var reset = DateTimeOffset.FromUnixTimeSeconds(window.ResetsAt);
+            // Already reset: a fresh window.
+            windows.Add(reset <= now
+                ? new PaceWindow(word, 0, 0)
+                : new PaceWindow(word, Math.Clamp(window.UsedPercentage, 0, 100), Elapsed(startOf(reset), reset, now)));
+        }
+        Add(entry.Usage?.FiveHour, "session", reset => reset.AddHours(-5));
+        Add(entry.Usage?.SevenDay, entry.WeekWord,
+            entry.WeekWord == "month" ? reset => reset.AddMonths(-1) : reset => reset.AddDays(-7));
+        return windows;
+    }
+
+    /// <summary>
+    /// Suggests the agent with the most room for where it is in its limits (owner's request): each
+    /// agent counts by its tightest limit (used minus the share of that window gone), and the one
+    /// furthest under pace wins. An agent at 100% of any limit is never suggested; an unlimited plan
+    /// always has room. Shown only when there's a choice (two agents or more with numbers).
+    /// </summary>
+    private void ShowSuggestion(List<SummaryEntry> entries, DateTimeOffset now)
+    {
+        (SummaryEntry Entry, double Score, PaceWindow? Tightest)? best = null;
+        var candidates = 0;
+        foreach (var entry in entries)
+        {
+            var windows = PaceWindows(entry, now);
+            double score;
+            PaceWindow? tightest = null;
+            if (entry.Copilot is { Unlimited: true })
+                score = -100;
+            else if (windows.Count == 0)
+                continue;
+            else
+            {
+                if (windows.Any(w => w.Used >= 100))
+                {
+                    candidates++;
+                    continue;
+                }
+                tightest = windows.MaxBy(w => w.Pace)!;
+                score = tightest.Pace;
+            }
+            candidates++;
+            if (best is null || score < best.Value.Score)
+                best = (entry, score, tightest);
+        }
+
+        if (best is not { } pick || candidates < 2)
+        {
+            SummarySuggestion.Visibility = Visibility.Collapsed;
+            return;
+        }
+        SummarySuggestionTitle.Text = $"Suggested: {pick.Entry.Item.Definition.Name}";
+        SummarySuggestionNote.Text = pick.Tightest is not { } window
+            ? "Unlimited this month."
+            : window.Elapsed is { } gone
+                ? $"{Math.Round(window.Used)}% of the {window.Word} used, with {Math.Round(gone)}% of it gone."
+                : $"{Math.Round(window.Used)}% of the {window.Word} used.";
+        SummarySuggestion.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// A clickable line: the agent's icon and name, a bar for its most-used limit, and each limit in
+    /// brief ("48% session · 21% week"). Null when there's nothing to show (no usage, no check running).
+    /// </summary>
+    private Button? SummaryRow(SummaryEntry entry, DateTimeOffset now)
+    {
+        string text;
+        double? most;
+        if (entry.Copilot is { } copilot)
+        {
+            if (copilot.Used is not { } used)
+                return null;
+            var unit = copilot.Unit.Length > 0 ? copilot.Unit : "used";
+            if (copilot.Unlimited)
+                (text, most) = ("Unlimited", null);
+            else if (copilot.Entitlement is { } entitlement)
+            {
+                var percent = Math.Clamp(used * 100 / entitlement, 0, 100);
+                (text, most) = ($"{Math.Round(percent)}% of {unit}", percent);
+            }
+            else
+                (text, most) = ($"{used:N0} {unit}", null);
+        }
+        else
+        {
+            var parts = new List<(string Word, double Percent)>();
+            void Add(UsageWindow? window, string word)
+            {
+                if (window is null)
+                    return;
+                var reset = window.ResetsAt > 0 && DateTimeOffset.FromUnixTimeSeconds(window.ResetsAt) <= now;
+                parts.Add((word, reset ? 0 : Math.Clamp(window.UsedPercentage, 0, 100)));
+            }
+            Add(entry.Usage?.FiveHour, "session");
+            Add(entry.Usage?.SevenDay, entry.WeekWord);
+            if (parts.Count == 0)
+            {
+                if (!entry.Checking)
+                    return null;
+                (text, most) = ("Checking…", null);
+            }
+            else
+                (text, most) = (string.Join(" · ", parts.Select(p => $"{Math.Round(p.Percent)}% {p.Word}")), parts.Max(p => p.Percent));
+        }
+
+        var item = entry.Item;
+        var icon = item.Icon is { } image
+            ? (UIElement)new Image { Source = image, Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center }
+            : new FontIcon { Glyph = item.Glyph, FontSize = 16, Width = 20, VerticalAlignment = VerticalAlignment.Center };
+        var lines = new StackPanel { Spacing = 2 };
+        lines.Children.Add(new TextBlock { Text = item.Definition.Name, TextTrimming = TextTrimming.CharacterEllipsis });
+        if (most is { } value)
+        {
+            var bar = new ProgressBar { Maximum = 100, Value = value, ShowError = value >= 90, ShowPaused = value is >= 75 and < 90 };
+            AutomationProperties.SetName(bar, $"{item.Definition.Name} usage");
+            lines.Children.Add(bar);
+        }
+        lines.Children.Add(new TextBlock
+        {
+            Text = text,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+        });
+        var content = new Grid { ColumnSpacing = 10 };
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.Children.Add(icon);
+        Grid.SetColumn(lines, 1);
+        content.Children.Add(lines);
+
+        var button = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(8, 6, 8, 6),
+            Content = content,
+            Tag = item
+        };
+        AutomationProperties.SetName(button, $"Open {item.Definition.Name}: {text}");
+        ToolTipService.SetToolTip(button, $"Open {item.Definition.Name}");
+        button.Click += (_, _) => Launch(item);
+        return button;
+    }
 
     private void ShowCursorCheck()
     {
@@ -2224,8 +2596,8 @@ public sealed partial class FlyoutWindow : Window
         if (!RecentLaunches.Forget(_state, id, folder))
             return;
         _store.SaveState(_state);
-        // The drawer shows what's left; with nothing left and no usage to show, it closes.
-        if (!ShowRecents(item) && UsagePanel.Visibility != Visibility.Visible && !UsageOffer.IsOpen)
+        // The drawer shows what's left; with nothing left and no usage to show, it closes (or shows the overview).
+        if (!ShowRecents(item) && UsagePanel.Visibility != Visibility.Visible && !UsageOffer.IsOpen && !ShowSummary())
             CloseDrawer(animate: true);
     }
 
@@ -2290,6 +2662,8 @@ public sealed partial class FlyoutWindow : Window
         // Still showing Copilot? Fill in what arrived.
         if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && CommandName(item.Definition.Command) == "copilot")
             ShowCopilotUsage();
+        else if (_summaryShowing)
+            ShowSummary();
     }
 
     /// <summary>
@@ -2607,7 +2981,7 @@ public sealed partial class FlyoutWindow : Window
             _store.SaveState(_state);
         }
         UsageOffer.IsOpen = false;
-        if (_drawerItem is null || !ShowRecents(_drawerItem))
+        if ((_drawerItem is null || !ShowRecents(_drawerItem)) && !ShowSummary())
             CloseDrawer(animate: true); // nothing left to show in it
     }
 
@@ -2646,10 +3020,11 @@ public sealed partial class FlyoutWindow : Window
         _hoverItem = item;
         ColorBannerFor(item);
         var previous = _drawerOpen && !_drawerClosing ? _drawerItem : null;
+        var fromSummary = _drawerOpen && !_drawerClosing && _summaryShowing;
         var drawer = item is not null && PrepareDrawer(item);
-        // Switching an open drawer to another agent: fade its new content in rather than swapping it.
-        if (drawer && previous is not null
-            && CommandName(previous.Definition.Command) != CommandName(item!.Definition.Command))
+        // Switching an open drawer to another agent (or from the overview): fade its new content in rather than swapping it.
+        if (drawer && (fromSummary || (previous is not null
+            && CommandName(previous.Definition.Command) != CommandName(item!.Definition.Command))))
             FadeInDrawerContent();
         // The drawer first: the image layout depends on which side it opens.
         if (drawer)
@@ -2886,11 +3261,13 @@ public sealed partial class FlyoutWindow : Window
 
     /// <summary>
     /// A short grace period, so the pointer can move from the row into the drawer (to click
-    /// Set up) without it closing.
+    /// Set up) without it closing. Then: over an agent without a drawer, the drawer closes (the
+    /// window shrinks to the list); over no agent, the usage overview shows if it's on, else it
+    /// closes. So this also runs with the drawer shut, to bring the overview back.
     /// </summary>
     private void ScheduleDrawerClose()
     {
-        if (!_drawerOpen || _drawerClosing || _popupsOpen > 0)
+        if (_popupsOpen > 0 || (!_drawerOpen && !_state.ShowUsageSummary))
             return;
         if (_drawerCloseTimer is null)
         {
@@ -2902,9 +3279,14 @@ public sealed partial class FlyoutWindow : Window
                 // The pointer may have moved onto an agent without a drawer, whose picture is fading in.
                 if (_state.ShowHoverBackgrounds && _hoverItem is null)
                     FadeBackdrop(null);
+                // The overview is for when no agent is pointed at (owner, 2026-10-16).
+                if (_hoverItem is null && ShowSummary())
+                    return;
                 CloseDrawer(animate: true);
             };
         }
+        // Restart the grace period from now.
+        _drawerCloseTimer.Stop();
         _drawerCloseTimer.Start();
     }
 
@@ -2970,6 +3352,8 @@ public sealed partial class FlyoutWindow : Window
     {
         _drawerClosing = false;
         _drawerOpen = false;
+        _summaryShowing = false;
+        SummaryPanel.Visibility = Visibility.Collapsed;
         DrawerHost.Width = 0;
         DrawerHost.Visibility = Visibility.Collapsed;
         Grid.SetColumn(ListColumn, 0);

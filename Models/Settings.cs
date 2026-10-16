@@ -220,6 +220,12 @@ public sealed class DockState
     public bool RememberRecentLaunches { get; set; } = true;
 
     /// <summary>
+    /// While the pointer isn't over an agent with usage, the drawer shows every agent's usage in
+    /// brief, to help pick one. Same "missing means on" rule as <see cref="ShowHoverBackgrounds"/>.
+    /// </summary>
+    public bool ShowUsageSummary { get; set; } = true;
+
+    /// <summary>
     /// Newest folder first, per agent id, at most <see cref="Services.RecentLaunches.MaxCount"/>.
     /// Launching one already in the list moves it to the front and shifts the newer ones down.
     /// </summary>

@@ -209,6 +209,14 @@ Right-click a folder there (or press Shift+F10) and choose **Remove from recents
 On the settings page, **Remember recents** turns the list off, and **Clear recents** forgets every
 folder (it asks first). Those choices, the usage source, and the folders are saved in `state.json`.
 
+While the pointer isn't over an agent with usage, the drawer shows a **usage overview**: every
+agent in your list that has usage to show, one line each, with a bar for its most-used limit and
+each limit in brief ("85% session · 49% week"), so you can pick one with room left. Under the lines it suggests one: the agent that has used the
+least for how far it is through each of its limits (say, 20% of the week used with half the week
+gone beats 30% used with only a day of it gone), never one that's hit a limit.
+Click a line to open that agent. Opening the flyout checks them all in the background (no more often than hovering
+would). Turn it off with **Usage overview** on the settings page.
+
 ### Codex usage limits
 
 Codex gets the same drawer while the pointer is over it, with nothing to set up. Agent Dock asks
