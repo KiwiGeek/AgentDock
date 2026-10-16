@@ -29,7 +29,6 @@ internal static class ThemeColors
         ["cursor-cli"] = Hex(0x7D8590),      // grey and white
         ["deepseek"] = Hex(0x2D4FB8),        // royal blue
         ["droid"] = Hex(0x4A6A9A),           // denim
-        ["gemini"] = Hex(0x4B4FC4),          // indigo
         ["goose"] = Hex(0x4C6B3A),           // green shorts
         ["grok"] = Hex(0xC81E32),            // red neon and hair streaks on black
         ["hermes"] = Hex(0x1F6B4A),          // green top

@@ -14,9 +14,13 @@ just above the taskbar button, listing AI agents:
 - **Desktop agents** launch directly.
 - **The user chooses the agents** (owner's decision, 2026-10-16). A fresh install has an empty list
   and a welcome offering **Find agents**, which scans for the agents in `Services/KnownAgents.cs`
-  (Claude Code, Codex, Gemini CLI, Copilot CLI, OpenCode, Aider, Qwen Code, Cursor CLI, Amp, Kiro,
+  (Claude Code, Codex, Antigravity CLI, Copilot CLI, OpenCode, Aider, Qwen Code, Cursor CLI, Amp, Kiro,
   Goose, Crush, Factory Droid, Grok Build, Hermes Agent, DeepSeek Harness; Claude, ChatGPT,
   Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
+- Gemini CLI stopped serving personal Google accounts on 2026-06-18 (API keys and Code Assist
+  licences still work), so it was removed from the known agents, with its icon and picture (owner,
+  2026-10-16). Google moved those users to **Antigravity CLI** (`agy`, id `antigravity`), added the
+  same day. It has a built-in icon but no picture yet.
 - There is no separate Codex desktop app: OpenAI merged it into the ChatGPT desktop app (July 2026).
   It's installed as `OpenAI.Codex_2p2nqsd0c76g0!App` but named "ChatGPT", so `chatgpt-desktop` finds it.
   A chatgpt.com site installed from Edge has the same Start menu name; `StartMenuApps.Load` prefers the
@@ -151,8 +155,13 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - **Toggle guard**: clicking the taskbar icon while open deactivates (hides) on mouse-down,
   then launches #2 on mouse-up. `ShowFlyout` ignores a show within 600 ms of a deactivation-hide.
 - **Data reloads on every show** (settings and state files are tiny), so config edits apply
-  without restarting. The slow pass (`RefreshFromShellAsync`: Start menu enumeration + icon
-  extraction on a background STA thread) runs at most every 2 minutes or when icons are missing.
+  without restarting. Each show also re-reads PATH from the registry (`PathResolver.RefreshPath`:
+  machine then user, with this process's extra entries kept at the end), because the resident
+  instance starts at sign-in and would otherwise never see a CLI installed later; shells it starts
+  get that PATH too. The slow pass (`RefreshFromShellAsync`: Start menu enumeration + icon
+  extraction on a background STA thread) runs at most every 2 minutes, or on every show while icons
+  are missing or a desktop agent in the list isn't found (owner's request, 2026-10-16: agents added
+  but not detected are looked for again each time). Not yet verified in-app.
   A generation counter discards results from an earlier show.
 - Number keys 1–9 launch the corresponding available agent. Up/Down cross between the two lists.
   Neither does anything while the settings page is open.
@@ -247,8 +256,13 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   An older agents.json with agents in it simply is the list.
 - **Add agents** (settings → Agents → "Scan for new agents", or "Add your own command", which scrolls to the form; "Scan again" on the page): `FindNewAgentsAsync` resolves known agents not already in the list
   (`KnownAgents.IsInList`: same catalog id, CLI command or Start menu name) against PATH and the Start
-  menu (STA thread), shown ticked. Unticked ones go into `DismissedAgentOffers`. Also a custom
-  command form (name, command, arguments).
+  menu (STA thread), shown ticked. Unticked ones go into `DismissedAgentOffers`. Known agents that
+  weren't found are listed unticked under a collapsed **Not found on this PC (N)** expander
+  (`MissingAgentsExpander`; opened by itself when nothing was found), for agents installed where
+  Agent Dock doesn't look or not installed yet (owner's request, 2026-10-16). The same Add selected
+  adds them; they show as "Not installed" until found. They aren't dismissed when left unticked, so
+  installing one later still brings the offer. Also a custom
+  command form (name, command, arguments). Not yet verified in-app.
 - **Offers:** the slow pass (`RefreshFromShellAsync`) also resolves known agents not in the list;
   installed ones not dismissed are offered in an InfoBar at the top of the list ("Amp is installed.
   Add it?" with Add, or "N more agents are installed" with Choose). Closing it dismisses them. Never
@@ -415,7 +429,6 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
 - **From installed apps:** `claude`, `copilot`, `claude-desktop` and `chatgpt-desktop`, exported
   at 256 px through the shell.
 - **Downloaded from official sites, with the owner's OK:**
-  - `gemini`: geminicli.com/icon.png
   - `opencode`: opencode.ai/web-app-manifest-512x512.png
   - `perplexity`: perplexity.ai/apple-touch-icon.png (180 px)
   - `copilot-desktop`: the copilot.com favicon, Microsoft's CDN. Its largest frame is 48 px, so it
@@ -429,8 +442,13 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
   - `goose`: the desktop app's icon in block/goose (`ui/desktop/src/images/icon-512.png`).
   - `crush`: charm.land's 180 px touch icon (Charm's ">c_" mark; Crush has no logo of its own).
   - `droid`: the Factory-AI GitHub organisation's avatar. `deepseek`: deepseek.com/favicon.ico (225 px).
-  - `cursor-cli`: cursor.com's icon-512x512.png. Cursor desktop keeps the icon from the Start menu.
+  - `cursor` and `cursor-cli`, from Cursor's brand kit (cursor.com/brand, `cursor-brand-assets.zip`),
+    scaled to 256 px (owner's request, 2026-10-16): the desktop app gets the app tile
+    (`APP_ICON_25D_DARK`, the same design `cursor-cli` used to have), and the CLI the bare shaded cube
+    (`CUBE_25D`, transparent, so it shows on both themes). Cursor has no logo of its own for the CLI.
   - `hermes`: Hermes Agent's own icon from its site. Only 48 px, so it's soft at high scaling.
+  - `antigravity`: antigravity.google/assets/image/antigravity-logo.png (276 px, transparent), the
+    site's largest icon.
 
 ### Built: presets (an agent pinned to a folder, for work that repeats)
 

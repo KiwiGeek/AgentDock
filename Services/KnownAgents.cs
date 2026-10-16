@@ -14,7 +14,8 @@ public static class KnownAgents
     [
         new() { Id = "claude",     Name = "Claude Code",        Command = "claude" },
         new() { Id = "codex",      Name = "Codex",              Command = "codex" },
-        new() { Id = "gemini",     Name = "Gemini CLI",         Command = "gemini" },
+        // Google's replacement for Gemini CLI, which stopped serving personal accounts in June 2026.
+        new() { Id = "antigravity", Name = "Antigravity CLI",   Command = "agy" },
         new() { Id = "copilot",    Name = "GitHub Copilot CLI", Command = "copilot" },
         new() { Id = "opencode",   Name = "OpenCode",           Command = "opencode" },
         new() { Id = "aider",      Name = "Aider",              Command = "aider" },

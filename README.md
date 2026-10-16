@@ -98,7 +98,7 @@ moment longer.
 ## Your agents
 
 The flyout shows only the agents you've chosen. The first time it opens, it offers to **Find
-agents**: Agent Dock looks for the agents it knows about (Claude Code, Codex, Gemini CLI, GitHub
+agents**: Agent Dock looks for the agents it knows about (Claude Code, Codex, Antigravity CLI, GitHub
 Copilot CLI, OpenCode, Aider, Qwen Code, Cursor, Amp, Kiro, Goose, Crush, Factory Droid, Grok
 Build, Hermes Agent, DeepSeek Harness, and the Claude, ChatGPT, Copilot, Perplexity and Cursor
 desktop apps), lists the ones installed, and adds the ones you leave ticked. **Not now** starts
@@ -107,7 +107,10 @@ you with an empty list.
 After that, manage them on the settings page (the gear in the footer), under **Agents**:
 
 - **Scan for new agents** looks again for agents Agent Dock knows; **Add your own command** takes
-  any other command line tool (a name, a command, and optional arguments).
+  any other command line tool (a name, a command, and optional arguments). Agents it knows but
+  couldn't find are under **Not found on this PC**: tick one to add it anyway, for example before
+  you install it. It shows as not installed until Agent Dock can find it, and it's looked for
+  again every time the flyout opens.
 - Click an agent for its page: rename it, change its arguments, set **environment variables**,
   **duplicate** it, or remove it. Drag agents in the list (here or in the flyout
   itself) to put them in the order you want.
@@ -253,15 +256,15 @@ plan provided by an organisation isn't available this way. Results are cached fo
 ### Icons
 
 Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,
-`codex`, `gemini`, `copilot`, `opencode`, `aider`, `qwen`, `cursor-cli`, `amp`, `kiro`, `goose`,
+`codex`, `antigravity`, `copilot`, `opencode`, `aider`, `qwen`, `cursor-cli`, `amp`, `kiro`, `goose`,
 `crush`, `droid`, `grok`, `hermes`, `deepseek`, `claude-desktop`, `chatgpt-desktop`, `copilot-desktop`,
-`perplexity`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
+`perplexity`, `cursor`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
 under any id. An `icon` setting overrides that. Desktop apps without either use the icon the Start
 menu shows. Anything else gets a plain terminal or app symbol.
 
 Hover pictures are built in the same way, as `Assets\Agents\<agent id>-background.png` (currently
 Aider, Amp, ChatGPT, Claude, Claude Code, Codex, Copilot, Copilot desktop, Crush, Cursor, Cursor CLI,
-DeepSeek, Factory Droid, Gemini, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
+DeepSeek, Factory Droid, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
 by agent id or command name. A `background` setting overrides one. Turn them off with **Waifu
 backgrounds** on the settings page (the gear in the footer), which also hides the hearts on the
 banner. That choice is saved in `state.json`.

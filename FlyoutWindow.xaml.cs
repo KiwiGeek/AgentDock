@@ -192,8 +192,10 @@ public sealed partial class FlyoutWindow : Window
         SyncHearts();
         DispatcherQueue.TryEnqueue(FocusFirstAgent);
 
+        // A desktop agent in the list that wasn't found may have been installed since: look every time.
         if (!_sinceShellRefresh.IsRunning || _sinceShellRefresh.Elapsed > ShellRefreshInterval
-            || AllItems.Any(a => a.Icon is null && a.IconSource is not null))
+            || AllItems.Any(a => a.Icon is null && a.IconSource is not null)
+            || _agents.Any(a => !a.IsCli && !a.IsAgentAvailable))
             _ = RefreshFromShellAsync(_generation);
     }
 
@@ -555,7 +557,9 @@ public sealed partial class FlyoutWindow : Window
         _bannerColorSource = null;
         SetBannerColors(null, animate: false);
         LoadFolders();
-        // Fast pass: PATH lookups plus whatever desktop apps were found last time.
+        // Fast pass: PATH lookups (on a PATH re-read, so CLIs installed since show up) plus whatever
+        // desktop apps were found last time.
+        PathResolver.RefreshPath();
         ShowAgents(AgentCatalog.Resolve(_settings, def => _state.DesktopApps.GetValueOrDefault(def.Id)));
         ClearUsageCache();
     }
@@ -768,21 +772,21 @@ public sealed partial class FlyoutWindow : Window
     }
 
     /// <summary>
-    /// Known agents that are installed and not in the list yet. The Start menu is read on an STA
-    /// thread, so this can take a moment.
+    /// Known agents not in the list yet, resolved, so <see cref="AgentItem.IsAgentAvailable"/> says
+    /// whether each is installed. The Start menu is read on an STA thread, so this can take a moment.
+    /// If reading the Start menu fails, desktop apps come back not installed, so they can still be added.
     /// </summary>
     private async Task<List<AgentItem>> FindNewAgentsAsync()
     {
         var known = KnownAgents.All().Where(k => !KnownAgents.IsInList(k, _settings.Agents)).ToList();
         try
         {
-            var found = await StartMenuApps.RunOnStaThread(() =>
+            return await StartMenuApps.RunOnStaThread(() =>
                 AgentCatalog.Resolve(new DockSettings { Agents = known }, AgentCatalog.FromStartMenu(StartMenuApps.Load())));
-            return found.Where(a => a.IsAgentAvailable).ToList();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            return [];
+            return AgentCatalog.Resolve(new DockSettings { Agents = known }, _ => null);
         }
     }
 
@@ -1297,50 +1301,68 @@ public sealed partial class FlyoutWindow : Window
         SettingsTitle.Text = "Add agents";
         CustomNote.Visibility = Visibility.Collapsed;
         FoundAgentsList.Children.Clear();
+        MissingAgentsList.Children.Clear();
+        MissingAgentsExpander.Visibility = Visibility.Collapsed;
+        MissingAgentsExpander.IsExpanded = false;
         AddFoundButton.Visibility = Visibility.Collapsed;
         FoundAgentsNote.Text = "Looking for agents on this PC…";
         SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
         PlaceWindow();
         DispatcherQueue.TryEnqueue(() => SettingsBackButton.Focus(FocusState.Programmatic));
 
-        var found = await FindNewAgentsAsync();
+        var agents = await FindNewAgentsAsync();
         if (AddAgentsPage.Visibility != Visibility.Visible || SettingsPage.Visibility != Visibility.Visible)
             return;
+        var found = agents.Where(a => a.IsAgentAvailable).ToList();
+        var missing = agents.Where(a => !a.IsAgentAvailable).ToList();
         foreach (var agent in found)
-        {
-            agent.Icon ??= _icons.Get(agent.IconSource)
-                           ?? (agent.IconSource is { } source && ShellIcons.IsOnDisk(source) ? await _icons.LoadFromDiskAsync(source) : null);
-            var icon = agent.Icon is { } image
-                ? (UIElement)new Image { Source = image, Width = 24, Height = 24 }
-                : new FontIcon { Glyph = agent.Glyph, FontSize = 18, Width = 24 };
-            var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-            label.Children.Add(icon);
-            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            text.Children.Add(new TextBlock { Text = agent.Definition.Name });
-            text.Children.Add(new TextBlock
-            {
-                Text = agent.IsCli ? agent.Definition.Command : "Desktop app",
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-            });
-            label.Children.Add(text);
-            var box = new CheckBox { IsChecked = true, Content = label, Tag = agent.Definition, Padding = new Thickness(8, 4, 0, 4) };
-            AutomationProperties.SetName(box, agent.Definition.Name);
-            FoundAgentsList.Children.Add(box);
-        }
+            FoundAgentsList.Children.Add(await AgentCheckBoxAsync(agent, isChecked: true));
+        foreach (var agent in missing)
+            MissingAgentsList.Children.Add(await AgentCheckBoxAsync(agent, isChecked: false));
         FoundAgentsNote.Text = found.Count > 0
             ? "These are installed and not in your list yet. Untick any you don't want."
-            : "Nothing else Agent Dock knows about is installed. You can add your own command below.";
-        AddFoundButton.Visibility = found.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            : missing.Count > 0
+                ? "Nothing else Agent Dock knows about is installed. You can still add one, or your own command below."
+                : "Nothing else Agent Dock knows about is installed. You can add your own command below.";
+        MissingAgentsTitle.Text = $"Not found on this PC ({missing.Count})";
+        MissingAgentsExpander.Visibility = missing.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        MissingAgentsExpander.IsExpanded = found.Count == 0 && missing.Count > 0;
+        AddFoundButton.Visibility = agents.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         PlaceWindow();
+    }
+
+    /// <summary>A row on the Add agents page: icon, name, and its command (or "Desktop app").</summary>
+    private async Task<CheckBox> AgentCheckBoxAsync(AgentItem agent, bool isChecked)
+    {
+        agent.Icon ??= _icons.Get(agent.IconSource)
+                       ?? (agent.IconSource is { } source && ShellIcons.IsOnDisk(source) ? await _icons.LoadFromDiskAsync(source) : null);
+        var icon = agent.Icon is { } image
+            ? (UIElement)new Image { Source = image, Width = 24, Height = 24 }
+            : new FontIcon { Glyph = agent.Glyph, FontSize = 18, Width = 24 };
+        var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        label.Children.Add(icon);
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock { Text = agent.Definition.Name });
+        text.Children.Add(new TextBlock
+        {
+            Text = agent.IsCli ? agent.Definition.Command : "Desktop app",
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
+        });
+        label.Children.Add(text);
+        var box = new CheckBox { IsChecked = isChecked, Content = label, Tag = agent.Definition, Padding = new Thickness(8, 4, 0, 4) };
+        AutomationProperties.SetName(box, agent.Definition.Name);
+        return box;
     }
 
     private void AddFound_Click(object sender, RoutedEventArgs e)
     {
-        var boxes = FoundAgentsList.Children.OfType<CheckBox>().ToList();
-        var chosen = boxes.Where(b => b.IsChecked == true).Select(b => (AgentDefinition)b.Tag).ToList();
-        // Unticked ones aren't offered again; they can still be added from here.
-        DismissOffers(boxes.Where(b => b.IsChecked != true).Select(b => (AgentDefinition)b.Tag));
+        var found = FoundAgentsList.Children.OfType<CheckBox>().ToList();
+        var chosen = found.Concat(MissingAgentsList.Children.OfType<CheckBox>())
+            .Where(b => b.IsChecked == true).Select(b => (AgentDefinition)b.Tag).ToList();
+        // Unticked installed ones aren't offered again; they can still be added from here. Missing
+        // ones aren't dismissed, so installing one later still brings the offer.
+        DismissOffers(found.Where(b => b.IsChecked != true).Select(b => (AgentDefinition)b.Tag));
         AddAgents(chosen);
         if (_addAgentsFromSetup)
             ShowMainPage();

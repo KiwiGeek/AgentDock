@@ -398,6 +398,19 @@
                            Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <StackPanel x:Name="FoundAgentsList" Margin="16,0,16,4" Spacing="0" />
+                <!-- Known agents the scan didn't find: added anyway, they show as not installed. -->
+                <Expander x:Name="MissingAgentsExpander" Visibility="Collapsed" Margin="16,4,16,4"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <StackPanel Padding="0,6">
+                            <TextBlock x:Name="MissingAgentsTitle" Text="Not found on this PC" />
+                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="Add one anyway if it's installed somewhere Agent Dock doesn't look, or you're about to install it." />
+                        </StackPanel>
+                    </Expander.Header>
+                    <StackPanel x:Name="MissingAgentsList" Spacing="0" />
+                </Expander>
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,4,16,16">
                     <Button x:Name="AddFoundButton" Content="Add selected"
                             Style="{StaticResource AccentButtonStyle}" Click="AddFound_Click" />
