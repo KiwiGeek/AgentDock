@@ -155,6 +155,18 @@ public sealed class DockState
     /// Missing from an older state.json means on: the property initializer survives deserialization.
     /// </summary>
     public bool ShowHoverBackgrounds { get; set; } = true;
+
+    /// <summary>
+    /// Remember the last few folders each agent was launched in, and offer them again in the drawer.
+    /// Same "missing means on" rule as <see cref="ShowHoverBackgrounds"/>. Only Claude Code uses it so far.
+    /// </summary>
+    public bool RememberRecentLaunches { get; set; } = true;
+
+    /// <summary>
+    /// Newest folder first, per agent id, at most <see cref="Services.RecentLaunches.MaxCount"/>.
+    /// Launching one already in the list moves it to the front and shifts the newer ones down.
+    /// </summary>
+    public Dictionary<string, List<string>> RecentLaunches { get; set; } = [];
 }
 
 /// <summary>Source-generated serializers (no reflection, so Native AOT is happy).</summary>

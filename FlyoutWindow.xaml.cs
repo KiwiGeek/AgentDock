@@ -404,13 +404,27 @@ public sealed partial class FlyoutWindow : Window
             Launch(item);
     }
 
-    private void Launch(AgentItem item)
+    private void Launch(AgentItem item, string? folder = null)
     {
-        if (Launcher.Launch(item, item.Preset?.Folder ?? CurrentFolder, _settings) is { } error)
+        var dir = folder ?? item.Preset?.Folder ?? CurrentFolder;
+        if (Launcher.Launch(item, dir, _settings) is { } error)
             SetStatus(error);
         else
+        {
+            RememberLaunch(item, dir);
             HideFlyout();
+        }
     }
+
+    /// <summary>Claude Code only, so far. A folder already in the list moves to the front.</summary>
+    public void RememberLaunch(string? command, string agentId, string folder)
+    {
+        if (RecentLaunches.Remember(_state, command, agentId, folder))
+            _store.SaveState(_state);
+    }
+
+    private void RememberLaunch(AgentItem item, string folder) =>
+        RememberLaunch(item.Definition.Command, item.Preset?.Agent ?? item.Definition.Id, folder);
 
     private void OpenShell_Click(object sender, RoutedEventArgs e)
     {
@@ -454,6 +468,7 @@ public sealed partial class FlyoutWindow : Window
         FadeBackdrop(null, spansDrawer: false);
         _settingsToggleReady = false;
         HoverBackgroundsSwitch.IsOn = _state.ShowHoverBackgrounds;
+        RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
         _settingsToggleReady = true;
 
         MainPage.Visibility = Visibility.Collapsed;
@@ -482,6 +497,14 @@ public sealed partial class FlyoutWindow : Window
         _store.SaveState(_state);
         if (!_state.ShowHoverBackgrounds)
             FadeBackdrop(null, spansDrawer: false);
+    }
+
+    private void RecentFoldersSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsToggleReady || _state.RememberRecentLaunches == RecentFoldersSwitch.IsOn)
+            return;
+        _state.RememberRecentLaunches = RecentFoldersSwitch.IsOn;
+        _store.SaveState(_state);
     }
 
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
@@ -734,6 +757,7 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private bool PrepareDrawer(AgentItem item)
     {
+        RecentSection.Visibility = Visibility.Collapsed;
         if (!item.IsCli || !item.IsAgentAvailable)
             return false;
 
@@ -792,10 +816,121 @@ public sealed partial class FlyoutWindow : Window
                     closable: true);
                 break;
             default:
-                return false;
+                UsagePanel.Visibility = Visibility.Collapsed;
+                UsageOffer.IsOpen = false;
+                if (!ShowClaudeRecents(item))
+                    return false;
+                _drawerItem = item;
+                return true;
         }
+        ShowClaudeRecents(item);
         _drawerItem = item;
         return true;
+    }
+
+    /// <summary>The folders currently offered for the hovered agent, newest first, at most five.</summary>
+    private List<string> _shownRecents = [];
+    /// <summary>Drawer height the recents were last fitted to, so a width change doesn't rebuild them.</summary>
+    private double _recentsFitHeight;
+
+    /// <summary>
+    /// The last few folders Claude Code was opened in, under the usage. Never more than five, and
+    /// never more than fit in the drawer without scrolling. Clicking one launches Claude Code there.
+    /// </summary>
+    private bool ShowClaudeRecents(AgentItem item)
+    {
+        var id = item.Preset?.Agent ?? item.Definition.Id;
+        _shownRecents = RecentLaunches.For(_state, id).Take(RecentLaunches.MaxCount).ToList();
+        if (_shownRecents.Count == 0)
+        {
+            RecentSection.Visibility = Visibility.Collapsed;
+            return false;
+        }
+        FillRecentRows(_shownRecents.Count);
+        RecentSection.Visibility = Visibility.Visible;
+        _recentsFitHeight = 0;
+        DispatcherQueue.TryEnqueue(FitRecentsToDrawer);
+        return true;
+    }
+
+    private void FillRecentRows(int count)
+    {
+        RecentRows.Children.Clear();
+        foreach (var folder in _shownRecents.Take(count))
+        {
+            var shown = new FolderItem(folder);
+            var button = new Button
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Left,
+                Padding = new Thickness(8, 4, 8, 4),
+                Tag = folder,
+                Content = new StackPanel
+                {
+                    Spacing = 0,
+                    Children =
+                    {
+                        new TextBlock { Text = shown.Name, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 200 },
+                        new TextBlock
+                        {
+                            Text = shown.Parent, FontSize = 12, Opacity = 0.7,
+                            TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 200
+                        }
+                    }
+                }
+            };
+            AutomationProperties.SetName(button, $"Open Claude Code in {folder}");
+            ToolTipService.SetToolTip(button, folder);
+            button.Click += RecentFolder_Click;
+            RecentRows.Children.Add(button);
+        }
+    }
+
+    /// <summary>Drops recent rows from the bottom until the drawer doesn't have to scroll.</summary>
+    private void FitRecentsToDrawer()
+    {
+        if (_shownRecents.Count == 0 || DrawerHost.ActualHeight <= 1)
+            return;
+
+        RecentSection.Visibility = Visibility.Visible;
+        var count = _shownRecents.Count;
+        FillRecentRows(count);
+        while (count > 0 && !RecentsFit())
+        {
+            count--;
+            FillRecentRows(count);
+        }
+        _recentsFitHeight = DrawerHost.ActualHeight;
+        if (count == 0)
+            RecentSection.Visibility = Visibility.Collapsed;
+    }
+
+    private bool RecentsFit()
+    {
+        DrawerPanel.UpdateLayout();
+        if (RecentSection.ActualHeight <= 0)
+            return true;
+        try
+        {
+            var top = RecentSection.TransformToVisual(DrawerHost).TransformPoint(new Windows.Foundation.Point()).Y;
+            return top + RecentSection.ActualHeight <= DrawerHost.ActualHeight + 0.5;
+        }
+        catch (ArgumentException)
+        {
+            // Not in the live tree yet; the next size change fits them.
+            return true;
+        }
+    }
+
+    private void RecentFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string folder } || _drawerItem is null)
+            return;
+        // The base agent, so a preset's own arguments aren't applied to a different folder.
+        var id = _drawerItem.Preset?.Agent ?? _drawerItem.Definition.Id;
+        var item = _agents.FirstOrDefault(a => a.Preset is null && a.Definition.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
+            ?? _drawerItem;
+        Launch(item, folder);
     }
 
     private async Task FetchCopilotUsageAsync()
@@ -957,7 +1092,9 @@ public sealed partial class FlyoutWindow : Window
     {
         _state.ClaudeUsageOfferDismissed = true;
         _store.SaveState(_state);
-        CloseDrawer(animate: true); // nothing left to show in it
+        UsageOffer.IsOpen = false;
+        if (_drawerItem is null || !ShowClaudeRecents(_drawerItem))
+            CloseDrawer(animate: true); // nothing left to show in it
     }
 
     // ---------- Hover background ----------
@@ -1003,7 +1140,9 @@ public sealed partial class FlyoutWindow : Window
 
     private void AgentRow_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        if (_state.ShowHoverBackgrounds)
+        // Moving into the drawer should keep the picture. It fades when the drawer actually closes,
+        // or straight away when the row had no drawer.
+        if (_state.ShowHoverBackgrounds && !_drawerOpen)
             FadeBackdrop(null, spansDrawer: false);
         ScheduleDrawerClose();
     }
@@ -1176,7 +1315,13 @@ public sealed partial class FlyoutWindow : Window
     /// <summary>Screen X of the list's left edge, so growing the window doesn't slide the list.</summary>
     private int _listScreenX;
 
-    private void Drawer_PointerEntered(object sender, PointerRoutedEventArgs e) => _drawerCloseTimer?.Stop();
+    private void Drawer_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _drawerCloseTimer?.Stop();
+        // The row's pointer-exit may already have started fading the picture. Bring it back.
+        if (_state.ShowHoverBackgrounds && _drawerItem?.BackgroundSource is { } source)
+            FadeBackdrop(source, spansDrawer: true);
+    }
 
     private void Drawer_PointerExited(object sender, PointerRoutedEventArgs e) => ScheduleDrawerClose();
 
@@ -1196,6 +1341,8 @@ public sealed partial class FlyoutWindow : Window
     {
         if (_layers is not null)
             LayoutBackdrop();
+        if (Math.Abs(e.NewSize.Height - _recentsFitHeight) > 0.5)
+            FitRecentsToDrawer();
     }
 
     /// <summary>
@@ -1211,7 +1358,12 @@ public sealed partial class FlyoutWindow : Window
             _drawerCloseTimer = DispatcherQueue.CreateTimer();
             _drawerCloseTimer.Interval = TimeSpan.FromMilliseconds(250);
             _drawerCloseTimer.IsRepeating = false;
-            _drawerCloseTimer.Tick += (_, _) => CloseDrawer(animate: true);
+            _drawerCloseTimer.Tick += (_, _) =>
+            {
+                if (_state.ShowHoverBackgrounds)
+                    FadeBackdrop(null, spansDrawer: false);
+                CloseDrawer(animate: true);
+            };
         }
         _drawerCloseTimer.Start();
     }

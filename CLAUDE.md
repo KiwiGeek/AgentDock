@@ -262,7 +262,8 @@ there degrade to a missing icon or entry, never an error.
   A malformed file is never overwritten: defaults are used for that session and the footer shows
   the error with a line number. Schema is documented in `README.md`; keep the two in sync.
 - `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids,
-  whether waifu backgrounds are on).
+  whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
+  folders).
 - `%LOCALAPPDATA%\AgentDock\Icons\`: PNG icon cache.
 
 ## Conventions
@@ -399,7 +400,16 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
     (`ClearUsageCache` in `ReloadData`), so opening stays fast.
   - Add new agents in `PrepareDrawer`.
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
-  drawer to click Set up.
+  drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
+  area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
+- **Claude recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code was launched
+  in, under the usage. Clicking one launches Claude Code there. Launching a folder already in the
+  list moves it to the front and shifts the ones above it down. At most five are stored, and the
+  drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
+  (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
+  the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
+  Off hides the list and stops recording; the saved folders stay for when it's turned back on.
+  Presets of Claude share the agent's list. Only Claude is recorded so far.
 - Placement: on the right if the grown window fits in the monitor's work area, otherwise on the
   left. Content sits against the list; the window growing uncovers it. The column is above the
   toolbar. The bar and its divider span the whole window; the buttons stay in the list's 380 DIP
@@ -490,7 +500,8 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
     to 0.3 over 900 ms, the old to 0 over 600 ms (owner asked for "a fade between the two agents";
     timings tuned with the owner).
   - Moving back onto the agent whose picture is still fading out fades that same layer back in.
-  - Leaving a row fades both layers out.
+  - Leaving a row fades both layers out. Moving into the open drawer does not: the picture stays
+    until the drawer closes.
   - Each layer's sizing is done by `LayoutBackdrop(layer)` (see Drawer).
   Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
@@ -500,5 +511,5 @@ All in `Services/ClaudeStatusLine.cs`, plus the drawer in `FlyoutWindow`.
 ## Possible next steps (none requested yet; ask before starting)
 
 - ARM64 build in CI (needs ARM64 MSVC tools on the runner for Native AOT cross-compilation).
-- More of the settings page. It exists (gear in the footer) and so far only turns waifu backgrounds
-  on or off. Editing `agents.json` from the UI is still not built.
+- More of the settings page. It exists (gear in the footer) and turns waifu backgrounds and Claude's
+  recent folders on or off. Editing `agents.json` from the UI is still not built.

@@ -213,6 +213,25 @@
                               AutomationProperties.Name="Waifu backgrounds"
                               AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
             </Grid>
+
+            <TextBlock Text="Recents" Style="{StaticResource SectionHeaderStyle}" />
+            <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="Remember recents" />
+                    <TextBlock Text="Remember the last five folders you opened an agent in."
+                               TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+                <ToggleSwitch x:Name="RecentFoldersSwitch" Grid.Column="1" MinWidth="0"
+                              VerticalAlignment="Center" OffContent="" OnContent=""
+                              Toggled="RecentFoldersSwitch_Toggled"
+                              AutomationProperties.Name="Remember recents"
+                              AutomationProperties.HelpText="Remember the last five folders you opened an agent in." />
+            </Grid>
         </StackPanel>
             </Grid>
 
@@ -220,11 +239,17 @@
                 Grows from the list. Its width is animated; the window size follows (DrawerHost_SizeChanged).
                 Content sits against the list, so the growing window uncovers it.
             -->
+            <!--
+                Transparent backgrounds are what make the empty parts of the column hit-testable.
+                Without them, moving off the usage or a recent folder counts as leaving the sidebar.
+            -->
             <Border x:Name="DrawerHost" Grid.Column="1" Width="0" Visibility="Collapsed"
-                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                     SizeChanged="DrawerHost_SizeChanged"
                     PointerEntered="Drawer_PointerEntered" PointerExited="Drawer_PointerExited">
-                <Grid x:Name="DrawerPanel" Width="240" HorizontalAlignment="Left">
+                <StackPanel x:Name="DrawerPanel" Width="240" Background="Transparent"
+                            HorizontalAlignment="Left" VerticalAlignment="Stretch">
+                <Grid>
                     <!-- Plan usage for the hovered agent (Services/ClaudeStatusLine.cs, CodexUsage.cs, CopilotUsage.cs) -->
                     <StackPanel x:Name="UsagePanel" Padding="16,16,16,12" Spacing="4" Visibility="Collapsed">
                         <TextBlock x:Name="UsageTitle" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
@@ -255,6 +280,36 @@
                         </InfoBar.ActionButton>
                     </InfoBar>
                 </Grid>
+
+                    <!-- Claude Code only, for now. Filled in PrepareClaudeDrawer. -->
+                    <StackPanel x:Name="RecentSection" Visibility="Collapsed" Padding="8,0,8,12" Spacing="2">
+                        <StackPanel.Resources>
+                            <ResourceDictionary>
+                                <ResourceDictionary.ThemeDictionaries>
+                                    <ResourceDictionary x:Key="Default">
+                                        <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                                        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                                        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                                    </ResourceDictionary>
+                                    <ResourceDictionary x:Key="Light">
+                                        <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                                        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                                        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                                        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                                    </ResourceDictionary>
+                                </ResourceDictionary.ThemeDictionaries>
+                            </ResourceDictionary>
+                        </StackPanel.Resources>
+                        <TextBlock Text="Recent folders" Margin="8,8,8,4" Style="{StaticResource CaptionTextBlockStyle}"
+                                   FontWeight="SemiBold" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel x:Name="RecentRows" Spacing="2" />
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
 

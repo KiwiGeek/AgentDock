@@ -144,6 +144,12 @@ first, next to the original (`settings.json.agentdock-<date>.bak`). Claude Code 
 its status line while a session is running, so the flyout says how old the numbers are. If you
 move Agent Dock, the flyout notices and offers to update the path.
 
+The drawer also lists the last five folders you opened Claude Code in, under the usage. Click one
+to open Claude Code there again. Opening a folder that's already in the list moves it to the top
+and shifts the others down. At most five are kept, and only as many as fit in the drawer. Turn
+this off with **Remember recents** on the settings page (the gear in the footer). That choice,
+and the folders, are saved in `state.json`.
+
 ### Codex usage limits
 
 Codex gets the same drawer while the pointer is over it, with nothing to set up: Codex records
@@ -181,9 +187,9 @@ Aider, Claude Code, Codex, Copilot, DeepSeek, Gemini, Grok, OpenCode, Perplexity
 by agent id or command name. A `background` setting overrides one. Turn them off with **Waifu
 backgrounds** on the settings page (the gear in the footer). That choice is saved in `state.json`.
 
-`state.json` in the same folder holds recent folders, cached app ids, and whether waifu backgrounds
-are on. Start menu icons are cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if
-an app's icon changes.
+`state.json` in the same folder holds recent folders, the last few folders Claude Code was opened
+in, cached app ids, and whether waifu backgrounds and recent folders are on. Start menu icons are
+cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's icon changes.
 
 ## How it's put together
 
