@@ -105,7 +105,8 @@ Details per agent are under Reference; what's still to review per agent is in `t
   `gh api copilot_internal/user`, recents, overview.
 - [ ] **Antigravity CLI** (`agy`): known agent and icon only. Not installed on the owner's PC; no
   picture, no usage, not verified to launch.
-- [ ] **OpenCode** (`opencode`): icon and picture only.
+- [ ] **OpenCode** (`opencode`): icon, picture and recent folders. No usage bars: its providers have
+  separate billing and quota systems.
 - [ ] **Aider** (`aider`): icon and picture only.
 - [ ] **Qwen Code** (`qwen`): icon and picture only.
 - [ ] **Amp** (`amp`): icon and picture only.
@@ -300,8 +301,8 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   content. Two levels (owner's request, 2026-10-16):
   - **General**: Waifu backgrounds, Hide unavailable agents, Usage overview (see Drawer), Remember recents and **Clear recents**
     (a confirm flyout; disabled when nothing is saved). Remember recents is general on purpose,
-    and its text doesn't name Claude: only Claude Code, Codex and Grok Build are recorded so far (owner,
-    2026-10-16). Below it, **Agents**: a row for every agent in the list, in order
+    and its text doesn't name Claude: several agents record them, including OpenCode. Below it, **Agents**:
+    a row for every agent in the list, in order
     (`BuildAgentSettingsRows`), with its icon, "Not installed" if so, and a chevron; then **Add agents**.
   - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Agent-specific settings show
     under it: Claude Code's (`ClaudeSettings`: "Usage limits", how Claude usage is found: "Read them
@@ -802,14 +803,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Cursor CLI or Copilot CLI (each copy separately) was launched
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Cursor CLI or Copilot CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, Cursor CLI and Copilot CLI added at the owner's request, 2026-10-16. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, OpenCode, Cursor CLI and Copilot CLI added at the owner's request. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over

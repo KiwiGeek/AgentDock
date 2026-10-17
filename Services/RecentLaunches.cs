@@ -4,7 +4,7 @@ namespace AgentDock.Services;
 
 /// <summary>
 /// The last few folders an agent was launched in. Kept in state.json so agents.json (and the
-/// user's comments in it) is never rewritten. Recorded for Claude Code, Codex, Grok Build, Cursor CLI and Copilot CLI, the CLI agents with a drawer to show them in.
+/// user's comments in it) is never rewritten. Recorded for CLI agents with a drawer to show them in.
 /// </summary>
 public static class RecentLaunches
 {
@@ -54,14 +54,14 @@ public static class RecentLaunches
     public static void Clear(DockState state) => state.RecentLaunches.Clear();
 
     /// <summary>
-    /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build, Cursor CLI,
+    /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build, OpenCode, Cursor CLI,
     /// GitHub Copilot CLI, and the desktop apps that open in a folder (Claude, ChatGPT, Cursor). Cursor CLI's
     /// command can also be plain "agent", so its catalog id counts too.
     /// </summary>
     public static bool Records(AgentDefinition agent) =>
         agent.Kind == AgentKind.Cli
             ? Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"'))?.ToLowerInvariant()
-                  is "claude" or "codex" or "grok" or "cursor-agent" or "copilot"
+                  is "claude" or "codex" or "grok" or "opencode" or "cursor-agent" or "copilot"
               || string.Equals(agent.Catalog ?? agent.Id, "cursor-cli", StringComparison.OrdinalIgnoreCase)
             // Desktop apps that open in a folder (Claude, ChatGPT, Cursor).
             : KnownAgents.TakesFolder(agent);

@@ -1951,7 +1951,13 @@ public sealed partial class FlyoutWindow : Window
                 ShowRecents(item);
                 return true;
             default:
-                return false;
+                // OpenCode has no common provider quota, but it does open in folders and can show them again.
+                if (!RecentLaunches.Records(item.Definition))
+                    return false;
+                _drawerItem = item;
+                UsagePanel.Visibility = Visibility.Collapsed;
+                UsageOffer.IsOpen = false;
+                return ShowRecents(item);
         }
     }
 
