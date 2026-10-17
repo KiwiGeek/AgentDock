@@ -321,10 +321,10 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   the fill as it looks over the flyout. WinUI has no layout transform, so `LayoutBanner` rotates and
   places the text in a Canvas.
   - **Colour** (`SetBannerColors`): accent colours by default, and the highlighted agent's colour,
-    fading over 450 ms. Order: the agent's `color` setting, then with waifus on its picture's colour
-    (hand-picked for built-in pictures in `ThemeColors.BundledBackgrounds`, because automatic picking
-    turned nearly all of them skin-tone orange), else worked out from its logo (`ThemeColors.FromStreamAsync`,
-    good on logos; black and white logos get the accent). Leaving a row resets after 250 ms unless
+    fading over 450 ms. Order: the agent's `color` setting, then its picture's colour even when
+    waifus are hidden (hand-picked for built-in pictures in `ThemeColors.BundledBackgrounds`, because
+    automatic picking turned nearly all of them skin-tone orange), else worked out from its logo
+    (`ThemeColors.FromStreamAsync`, good on logos; black and white logos get the accent). Leaving a row resets after 250 ms unless
     the pointer lands on another row or the drawer.
   - **Hearts** (waifus on only): a ❤️ above the text, turned sideways like it, beats twice every
     1.6 s, and a small heart floats up the strip from it on each beat (`FloatHeart`). They run only

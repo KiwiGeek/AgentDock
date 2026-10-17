@@ -42,8 +42,15 @@ internal static class ThemeColors
     public static Color? ForBundledBackground(string source)
     {
         var colon = source.IndexOf(':');
-        return colon >= 0 && BundledBackgrounds.TryGetValue(source[(colon + 1)..], out var color) ? color : null;
+        return colon >= 0 ? ForBundledBackgroundName(source[(colon + 1)..]) : null;
     }
+
+    /// <summary>
+    /// The hand-picked colour for a built-in picture name. Keeping this independent of image-source
+    /// resolution lets the banner retain the intended colour while hover pictures are hidden.
+    /// </summary>
+    public static Color? ForBundledBackgroundName(string? name) =>
+        !string.IsNullOrWhiteSpace(name) && BundledBackgrounds.TryGetValue(name, out var color) ? color : null;
 
     /// <summary>"#RRGGBB" (or "RRGGBB") from agents.json; null if it isn't one.</summary>
     public static Color? Parse(string? text)

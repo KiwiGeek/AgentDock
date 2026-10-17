@@ -30,7 +30,7 @@ public sealed class AgentDefinition
 
     /// <summary>
     /// Optional "#RRGGBB" the banner takes on while this agent is highlighted. Without it, the colour
-    /// comes from the agent's picture (waifu backgrounds on) or its logo.
+    /// comes from the agent's picture when available, or its logo.
     /// </summary>
     public string? Color { get; set; }
 

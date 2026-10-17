@@ -263,13 +263,16 @@ public sealed partial class FlyoutWindow : Window
     /// <summary>The picture whose colour the banner should show; a late result for another one is dropped.</summary>
     private string? _bannerColorSource;
 
-    /// <summary>The agent's picture when waifus are on (and it has one), otherwise its logo.</summary>
+    /// <summary>
+    /// The agent's picture when it has one, otherwise its logo. The picture still supplies its curated
+    /// hover colour when backgrounds are hidden, so muted monochrome logos do not take over the banner.
+    /// </summary>
     private string? ThemeSourceFor(AgentItem item) =>
-        _state.ShowHoverBackgrounds && item.BackgroundSource is { } background ? background : item.IconSource;
+        item.BackgroundSource is { } background ? background : item.IconSource;
 
     /// <summary>
-    /// The agent's "color" setting, else the colour of its picture (or logo, with waifus off): hand-picked
-    /// for built-in pictures, worked out from the image otherwise.
+    /// The agent's "color" setting, else the colour of its picture (or logo when no picture exists):
+    /// hand-picked for built-in pictures, worked out from the image otherwise.
     /// </summary>
     private async void ColorBannerFor(AgentItem? item)
     {
@@ -279,6 +282,19 @@ public sealed partial class FlyoutWindow : Window
             _bannerColorSource = item.Definition.Id;
             SetBannerColors(configured);
             return;
+        }
+
+        // Do not make this depend on the image-source lookup: the built-in backgrounds have curated
+        // colours, and that identity remains available even while the pictures themselves are hidden.
+        if (item is not null)
+        {
+            var knownId = item.Definition.Catalog ?? item.Definition.Id;
+            if (ThemeColors.ForBundledBackgroundName(knownId) is { } knownColor)
+            {
+                _bannerColorSource = knownId;
+                SetBannerColors(knownColor);
+                return;
+            }
         }
 
         var source = item is not null ? ThemeSourceFor(item) : null;

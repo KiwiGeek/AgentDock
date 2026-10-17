@@ -281,8 +281,9 @@ backgrounds** on the settings page (the gear in the footer), which also hides th
 banner. That choice is saved in `state.json`.
 
 The banner down the left of the flyout takes on the colour of whichever agent is highlighted: a
-colour picked for its picture while waifu backgrounds are on, or one taken from its logo when they're
-off. Black and white logos keep your Windows accent colour. A `color` setting overrides either.
+colour picked for its picture when it has one, even if waifu backgrounds are hidden, or one taken
+from its logo otherwise. Black and white logos keep your Windows accent colour. A `color` setting
+overrides either.
 
 `state.json` in the same folder holds recent folders, the last few folders Claude Code was opened
 in, cached app ids, and whether waifu backgrounds and recent folders are on. Start menu icons are
