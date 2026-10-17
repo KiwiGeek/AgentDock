@@ -2290,10 +2290,12 @@ public sealed partial class FlyoutWindow : Window
     }
 
     /// <summary>
-    /// Suggests the agent with the most room for where it is in its limits (owner's request): each
-    /// agent counts by its tightest limit (used minus the share of that window gone), and the one
-    /// furthest under pace wins. An agent at 100% of any limit is never suggested; an unlimited plan
-    /// always has room. Shown only when there's a choice (two agents or more with numbers).
+    /// Suggests the agent with the most quota left for a meaningful project. The longer window
+    /// (weekly, or monthly for services that use one) is the deciding percentage; the five-hour
+    /// window is only a fallback when no longer window is reported. This avoids treating a brief
+    /// session spike as more important than the remaining weekly allowance. An agent at 100% of its
+    /// longer window is never suggested; an unlimited plan always has room. Shown only when there's
+    /// a choice (two agents or more with numbers).
     /// </summary>
     private void ShowSuggestion(List<SummaryEntry> entries, DateTimeOffset now)
     {
@@ -2310,13 +2312,14 @@ public sealed partial class FlyoutWindow : Window
                 continue;
             else
             {
-                if (windows.Any(w => w.Used >= 100))
+                var longerWindow = windows.FirstOrDefault(w => w.Word is "week" or "month");
+                tightest = longerWindow ?? windows.FirstOrDefault(w => w.Elapsed is not null) ?? windows[0];
+                if (tightest.Used >= 100)
                 {
                     candidates++;
                     continue;
                 }
-                tightest = windows.MaxBy(w => w.Pace)!;
-                score = tightest.Pace;
+                score = tightest.Used;
             }
             candidates++;
             if (best is null || score < best.Value.Score)
@@ -2329,11 +2332,28 @@ public sealed partial class FlyoutWindow : Window
             return;
         }
         SummarySuggestionTitle.Text = $"Suggested: {pick.Entry.Item.Definition.Name}";
-        SummarySuggestionNote.Text = pick.Tightest is not { } window
+        var note = pick.Tightest is not { } window
             ? "Unlimited this month."
             : window.Elapsed is { } gone
                 ? $"{Math.Round(window.Used)}% of the {window.Word} used, with {Math.Round(gone)}% of it gone."
                 : $"{Math.Round(window.Used)}% of the {window.Word} used.";
+        // A short task can use another agent whose current session refreshes soonest, even when
+        // the main suggestion has more weekly room for longer work. An expired session is not current capacity.
+        (SummaryEntry Entry, DateTimeOffset Reset)? shortTask = null;
+        foreach (var entry in entries)
+        {
+            var session = entry.Usage?.FiveHour;
+            if (entry.Key.Equals(pick.Entry.Key, StringComparison.OrdinalIgnoreCase) || session is null || session.ResetsAt <= 0)
+                continue;
+            var reset = DateTimeOffset.FromUnixTimeSeconds(session.ResetsAt);
+            if (reset <= now)
+                continue;
+            if (shortTask is null || reset < shortTask.Value.Reset)
+                shortTask = (entry, reset);
+        }
+        if (shortTask is { } alternative)
+            note += $"\nFor a short task: {alternative.Entry.Item.Definition.Name} — session resets {ResetTime(alternative.Reset)}.";
+        SummarySuggestionNote.Text = note;
         SummarySuggestion.Visibility = Visibility.Visible;
     }
 

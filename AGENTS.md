@@ -789,12 +789,13 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
     with the fade (`PrepareDrawer` wraps `PrepareAgentDrawer` and hides the overview). Returning from
     settings brings it back.
   - **Suggestion** under the rows (`ShowSuggestion`, owner's request): the agent with the least quota
-    used for how far it is through each limit's window. Per limit, pace = % used − % of the window
-    gone (`PaceWindows`: session 5 h, week 7 d, month = the month before the reset for Cursor and
-    Copilot; an unknown reset counts as 0% gone; a window already reset is 0/0). An agent counts by
-    its tightest limit (highest pace); lowest wins. Any limit at 100% rules an agent out; unlimited
-    Copilot always has room. Shown only with two agents or more with numbers. "Suggested: Codex /
-    0% of the week used, with 16% of it gone." Icons in the rows are centred vertically.
+    used in its longer window: week, or month for Cursor and Copilot. A five-hour session is used
+    only as a fallback when no longer window is reported, so a brief session spike does not mask an
+    agent with more room for a larger project. An agent at 100% of its deciding window is ruled out;
+    unlimited Copilot always has room. If another agent's active five-hour session resets sooner,
+    a second line names it for a short task; unknown or expired sessions are ignored. Shown only
+    with two agents or more with numbers. "Suggested: Codex / 0% of the week used, with 16% of it
+    gone." Icons in the rows are centred vertically.
   - Settings → General → **Usage overview** (`DockState.ShowUsageSummary`, default on, missing = on).
   - Verified 2026-10-16 through UI Automation: the five rows above with the right bar states.
     **Not yet verified by eye:** the look, hover swaps, clicking a row.
