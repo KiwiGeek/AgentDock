@@ -6,8 +6,8 @@ in `AGENTS.md`, and tick the agent there).
 ## Agent status
 
 Which agents are fully done (usage, recents, icons, verified) is the checklist in `AGENTS.md`.
-Done as of 2026-10-16: Claude Code, Codex, Grok Build, Cursor CLI and Cursor desktop, GitHub
-Copilot CLI. Everything below is still to do.
+Done as of 2026-10-16: Claude Code and Claude desktop, Codex, Grok Build, Cursor CLI and Cursor
+desktop, GitHub Copilot CLI. Everything below is still to do.
 
 ## Review the agents Agent Dock knows (added 2026-10-16)
 
@@ -28,8 +28,9 @@ confirm the command (or Start menu name), keep or remove it, and look for a usag
 | `deepseek` | DeepSeek Harness | `dsh web` | yes | DeepSeek's own agent (github.com/deepseek-ai/deepseek-harness, first released 2026-08-13, developer preview). `web` serves a UI at 127.0.0.1:3080 and opens the browser; the terminal keeps the server running. Install with `npm i -g @deepseek-ai/dsh`. Check: does it use the launch folder as its workspace? Where does the API key go? |
 | `hermes` | Hermes Agent | `hermes` | yes | Nous Research. A general agent, not just coding. Installed natively on the owner's PC. Bring-your-own API key, so a candidate host for DeepSeek |
 | `grok` | Grok Build | `grok` | yes | Done (usage, recents). Still to check: is there a Grok desktop app? |
-| `claude-desktop` | Claude | Start menu "Claude" | yes | Launch only. Could show Claude Code's usage (same plan), not wired up |
-| `chatgpt-desktop` | ChatGPT | Start menu "ChatGPT" | yes | Launch only. Includes Codex; could show Codex's usage (same account), not wired up |
+| `claude-desktop` | Claude | Start menu "Claude" | yes | Done: opens a Claude Code session in the working folder (`claude://code/new?folder=`), presets, recents, and Claude Code's usage |
+| `chatgpt-desktop` | ChatGPT | Start menu "ChatGPT" | yes | Opens a new chat in the working folder (`codex://threads/new?path=`), presets, recents, and Codex's usage. Still to confirm by an actual launch |
+| `cursor` | Cursor | Start menu "Cursor" | yes | Usage (Cursor CLI's account), and opens the working folder as a workspace (`Cursor.exe <folder>`), presets, recents. Still to confirm the folder launch by an actual launch |
 | `copilot-desktop` | Copilot | Start menu "Copilot" | yes | Launch only. Microsoft Copilot, not GitHub's |
 | `perplexity` | Perplexity | Start menu "Perplexity" | yes | Launch only |
 

@@ -48,14 +48,15 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Terminal button (footer) | Plain shell in the working folder, no agent |
 | Pencil button (footer) | Opens `agents.json` |
 | Gear button (footer) | Settings, including your agents (add, rename, duplicate, remove). Esc there goes back to the list |
-| Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (command line agents), **Settings**, or **Remove from list** |
+| Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (agents that open in a folder), **Settings**, or **Remove from list** |
 | Right-click a preset | Rename or remove it |
 | Drag the top edge (the bottom edge if your taskbar is at the top) | Makes the list taller or shorter. Double-click the edge to fit the list again |
 | Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. In settings, Esc goes back one level first (an agent's page, then the list) |
 
 ### Presets
 
-A preset is a command line agent tied to a folder, for work you come back to again and again.
+A preset is an agent tied to a folder, for work you come back to again and again: any command line
+agent, or the Claude, ChatGPT or Cursor desktop app.
 Presets sit at the top of the flyout and in the taskbar icon's right-click menu, and always open
 in their own folder, whatever the working folder is set to. A preset's name starts as the folder
 name; right-click it to rename it.
@@ -295,6 +296,16 @@ cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's ic
 - **Desktop apps** are discovered from `shell:AppsFolder` (the Start menu's All apps list), which
   covers both classic installers and Store/MSIX apps. That runs on a background STA thread and
   the results are cached.
+- **The Claude and ChatGPT desktop apps open in the working folder**, like a command line agent,
+  through their own documented links: Claude starts a new Claude Code session there
+  (`claude://code/new?folder=`), ChatGPT a new chat with the folder as its workspace
+  (`codex://threads/new?path=`). Claude asks you to confirm the folder each time, and if it's
+  already open, Windows versions of Claude currently add the folder to the open window instead of
+  opening a new one. Both can have presets and recent folders, and their drawers show the same
+  plan usage as Claude Code and Codex (one line each in the usage overview).
+- **Cursor opens the working folder too**, as a workspace (Agent Dock runs `Cursor.exe` with the
+  folder, as Cursor's own `cursor .` command does). If that folder is already open, Cursor switches
+  to its window. Presets and recent folders work for it as well.
 - **Native AOT friendly throughout**: `x:Bind` only (no reflection bindings), source-generated
   JSON, and source-generated COM interop (`LibraryImport`, `GeneratedComInterface`) for the shell,
   icon extraction and the jump list.

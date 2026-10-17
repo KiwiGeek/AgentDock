@@ -98,8 +98,14 @@ public partial class App : Application
         }
 
         var (settings, _) = Store.LoadSettings();
-        var agents = AgentCatalog.Resolve(settings, _ => null); // presets are CLI only; no Start menu lookup needed
+        var state = Store.LoadState();
+        // Mostly CLI agents; a desktop app that opens in a folder (Claude) is found the way the flyout last found it.
+        var agents = AgentCatalog.Resolve(settings, def => state.DesktopApps.GetValueOrDefault(def.Id));
         var item = AgentCatalog.ResolvePresets([preset], agents)[0];
+        // Not cached yet: read the Start menu (the UI thread is STA, which the shell needs).
+        if (!item.IsAvailable && !item.IsCli && item.TakesFolder)
+            item = AgentCatalog.ResolvePresets([preset],
+                AgentCatalog.Resolve(settings, AgentCatalog.FromStartMenu(StartMenuApps.Load())))[0];
         if (Launcher.Launch(item, preset.Folder, settings) is { } error)
             _flyout?.ShowFlyout(error);
         else

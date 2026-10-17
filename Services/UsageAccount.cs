@@ -45,15 +45,28 @@ public sealed class UsageAccount
     /// <summary>Identifies the account across copies, for caches and settings.</summary>
     public string Key => $"{Agent}|{ConfigDir.ToLowerInvariant()}";
 
-    /// <summary>The account Claude Code or Codex would use when started with <paramref name="definition"/>'s env, or null for other agents.</summary>
+    /// <summary>
+    /// The account Claude Code or Codex would use when started with <paramref name="definition"/>'s
+    /// env, or null for other agents. The Claude and ChatGPT desktop apps are Claude Code's and
+    /// Codex's default accounts (the same sign-in, assumed; agents.json env doesn't reach a desktop
+    /// app), so they share that usage (owner's request, 2026-10-16).
+    /// </summary>
     public static UsageAccount? For(AgentDefinition definition)
     {
-        var agent = CommandName(definition.Command);
+        var desktop = definition.Kind == AgentKind.Desktop;
+        var agent = desktop
+            ? (definition.Catalog ?? definition.Id).ToLowerInvariant() switch
+            {
+                "claude-desktop" => "claude",
+                "chatgpt-desktop" => "codex", // the Codex app, named ChatGPT since July 2026
+                _ => null
+            }
+            : CommandName(definition.Command);
         if (agent is not ("claude" or "codex"))
             return null;
 
         var env = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, value) in definition.Env ?? [])
+        foreach (var (name, value) in desktop ? [] : definition.Env ?? [])
             env[name] = Environment.ExpandEnvironmentVariables(value);
 
         var folderVariable = agent == "claude" ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";

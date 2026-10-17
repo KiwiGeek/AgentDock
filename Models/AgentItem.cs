@@ -38,7 +38,13 @@ public sealed partial class AgentItem : INotifyPropertyChanged
     /// <summary>shell:AppsFolder id (desktop agents).</summary>
     public string? AppId { get; init; }
 
-    public bool IsAvailable => IsAgentAvailable && (Preset is null || (IsCli && FolderExists));
+    /// <summary>
+    /// Opens in a folder: every CLI agent, and a desktop app that can (Claude and ChatGPT by link,
+    /// Cursor by its exe). These are the agents with presets, recent folders, and the working folder applied.
+    /// </summary>
+    public bool TakesFolder => IsCli || Services.KnownAgents.TakesFolder(Definition);
+
+    public bool IsAvailable => IsAgentAvailable && (Preset is null || (TakesFolder && FolderExists));
     public double ItemOpacity => IsAvailable ? 1.0 : 0.5;
 
     /// <summary>The agent is installed. For a preset, its folder may still be missing.</summary>
@@ -67,8 +73,9 @@ public sealed partial class AgentItem : INotifyPropertyChanged
     public string? BackgroundSource => Services.AgentIcons.FindBackground(Definition);
 
     private string PresetSubtitle =>
-        !IsCli ? "Presets only work with command line agents"
-        : !IsAgentAvailable ? (string.IsNullOrEmpty(Definition.Command) ? $"There's no agent \"{Preset!.Agent}\"" : $"{Definition.Command} not found on PATH")
+        !TakesFolder ? "Presets only work with agents that open in a folder"
+        : !IsAgentAvailable ? (!IsCli ? "Not installed"
+            : string.IsNullOrEmpty(Definition.Command) ? $"There's no agent \"{Preset!.Agent}\"" : $"{Definition.Command} not found on PATH")
         : !FolderExists ? $"Folder not found: {Preset!.Folder}"
         : $"{Definition.Name} · {Preset!.Folder}";
 

@@ -1414,11 +1414,13 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private void UpdateAgentPanel(AgentDefinition definition)
     {
-        var account = definition.Kind == AgentKind.Cli ? UsageAccount.For(definition) : null;
+        // Claude desktop is Claude Code's default account (UsageAccount.For), so it gets Claude's choice too.
+        var account = UsageAccount.For(definition);
         var panel = IsCursor(definition) ? CursorSettings
-            : definition.Kind == AgentKind.Cli && account is not { UsesOtherProvider: true }
-                ? AgentSettingsPanelFor(CommandName(definition.Command))
-                : null;
+            : account is { UsesOtherProvider: true } ? null
+            : account is { Agent: "claude" } ? ClaudeSettings
+            : definition.Kind == AgentKind.Cli ? AgentSettingsPanelFor(CommandName(definition.Command))
+            : null;
         foreach (var other in AgentSettingsPanels)
             other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
 
@@ -1444,7 +1446,7 @@ public sealed partial class FlyoutWindow : Window
         ClearUsageCache(sourceChangedFor: account.Key);
         // A drawer open on Claude follows the new choice. (The settings page closes the drawer, so
         // this only matters if that ever changes.)
-        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && CommandName(item.Definition.Command) == "claude")
+        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && UsageAccount.For(item.Definition) is { Agent: "claude" })
             PrepareDrawer(item);
     }
 
@@ -1619,8 +1621,8 @@ public sealed partial class FlyoutWindow : Window
         }
         else
         {
-            // Desktop apps don't open in a folder, so they can't be presets.
-            if (item.IsCli)
+            // Most desktop apps don't open in a folder, so they can't be presets (Claude can).
+            if (item.TakesFolder)
             {
                 var folder = CurrentFolder;
                 menu.Items.Add(MenuItem($"Save as preset for {new FolderItem(folder).Name}", "\uE718", () => SavePreset(item, folder)));
@@ -1878,8 +1880,20 @@ public sealed partial class FlyoutWindow : Window
             ShowRecents(item);
             return true;
         }
-        if (!item.IsCli)
-            return false;
+        // Claude and ChatGPT desktop share Claude Code's and Codex's default accounts (UsageAccount.For),
+        // so they get the same drawer as those, below, with their own recents.
+        if (!item.IsCli && UsageAccount.For(item.Definition) is null)
+        {
+            // Another desktop app that opens in a folder: its recent folders, when there are some.
+            if (!item.TakesFolder)
+                return false;
+            UsagePanel.Visibility = Visibility.Collapsed;
+            UsageOffer.IsOpen = false;
+            if (!ShowRecents(item))
+                return false;
+            _drawerItem = item;
+            return true;
+        }
 
         var account = UsageAccount.For(item.Definition);
         // Pointed at an API key or another endpoint: no Claude or ChatGPT plan behind it.
@@ -1893,7 +1907,7 @@ public sealed partial class FlyoutWindow : Window
             return true;
         }
 
-        switch (CommandName(item.Definition.Command))
+        switch (account?.Agent ?? CommandName(item.Definition.Command))
         {
             case "claude":
                 return PrepareClaudeDrawer(item, account!);
@@ -2129,13 +2143,11 @@ public sealed partial class FlyoutWindow : Window
             return new SummaryEntry(CursorCheckKey, item, check?.Result?.Usage ?? SavedFor(CursorCheckKey, CursorUsage.LoadSaved),
                 check?.Running == true, "month");
         }
-        if (!item.IsCli)
-            return null;
-
+        // Claude desktop has Claude Code's account, so it shares that row (or has it, if alone).
         var account = UsageAccount.For(item.Definition);
-        if (account is { UsesOtherProvider: true })
+        if (account is { UsesOtherProvider: true } || (!item.IsCli && account is null))
             return null;
-        switch (CommandName(item.Definition.Command))
+        switch (account?.Agent ?? CommandName(item.Definition.Command))
         {
             case "claude":
             {
@@ -2172,10 +2184,10 @@ public sealed partial class FlyoutWindow : Window
                 StartCursorCheck();
                 continue;
             }
-            if (!item.IsCli || UsageAccount.For(item.Definition) is { UsesOtherProvider: true })
-                continue;
             var account = UsageAccount.For(item.Definition);
-            switch (CommandName(item.Definition.Command))
+            if (account is { UsesOtherProvider: true } || (!item.IsCli && account is null))
+                continue;
+            switch (account?.Agent ?? CommandName(item.Definition.Command))
             {
                 case "claude" when SourceFor(account!) == ClaudeUsageSource.Api:
                     StartClaudeCheck(account!);

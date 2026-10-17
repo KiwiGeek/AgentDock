@@ -118,11 +118,17 @@ Details per agent are under Reference; what's still to review per agent is in `t
 
 ### Desktop
 
-- [x] **Cursor** (Start menu "Cursor"): icon, picture, usage (shares Cursor CLI's account). No
-  recents: desktop apps launch without a folder.
-- [ ] **Claude** (desktop): icon, picture, launch. No usage of its own (same plan as Claude Code,
-  not wired up).
-- [ ] **ChatGPT** (desktop, includes Codex): icon, picture, launch. No usage.
+- [x] **Cursor** (Start menu "Cursor"): icon, picture, usage (shares Cursor CLI's account), and it
+  **opens the working folder as a workspace** (`Cursor.exe <folder>`, added 2026-10-16), with presets
+  and recent folders. The folder launch isn't yet verified by an actual launch.
+- [x] **Claude** (desktop): icon, picture, and it **opens a Claude Code session in the working
+  folder** (`claude://code/new?folder=`, added 2026-10-16; the owner confirmed it works), with
+  presets and recent folders. Usage is Claude Code's default account (shared drawer content, one
+  overview row).
+- [ ] **ChatGPT** (desktop, the Codex app): icon, picture, and it **opens a new chat in the working
+  folder** (`codex://threads/new?path=`, added 2026-10-16), with presets and recent folders. Usage is
+  Codex's default account (assumes the app is signed in as the Codex CLI is). Not yet verified by an
+  actual launch.
 - [ ] **Copilot** (desktop): icon, picture, launch. No usage.
 - [ ] **Perplexity** (desktop): icon, picture, launch. No usage.
 
@@ -357,6 +363,32 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   `.cmd` shims work and the user lands at a prompt afterwards. Windows Terminal via `wt.exe -d <folder>`
   with `;` escaped as `\;` (wt treats bare `;` as a command separator); otherwise a console window.
   Desktop: exe via `UseShellExecute`, or `shell:AppsFolder\<appId>`.
+  - **Desktop apps that open in a folder** (owner's request, 2026-10-16): `KnownAgents.FolderLink`
+    gives a link with `{folder}` (URL-encoded with `Uri.EscapeDataString`), matched by catalog id.
+    **ChatGPT** (the Codex app, package `OpenAI.Codex`, registers `codex`): `codex://threads/new?path=<path>`,
+    documented in OpenAI's Commands reference (learn.chatgpt.com/docs/reference/commands; also
+    `prompt=` and `originUrl=`; `codex://new?…` needs at least one parameter). It replaced
+    `codex app <path>`, which didn't open the folder on Windows (openai/codex #26423, fixed by
+    deep link). Not yet tried by an actual launch.
+    **Claude**: `claude://code/new?folder=<path>`, documented by Anthropic
+    (support.claude.com, "Open Claude Desktop with a link"; also `q`/`prompt` to prefill, `file`
+    accepted but unsupported). Claude asks to confirm the folder every time, even a trusted one.
+    Known Windows bug (anthropics/claude-code #92260): with the app already open, the folder is
+    added to the open workspace instead of a new window. The app is packaged
+    (`Claude_pzs8sxrjxfjjc`) and its manifest registers the `claude` protocol.
+  - **Cursor** has no such link, but is a VS Code fork, so it opens a folder given on its command
+    line (`KnownAgents.OpensFolderInExe`; its documented `cursor .` shell command does the same).
+    `FolderAppExe` finds Cursor.exe: the agent's `path`, else three folders up from the `cursor`
+    shim (`resources\app\bin\cursor.cmd`), else `%LOCALAPPDATA%\Programs\cursor\Cursor.exe`. The shim
+    isn't run (a console script; it would flash a window). Already open on that folder, Cursor
+    switches to that window. It opens a workspace, not the agent panel (no documented way to).
+  - `AgentItem.TakesFolder` (CLI, or `KnownAgents.TakesFolder`: a folder link or an exe that takes the folder) is what presets, "Save as preset", recents
+    (`RecentLaunches.Records`), the jump list's "Open X in folder" text and the drawer's recents use.
+    Claude desktop's drawer is Claude Code's (`PrepareClaudeDrawer` with its account, see "Usage per
+    account"); another such desktop agent's drawer would show only its recents. `App.LaunchPreset`
+    now resolves desktop apps (cached app ids, then the Start menu). Its row's subtitle stays
+    "Desktop app" (owner: the folder note was unnecessary).
+  - Verified by the owner (2026-10-16): launching Claude desktop opens a Code session in the folder.
   - **`env`** (CLI only) is set *inside* the shell command, in front of the agent:
     `${env:NAME} = "…"; claude` for PowerShell, `set "NAME=…" && claude` for cmd. Not on the
     process: when Windows Terminal is already running, wt.exe hands the tab to that Terminal, which
@@ -407,6 +439,13 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - **Usage per account** (`Services/UsageAccount.cs`): the account is the config folder from the
   agent's `env` (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`, `%NAME%` expanded, full path), else the default.
   `UsageAccount.Key` keys every cache, so copies on one account share numbers and accounts never mix.
+  - **Claude desktop** (catalog `claude-desktop`) is Claude Code's default account, and **ChatGPT
+    desktop** (`chatgpt-desktop`) Codex's (owner's request, 2026-10-16; it assumes the app and the
+    CLI are signed in as the same user): `UsageAccount.For` returns it, ignoring `env` (it doesn't
+    reach a desktop app). So their drawers, overview rows (shared with the CLI's), live checks, and
+    for Claude the status line offer and usage-source choice all work as for the CLI. Code that
+    picks the agent by command name asks `UsageAccount.For(…)?.Agent` first. Codex's check still
+    needs the `codex` CLI on PATH.
   - Saved files: the default account keeps `claude-usage.json` / `codex-usage.json`; another uses
     `claude-usage-<sha1 of folder, 12 hex>.json` (`UsageAccount.UsageFile`).
   - **Codex:** `codex app-server` is started with the agent's env, so Codex answers as that account
@@ -588,15 +627,15 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
     never overwritten.
 - **Rows:** a preset is an `AgentItem` built by `AgentCatalog.ResolvePresets` from the resolved
   agent, with `Preset` set.
-  - `Name` and `Subtitle` come from the preset. `IsAvailable` also requires a CLI agent and an
-    existing folder.
+  - `Name` and `Subtitle` come from the preset. `IsAvailable` also requires an agent that opens in
+    a folder (`TakesFolder`: a CLI agent, or Claude Desktop) and an existing folder.
   - An unknown agent id gets a placeholder definition, so the row still shows and can be removed.
 - **Flyout:** a "Presets" list above "Command line". Number keys count presets first; Up/Down
   cross all three lists.
   - A missing folder or an unknown agent shows the row dimmed, with the reason underneath.
   - A preset whose agent isn't installed follows `hideUnavailable`.
 - **Editing:** `Agent_ContextRequested` (right-click, Shift+F10, the menu key) builds a `MenuFlyout`.
-  - CLI agents get "Save as preset for <folder>". The name defaults to the folder name, with
+  - Agents that open in a folder get "Save as preset for <folder>". The name defaults to the folder name, with
     " 2", " 3" added if taken. Saving the same agent and folder twice is refused.
   - Presets get "Rename" (a `Flyout` with a text box: Enter saves, light dismiss cancels) and "Remove".
 - **Jump list:** a "Presets" category first, available presets only, running `--preset "<name>"`.
@@ -769,7 +808,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, Cursor CLI and Copilot CLI added at the owner's request, 2026-10-16. Cursor desktop has none (it's launched without a folder).
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, Cursor CLI and Copilot CLI added at the owner's request, 2026-10-16. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over

@@ -42,7 +42,7 @@ internal static class JumpList
                 foreach (var agent in group)
                 {
                     var icon = AgentIcons.JumpListIconFor(agent.IconSource) ?? self;
-                    var description = agent.IsCli ? $"Open {agent.Name} in {folder}" : $"Open {agent.Name}";
+                    var description = agent.TakesFolder ? $"Open {agent.Name} in {folder}" : $"Open {agent.Name}";
                     items.AddObject(NewLink(self, $"--launch \"{agent.Definition.Id}\"", agent.Name, description, icon));
                 }
                 // Fails harmlessly if the user has turned off "recently opened items" in Settings.

@@ -54,14 +54,17 @@ public static class RecentLaunches
     public static void Clear(DockState state) => state.RecentLaunches.Clear();
 
     /// <summary>
-    /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build, Cursor CLI and
-    /// GitHub Copilot CLI. Cursor CLI's command can also be plain "agent", so its catalog id counts too.
+    /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build, Cursor CLI,
+    /// GitHub Copilot CLI, and the desktop apps that open in a folder (Claude, ChatGPT, Cursor). Cursor CLI's
+    /// command can also be plain "agent", so its catalog id counts too.
     /// </summary>
     public static bool Records(AgentDefinition agent) =>
         agent.Kind == AgentKind.Cli
-        && (Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"'))?.ToLowerInvariant()
-                is "claude" or "codex" or "grok" or "cursor-agent" or "copilot"
-            || string.Equals(agent.Catalog ?? agent.Id, "cursor-cli", StringComparison.OrdinalIgnoreCase));
+            ? Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"'))?.ToLowerInvariant()
+                  is "claude" or "codex" or "grok" or "cursor-agent" or "copilot"
+              || string.Equals(agent.Catalog ?? agent.Id, "cursor-cli", StringComparison.OrdinalIgnoreCase)
+            // Desktop apps that open in a folder (Claude, ChatGPT, Cursor).
+            : KnownAgents.TakesFolder(agent);
 
     /// <summary>
     /// The deserializer builds an ordinary dictionary, so a lookup has to ignore case itself.

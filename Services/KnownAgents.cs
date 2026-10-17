@@ -38,6 +38,58 @@ public static class KnownAgents
         new() { Id = "cursor",          Name = "Cursor",     Kind = AgentKind.Desktop, StartMenuNames = ["Cursor"] },
     ];
 
+    /// <summary>
+    /// For a desktop agent that can start work in a folder, the link that does it, with
+    /// <c>{folder}</c> for the URL-encoded path; null for the rest. Matched by catalog id, so copies
+    /// and older agents.json entries get it too. Both are documented by their makers:
+    /// <list type="bullet">
+    /// <item>Claude: <c>claude://code/new?folder=</c> (support.claude.com, "Open Claude Desktop with a
+    /// link"), a new Claude Code session there, after Claude asks to confirm the folder.</item>
+    /// <item>ChatGPT (the Codex app): <c>codex://threads/new?path=</c> (learn.chatgpt.com, Commands
+    /// reference), a new local chat with that folder as its workspace.</item>
+    /// </list>
+    /// </summary>
+    public static string? FolderLink(AgentDefinition definition) =>
+        definition.Kind != AgentKind.Desktop ? null
+        : (definition.Catalog ?? definition.Id).ToLowerInvariant() switch
+        {
+            "claude-desktop" => "claude://code/new?folder={folder}",
+            "chatgpt-desktop" => "codex://threads/new?path={folder}",
+            _ => null
+        };
+
+    /// <summary>
+    /// A desktop agent that opens a folder passed on its command line, the way VS Code does: Cursor
+    /// (a VS Code fork; its documented <c>cursor .</c> shell command runs Cursor.exe with the path).
+    /// It opens the folder as a workspace, or switches to the window that already has it.
+    /// </summary>
+    public static bool OpensFolderInExe(AgentDefinition definition) =>
+        definition.Kind == AgentKind.Desktop
+        && string.Equals(definition.Catalog ?? definition.Id, "cursor", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A desktop agent that can start in a folder, by link or by its exe (presets, recents, the working folder).</summary>
+    public static bool TakesFolder(AgentDefinition definition) => FolderLink(definition) is not null || OpensFolderInExe(definition);
+
+    /// <summary>
+    /// Cursor.exe, for opening a folder: the agent's own <c>path</c> if it set one, else found from
+    /// the <c>cursor</c> shell command (<c>resources\app\bin\cursor.cmd</c>, three folders below the
+    /// exe), else the per-user install. Null if none exists. The shim isn't run itself: it's a
+    /// console script, so it would flash a window.
+    /// </summary>
+    public static string? FolderAppExe(AgentItem item)
+    {
+        if (item.ExecutablePath is { } path && path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(path))
+            return path;
+        if (PathResolver.Find("cursor") is { } shim && Path.GetDirectoryName(shim) is { } bin)
+        {
+            var exe = Path.GetFullPath(Path.Combine(bin, "..", "..", "..", "Cursor.exe"));
+            if (File.Exists(exe))
+                return exe;
+        }
+        var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "cursor", "Cursor.exe");
+        return File.Exists(installed) ? installed : null;
+    }
+
     /// <summary>Fresh copies of every known agent, each with <see cref="AgentDefinition.Catalog"/> set.</summary>
     public static List<AgentDefinition> All() => Catalog.Select(Template).ToList();
 

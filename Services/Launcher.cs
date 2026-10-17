@@ -24,6 +24,22 @@ public static class Launcher
                 StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal,
                     item.Definition.Env);
             }
+            else if (KnownAgents.FolderLink(item.Definition) is { } link)
+            {
+                // A desktop app that opens in a folder through its own link (Claude Desktop's Code tab).
+                if (!Directory.Exists(folder))
+                    return "That folder no longer exists. Choose another one.";
+                Process.Start(new ProcessStartInfo(link.Replace("{folder}", Uri.EscapeDataString(folder))) { UseShellExecute = true });
+            }
+            else if (KnownAgents.OpensFolderInExe(item.Definition) && KnownAgents.FolderAppExe(item) is { } app)
+            {
+                // A desktop app that opens a folder given on its command line (Cursor).
+                if (!Directory.Exists(folder))
+                    return "That folder no longer exists. Choose another one.";
+                var start = new ProcessStartInfo(app) { UseShellExecute = false, WorkingDirectory = folder };
+                start.ArgumentList.Add(folder);
+                Process.Start(start);
+            }
             else if (item.ExecutablePath is not null)
             {
                 Process.Start(new ProcessStartInfo(item.ExecutablePath) { UseShellExecute = true });
