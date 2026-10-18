@@ -212,11 +212,11 @@ folder (it asks first). Those choices, the usage source, and the folders are sav
 
 While the pointer isn't over an agent with usage, the drawer shows a **usage overview**: every
 agent in your list that has usage to show, one line each, with a bar for its most-used limit and
-each limit in brief ("85% session · 49% week"), so you can pick one with room left. Under the lines it suggests one based on the lowest weekly usage
-(or monthly usage for services that use a monthly limit), never one that's hit that limit. A 5-hour
-session limit is used only when the service does not report a longer window, so a short-lived spike
-does not mask an agent with more room for a larger project. When another agent's active 5-hour
-session resets sooner, the overview also names it as the better choice for a short task.
+each limit in brief ("85% session · 49% week"), so you can pick one with room left. Under the rows,
+it suggests the agent whose tightest active limit is least used - balancing its session and its
+weekly or monthly allowance instead of ignoring either. When another agent is materially better for
+a quick task, sustained work, or after a limit reset within three hours, the overview names that
+alternative too. It does not rank agents by model quality, speed or price.
 Click a line to open that agent. Opening the flyout checks them all in the background (no more often than hovering
 would). Turn it off with **Usage overview** on the settings page.
 

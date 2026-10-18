@@ -789,14 +789,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
     also runs with the drawer shut when the overview is on, to bring it back after such a hover. Hovering a drawer agent swaps its content in
     with the fade (`PrepareDrawer` wraps `PrepareAgentDrawer` and hides the overview). Returning from
     settings brings it back.
-  - **Suggestion** under the rows (`ShowSuggestion`, owner's request): the agent with the least quota
-    used in its longer window: week, or month for Cursor and Copilot. A five-hour session is used
-    only as a fallback when no longer window is reported, so a brief session spike does not mask an
-    agent with more room for a larger project. An agent at 100% of its deciding window is ruled out;
-    unlimited Copilot always has room. If another agent's active five-hour session resets sooner,
-    a second line names it for a short task; unknown or expired sessions are ignored. Shown only
-    with two agents or more with numbers. "Suggested: Codex / 0% of the week used, with 16% of it
-    gone." Icons in the rows are centred vertically.
+  - **Suggestion** under the rows (`ShowSuggestion`, owner's request): the agent whose tightest
+    active quota window is least used (a minimax score across session and week, or month for Cursor
+    and Copilot). A candidate with any current 100% limit is ruled out; expired limits are fresh,
+    and unlimited Copilot is unconstrained. Ties favour more longer-window headroom, then more
+    session headroom. When the winner changes by at least 15 points, up to three alternatives name
+    the better agent for a quick task, sustained work, or after a reset within three hours. Unknown
+    reset times cannot create a reset alternative. Shown only with two or more usable candidates.
+    Icons in the rows are centred vertically.
   - Settings → General → **Usage overview** (`DockState.ShowUsageSummary`, default on, missing = on).
   - Verified 2026-10-16 through UI Automation: the five rows above with the right bar states.
     **Not yet verified by eye:** the look, hover swaps, clicking a row.
