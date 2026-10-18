@@ -459,6 +459,32 @@
             <StackPanel x:Name="AgentEditor" Visibility="Collapsed">
                 <StackPanel Margin="16,12,16,12" Spacing="8">
                     <TextBox x:Name="AgentNameBox" Header="Name" LostFocus="AgentNameBox_LostFocus" KeyDown="EditorBox_KeyDown" />
+                    <!-- Aider's primary choice belongs before the generic command options. -->
+                    <StackPanel x:Name="AiderSettings" Visibility="Collapsed">
+                        <TextBlock Text="Model" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="Optional. Agent Dock adds --model when it starts Aider. Set API keys, providers and other Aider settings in Aider itself. Duplicate this entry to keep another model ready." />
+                        <TextBox x:Name="AiderModelBox" Margin="0,0,0,16" Header="Model name" PlaceholderText="anthropic/claude-sonnet-4"
+                                 AutomationProperties.Name="Aider model name" AutomationProperties.HelpText="Optional Aider model name. Agent Dock starts Aider with this model."
+                                 LostFocus="AiderModelBox_LostFocus" KeyDown="EditorBox_KeyDown" />
+                        <TextBlock Text="Find a model" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="Searches this PC's Aider model catalogue. It can include models your provider account cannot use." />
+                        <Grid Margin="0,0,0,4" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBox x:Name="AiderModelQueryBox" PlaceholderText="Provider or model, such as openai/ or claude"
+                                     AutomationProperties.Name="Find an Aider model" KeyDown="AiderModelQueryBox_KeyDown" />
+                            <Button x:Name="FindAiderModelsButton" Grid.Column="1" Content="Search" Click="FindAiderModels_Click" />
+                        </Grid>
+                        <ProgressRing x:Name="AiderModelProgress" Margin="0,4" Width="20" Height="20" HorizontalAlignment="Left" Visibility="Collapsed"
+                                      IsActive="False" AutomationProperties.Name="Searching Aider models" />
+                        <TextBlock x:Name="AiderModelSearchNote" Margin="0,4,0,4" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ListView x:Name="AiderModelResults" Margin="-8,0,-8,16" MaxHeight="180" Visibility="Collapsed"
+                                  SelectionChanged="AiderModelResults_SelectionChanged" AutomationProperties.Name="Aider model search results" />
+                    </StackPanel>
                     <TextBox x:Name="AgentArgumentsBox" Header="Arguments" LostFocus="AgentArgumentsBox_LostFocus" KeyDown="EditorBox_KeyDown" />
                     <TextBlock x:Name="AgentCommandText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -521,7 +547,6 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Text="Cursor's usage comes from cursor.com, using Cursor CLI's sign-in, for both the CLI and the desktop app. To switch accounts, sign in again in Cursor CLI. This is not a published Cursor API, and it can stop working." />
             </StackPanel>
-
             <!-- Shown under the agent's page for Claude Code (and its copies). -->
             <StackPanel x:Name="ClaudeSettings" Visibility="Collapsed">
                 <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />

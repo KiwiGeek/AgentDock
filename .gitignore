@@ -13,3 +13,4 @@ publish/
 _ReSharper*/
 *.DotSettings.user
 .idea/
+.aider*

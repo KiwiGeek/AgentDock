@@ -107,7 +107,7 @@ Details per agent are under Reference; what's still to review per agent is in `t
   picture, no usage, not verified to launch.
 - [ ] **OpenCode** (`opencode`): icon, picture and recent folders. No usage bars: its providers have
   separate billing and quota systems.
-- [ ] **Aider** (`aider`): icon and picture only.
+- [ ] **Aider** (`aider`): icon, picture, model setting, Aider-driven model search and recent folders. No usage bars: it can use arbitrary providers.
 - [ ] **Qwen Code** (`qwen`): icon and picture only.
 - [ ] **Amp** (`amp`): icon and picture only.
 - [ ] **Kiro CLI** (`kiro-cli`): icon and picture only.
@@ -301,13 +301,16 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   content. Two levels (owner's request, 2026-10-16):
   - **General**: Waifu backgrounds, Hide unavailable agents, Usage overview (see Drawer), Remember recents and **Clear recents**
     (a confirm flyout; disabled when nothing is saved). Remember recents is general on purpose,
-    and its text doesn't name Claude: several agents record them, including OpenCode. Below it, **Agents**:
+    and its text doesn't name Claude: several agents record them, including OpenCode and Aider. Below it, **Agents**:
     a row for every agent in the list, in order
     (`BuildAgentSettingsRows`), with its icon, "Not installed" if so, and a chevron; then **Add agents**.
   - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Agent-specific settings show
     under it: Claude Code's (`ClaudeSettings`: "Usage limits", how Claude usage is found: "Read them
     from the status line" or "Ask Claude for them directly"), and text-only notes for Grok Build
-    (`GrokSettings`) and Cursor CLI / desktop (`CursorSettings`) saying where usage comes from. To add another, add a
+    (`GrokSettings`) and Cursor CLI / desktop (`CursorSettings`) saying where usage comes from, plus Aider's
+    (`AiderSettings`) model name and model finder. Agent Dock runs Aider's local `--list-models <search>` to find
+    its known model identifiers, then appends the selection as `--model`; credentials and providers remain configured
+    in Aider, and its catalogue is not a check of account access. To add another, add a
     panel in the XAML, return it from `AgentSettingsPanelFor` (by command name), list it in
     `AgentSettingsPanels`, and fill it in `ShowSettingsPage`.
   - **Add agents** (`ShowAddAgents`): the scan and a custom command; see "Agent list".
@@ -393,7 +396,8 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   - **`env`** (CLI only) is set *inside* the shell command, in front of the agent:
     `${env:NAME} = "…"; claude` for PowerShell, `set "NAME=…" && claude` for cmd. Not on the
     process: when Windows Terminal is already running, wt.exe hands the tab to that Terminal, which
-    starts it with its own environment. `%NAME%` in a value stays a reference
+    starts it with its own environment. For PowerShell with variables, the script is passed with
+    `-EncodedCommand`, so Windows Terminal cannot split its semicolons. `%NAME%` in a value stays a reference
     (`${env:NAME}` in PowerShell; cmd expands `%NAME%` itself), so keys kept in Windows'
     environment never appear in agents.json or in Agent Dock's command lines.
 
@@ -803,14 +807,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Cursor CLI or Copilot CLI (each copy separately) was launched
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Aider, Cursor CLI or Copilot CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, OpenCode, Cursor CLI and Copilot CLI added at the owner's request. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Aider, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, OpenCode, Aider, Cursor CLI and Copilot CLI added at the owner's request. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over

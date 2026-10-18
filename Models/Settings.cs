@@ -39,6 +39,11 @@ public sealed class AgentDefinition
     public string? Command { get; set; }
     /// <summary>Extra arguments appended to the command (e.g. "--continue").</summary>
     public string? Arguments { get; set; }
+    /// <summary>
+    /// Optional Aider model name. For Aider entries Agent Dock appends this as <c>--model</c> when
+    /// launching; Aider itself remains responsible for the provider and credentials.
+    /// </summary>
+    public string? Model { get; set; }
     /// <summary>Overrides the global shell for this agent: pwsh, powershell or cmd.</summary>
     public string? Shell { get; set; }
 

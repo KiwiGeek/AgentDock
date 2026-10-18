@@ -19,7 +19,11 @@ public static class Launcher
                 if (!Directory.Exists(folder))
                     return "That folder no longer exists. Choose another one.";
 
-                var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments }
+                if (IsAider(item.Definition) && item.Definition.Model?.Any(char.IsWhiteSpace) == true)
+                    return "An Aider model name cannot contain spaces.";
+
+                var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments,
+                        AiderModelArgument(item.Definition) }
                     .Where(s => !string.IsNullOrWhiteSpace(s)));
                 StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal,
                     item.Definition.Env);
@@ -55,6 +59,17 @@ public static class Launcher
             return $"{item.Name} didn't start: {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// Aider model names are provider/model identifiers, so they do not contain spaces. Keeping this
+    /// value a single shell token avoids turning a setting field into another command-line surface.
+    /// </summary>
+    private static string? AiderModelArgument(AgentDefinition agent) =>
+        IsAider(agent) && agent.Model?.Trim() is { Length: > 0 } model ? $"--model {model}" : null;
+
+    private static bool IsAider(AgentDefinition agent) =>
+        string.Equals(agent.Catalog, "aider", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('\"')), "aider", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Opens a plain shell in the folder, no agent.</summary>
     public static string? OpenShell(string folder, DockSettings settings)
@@ -138,6 +153,15 @@ public static class Launcher
 
         var exe = shell == "pwsh" ? (PathResolver.Find("pwsh.exe") ?? "pwsh.exe") : "powershell.exe";
         var assignments = string.Concat(variables.Select(v => $"${{env:{v.Key}}} = {PowerShellString(v.Value)}; "));
+        if (command is not null && variables.Count > 0)
+        {
+            // Windows Terminal uses semicolons as its own command separators, even inside the
+            // PowerShell -Command argument. Passing a UTF-16LE encoded script leaves it one opaque
+            // argument, so per-agent variables reach the shell that runs the agent.
+            var script = assignments + command;
+            var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
+            return (exe, ["-NoLogo", "-NoExit", "-EncodedCommand", encoded]);
+        }
         return command is null
             ? (exe, ["-NoLogo"])
             : (exe, ["-NoLogo", "-NoExit", "-Command", assignments + command]);

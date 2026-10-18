@@ -115,6 +115,11 @@ After that, manage them on the settings page (the gear in the footer), under **A
 - Click an agent for its page: rename it, change its arguments, set **environment variables**,
   **duplicate** it, or remove it. Drag agents in the list (here or in the flyout
   itself) to put them in the order you want.
+- An Aider entry also has an optional **Model name**. Agent Dock starts it with
+  `--model provider/model`; put API keys, provider choices and other Aider configuration in Aider
+  itself. Its **Find a model** search runs Aider's local `--list-models` catalogue query and lets
+  you select the returned identifier; it is not a check of which models your account can use.
+  Duplicate the entry when you want a second ready-to-use model.
 - Or right-click an agent in the flyout (or press Shift+F10) for **Settings** (its page) and
   **Remove from list**.
 - **Duplicate** makes a second copy of the same agent with its own name and variables, for example a
@@ -203,7 +208,7 @@ earlier keeps working alongside it. Asking directly also shows any per-model wee
 Sonnet's) as extra bars, and your extra usage when it's turned on. Under the title, the drawer names
 the model your last session used, when the status line has reported it.
 
-The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, OpenCode's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
+The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, OpenCode's, Aider's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
 to open the agent there again. Opening a folder that's already in the list moves it to the top
 and shifts the others down. At most five are kept, and only as many as fit in the drawer.
 Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.

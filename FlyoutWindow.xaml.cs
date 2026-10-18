@@ -45,6 +45,7 @@ public sealed partial class FlyoutWindow : Window
     private readonly ObservableCollection<AgentItem> _cli = [];
     private readonly ObservableCollection<AgentItem> _desktop = [];
     private readonly ObservableCollection<FolderItem> _folders = [];
+    private readonly ObservableCollection<string> _aiderModels = [];
     private readonly Stopwatch _sinceHide = new();
     private readonly Stopwatch _sinceShellRefresh = new();
     private readonly TaskCompletionSource _rootLoaded = new();
@@ -113,6 +114,7 @@ public sealed partial class FlyoutWindow : Window
         CliList.ItemsSource = _cli;
         DesktopList.ItemsSource = _desktop;
         FolderBox.ItemsSource = _folders;
+        AiderModelResults.ItemsSource = _aiderModels;
     }
 
     public static string DefaultFolder()
@@ -1033,19 +1035,26 @@ public sealed partial class FlyoutWindow : Window
     private bool _addAgentsFromSetup;
 
     /// <summary>
-    /// Settings that only some agents have, shown under the agent's page, by command name. To give
+    /// Settings that only some agents have, shown under the agent's page, by catalog id or command name. To give
     /// another agent some, add a panel to the settings page in the XAML (like ClaudeSettings), return
     /// it here, list it in <see cref="AgentSettingsPanels"/>, and fill it in <see cref="ShowSettingsPage"/>.
     /// </summary>
-    private FrameworkElement? AgentSettingsPanelFor(string? command) => command switch
+    private FrameworkElement? AgentSettingsPanelFor(AgentDefinition definition)
     {
-        "claude" => ClaudeSettings,
-        "grok" => GrokSettings,
-        "cursor-agent" => CursorSettings,
-        _ => null
-    };
+        if ((definition.Catalog ?? definition.Id).Equals("aider", StringComparison.OrdinalIgnoreCase)
+            || CommandName(definition.Command) == "aider")
+            return AiderSettings;
 
-    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings, CursorSettings];
+        return CommandName(definition.Command) switch
+        {
+            "claude" => ClaudeSettings,
+            "grok" => GrokSettings,
+            "cursor-agent" => CursorSettings,
+            _ => null
+        };
+    }
+
+    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings, CursorSettings, AiderSettings];
 
     /// <summary>
     /// Cursor CLI or the Cursor desktop app (one account, one usage), by catalog id or CLI command.
@@ -1108,7 +1117,7 @@ public sealed partial class FlyoutWindow : Window
         _settingsToggleReady = true;
         AgentArgumentsBox.Visibility = isCli ? Visibility.Visible : Visibility.Collapsed;
         AgentCommandText.Text = isCli
-            ? $"Runs {definition.Command}{(string.IsNullOrWhiteSpace(definition.Arguments) ? "" : " " + definition.Arguments)} in a terminal."
+            ? LaunchDescription(definition)
             : "A desktop app, opened from the Start menu.";
         AgentEnvSection.Visibility = isCli ? Visibility.Visible : Visibility.Collapsed;
         AgentEnvNote.Text = command switch
@@ -1201,6 +1210,8 @@ public sealed partial class FlyoutWindow : Window
             return;
         if (ReferenceEquals(sender, AgentNameBox))
             CommitAgentName();
+        else if (ReferenceEquals(sender, AiderModelBox))
+            CommitAiderModel();
         else
             CommitAgentArguments();
         e.Handled = true;
@@ -1209,6 +1220,8 @@ public sealed partial class FlyoutWindow : Window
     private void AgentNameBox_LostFocus(object sender, RoutedEventArgs e) => CommitAgentName();
 
     private void AgentArgumentsBox_LostFocus(object sender, RoutedEventArgs e) => CommitAgentArguments();
+
+    private void AiderModelBox_LostFocus(object sender, RoutedEventArgs e) => CommitAiderModel();
 
     private void CommitAgentName()
     {
@@ -1236,7 +1249,32 @@ public sealed partial class FlyoutWindow : Window
             return;
         _editingAgent.Arguments = arguments;
         SaveAgentList();
-        AgentCommandText.Text = $"Runs {_editingAgent.Command}{(arguments is null ? "" : " " + arguments)} in a terminal.";
+        AgentCommandText.Text = LaunchDescription(_editingAgent);
+    }
+
+    private void CommitAiderModel()
+    {
+        if (!_settingsToggleReady || _editingAgent is null)
+            return;
+        var model = AiderModelBox.Text.Trim() is { Length: > 0 } text ? text : null;
+        if (model?.Any(char.IsWhiteSpace) == true)
+        {
+            AiderModelBox.Text = _editingAgent.Model ?? "";
+            return;
+        }
+        if (model == _editingAgent.Model)
+            return;
+        _editingAgent.Model = model;
+        SaveAgentList();
+        AgentCommandText.Text = LaunchDescription(_editingAgent);
+    }
+
+    private static string LaunchDescription(AgentDefinition definition)
+    {
+        var model = ((definition.Catalog ?? definition.Id).Equals("aider", StringComparison.OrdinalIgnoreCase)
+                     || CommandName(definition.Command) == "aider") && !string.IsNullOrWhiteSpace(definition.Model)
+            ? $" --model {definition.Model.Trim()}" : "";
+        return $"Runs {definition.Command}{(string.IsNullOrWhiteSpace(definition.Arguments) ? "" : " " + definition.Arguments)}{model} in a terminal.";
     }
 
     /// <summary>
@@ -1422,6 +1460,7 @@ public sealed partial class FlyoutWindow : Window
 
     /// <summary>The Claude account whose usage setting the agent page shows.</summary>
     private UsageAccount? _settingsAccount;
+    private AgentDefinition? _aiderModelsFor;
 
     /// <summary>
     /// The agent-specific panel under an agent's page, for its account: Claude's usage source is per
@@ -1435,10 +1474,25 @@ public sealed partial class FlyoutWindow : Window
         var panel = IsCursor(definition) ? CursorSettings
             : account is { UsesOtherProvider: true } ? null
             : account is { Agent: "claude" } ? ClaudeSettings
-            : definition.Kind == AgentKind.Cli ? AgentSettingsPanelFor(CommandName(definition.Command))
+            : definition.Kind == AgentKind.Cli ? AgentSettingsPanelFor(definition)
             : null;
         foreach (var other in AgentSettingsPanels)
             other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
+
+        if (panel == AiderSettings)
+        {
+            _settingsToggleReady = false;
+            AiderModelBox.Text = definition.Model ?? "";
+            _settingsToggleReady = true;
+            if (!ReferenceEquals(_aiderModelsFor, definition))
+            {
+                _aiderModelsFor = definition;
+                _aiderModels.Clear();
+                AiderModelResults.Visibility = Visibility.Collapsed;
+                AiderModelSearchNote.Text = "";
+                AiderModelQueryBox.Text = "";
+            }
+        }
 
         _settingsAccount = account is { Agent: "claude", UsesOtherProvider: false } ? account : null;
         if (_settingsAccount is null)
@@ -1449,6 +1503,56 @@ public sealed partial class FlyoutWindow : Window
         ClaudeUsageIntro.Text = _settingsAccount.IsDefault
             ? "How Agent Dock finds out how much of your plan's session and weekly limits you've used, for the drawer beside Claude Code."
             : $"How Agent Dock finds out how much of this account's session and weekly limits you've used (the sign-in in {_settingsAccount.ConfigDir}).";
+    }
+
+    private async void FindAiderModels_Click(object sender, RoutedEventArgs e) => await FindAiderModelsAsync();
+
+    private async void AiderModelQueryBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter)
+            return;
+        await FindAiderModelsAsync();
+        e.Handled = true;
+    }
+
+    private async Task FindAiderModelsAsync()
+    {
+        if (_editingAgent is not { } agent)
+            return;
+        var search = AiderModelQueryBox.Text.Trim();
+        if (search.Length == 0)
+        {
+            AiderModelSearchNote.Text = "Enter part of a provider or model name first.";
+            AiderModelQueryBox.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        FindAiderModelsButton.IsEnabled = false;
+        AiderModelProgress.Visibility = Visibility.Visible;
+        AiderModelProgress.IsActive = true;
+        AiderModelSearchNote.Text = "Searching Aider's model catalogue…";
+        _aiderModels.Clear();
+        AiderModelResults.Visibility = Visibility.Collapsed;
+        var result = await AiderModels.FindAsync(agent, search);
+        AiderModelProgress.IsActive = false;
+        AiderModelProgress.Visibility = Visibility.Collapsed;
+        FindAiderModelsButton.IsEnabled = true;
+        if (!ReferenceEquals(_editingAgent, agent) || AiderSettings.Visibility != Visibility.Visible)
+            return;
+
+        foreach (var model in result.Models)
+            _aiderModels.Add(model);
+        AiderModelResults.Visibility = _aiderModels.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AiderModelSearchNote.Text = result.Message ?? $"{_aiderModels.Count} model{(_aiderModels.Count == 1 ? "" : "s")} found. Select one to use its name.";
+        PlaceWindow();
+    }
+
+    private void AiderModelResults_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (AiderModelResults.SelectedItem is not string model)
+            return;
+        AiderModelBox.Text = model;
+        CommitAiderModel();
     }
 
     private void ClaudeUsageSource_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1951,7 +2055,7 @@ public sealed partial class FlyoutWindow : Window
                 ShowRecents(item);
                 return true;
             default:
-                // OpenCode has no common provider quota, but it does open in folders and can show them again.
+                // These CLIs have no common provider quota, but they do open in folders and can show them again.
                 if (!RecentLaunches.Records(item.Definition))
                     return false;
                 _drawerItem = item;
