@@ -474,7 +474,26 @@ public sealed partial class FlyoutWindow : Window
                 ScheduleNextHeart();
             };
         }
+        SeedHearts();
         ScheduleNextHeart();
+    }
+
+    /// <summary>
+    /// Opening the flyout starts with a few hearts already on their way up, at different heights,
+    /// instead of an empty banner that fills over several seconds (owner's request, 2026-10-19).
+    /// </summary>
+    private void SeedHearts()
+    {
+        if (BannerCanvas.Children.OfType<TextBlock>().Any(t => t.Tag is "float"))
+            return;
+        // This runs just after the window is placed, before layout has caught up with its new height,
+        // so the big heart may still be where the last show left it; seeds from there sat on the name.
+        Banner.UpdateLayout();
+        LayoutBanner();
+        // Spread over the trip, one per slice, so they don't bunch up.
+        var count = 3 + _random.Next(3);
+        for (var i = 0; i < count; i++)
+            FloatHeart(TimeSpan.Zero, (i + 0.15 + _random.NextDouble() * 0.7) / count * 0.9);
     }
 
     private void ScheduleNextHeart()
@@ -501,6 +520,30 @@ public sealed partial class FlyoutWindow : Window
             BannerCanvas.Children.Remove(floater);
     }
 
+    /// <summary>
+    /// What floats up, with weights: mostly hearts, now and then a kiss, a blossom or sparkles
+    /// (owner's request, 2026-10-19). Faces were left out: at 7–14 DIP they read as clutter.
+    /// </summary>
+    private static readonly (string Text, bool Sideways, int Weight)[] Floaters =
+    [
+        ("❤️", true, 4), ("💕", true, 3), ("💖", true, 3), ("💗", true, 3), ("💞", true, 2), ("🩷", true, 3),
+        ("💋", false, 1), ("🌸", false, 1), ("✨", false, 1)
+    ];
+
+    private static readonly int FloaterWeights = Floaters.Sum(f => f.Weight);
+
+    private (string Text, bool Sideways) PickFloater()
+    {
+        var roll = _random.Next(FloaterWeights);
+        foreach (var (text, sideways, weight) in Floaters)
+        {
+            if (roll < weight)
+                return (text, sideways);
+            roll -= weight;
+        }
+        return (BannerHeart.Text, true);
+    }
+
     /// <summary>At most this many floating hearts at once, so a burst on a tall flyout doesn't pile up.</summary>
     private const int MaxFloatingHearts = 8;
 
@@ -508,8 +551,9 @@ public sealed partial class FlyoutWindow : Window
     /// A small sideways heart that drifts from the big one all the way to the top of the banner, and
     /// fades out there. Each is a little different (size, tilt, wobble, speed, brightness), and they
     /// rise at a steady speed, so a trip takes several seconds and a few are usually on the way up.
+    /// <paramref name="progress"/> (0–1) starts it that far through its trip.
     /// </summary>
-    private void FloatHeart(TimeSpan delay)
+    private void FloatHeart(TimeSpan delay, double progress = 0)
     {
         if (BannerCanvas.Children.OfType<TextBlock>().Count(t => t.Tag is "float") >= MaxFloatingHearts)
             return;
@@ -518,11 +562,14 @@ public sealed partial class FlyoutWindow : Window
         if (room < 30)
             return;
 
+        var (text, sideways) = PickFloater();
         var tilt = (_random.NextDouble() - 0.5) * 36; // ±18° off sideways
-        var transform = new Microsoft.UI.Xaml.Media.CompositeTransform { Rotation = -90 + tilt };
+        // Hearts lie sideways like the banner's; a kiss, a blossom or sparkles look odd that way, so stay nearly upright.
+        var angle = sideways ? -90 + tilt : tilt * 0.5;
+        var transform = new Microsoft.UI.Xaml.Media.CompositeTransform { Rotation = angle };
         var heart = new TextBlock
         {
-            Text = BannerHeart.Text, FontSize = 7 + _random.NextDouble() * 7, Tag = "float", Opacity = 0,
+            Text = text, FontSize = 7 + _random.NextDouble() * 7, Tag = "float", Opacity = 0,
             IsHitTestVisible = false, RenderTransform = transform
         };
         heart.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
@@ -530,7 +577,7 @@ public sealed partial class FlyoutWindow : Window
         transform.CenterX = size.Width / 2;
         transform.CenterY = size.Height / 2;
         // Turned sideways, its height is what takes up the banner's width; keep the wobble inside it.
-        var slack = Math.Max(0, (BannerWidthDip - size.Height) / 2 - 1);
+        var slack = Math.Max(0, (BannerWidthDip - (sideways ? size.Height : size.Width)) / 2 - 1);
         var start = (_random.NextDouble() - 0.5) * slack;
         Canvas.SetLeft(heart, BannerWidthDip / 2 - size.Width / 2 + start);
         Canvas.SetTop(heart, heartTop - size.Height / 2);
@@ -561,7 +608,7 @@ public sealed partial class FlyoutWindow : Window
 
         var rock = new DoubleAnimation
         {
-            From = -90 + tilt - 8, To = -90 + tilt + 8, Duration = TimeSpan.FromSeconds(0.7 + _random.NextDouble() * 0.8),
+            From = angle - 8, To = angle + 8, Duration = TimeSpan.FromSeconds(0.7 + _random.NextDouble() * 0.8),
             AutoReverse = true, RepeatBehavior = new RepeatBehavior(duration),
             EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
         };
@@ -582,6 +629,8 @@ public sealed partial class FlyoutWindow : Window
         storyboard.Children.Add(fade);
         storyboard.Completed += (_, _) => BannerCanvas.Children.Remove(heart);
         storyboard.Begin();
+        if (progress > 0)
+            storyboard.Seek(TimeSpan.FromSeconds(total * progress));
     }
 
     /// <summary>

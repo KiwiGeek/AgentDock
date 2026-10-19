@@ -351,7 +351,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   - Verified by screenshot (2026-10-16, driven through UI Automation): both levels render.
 - Open animation: 250 ms slide + fade, skipped when Windows animations are off.
 - **Banner** (owner's request, after the Windows 98 Start menu): a 32 DIP strip on the list's left
-  edge, a gradient with "**Agent** Dock" reading bottom to top. The fill is 70% opaque
+  edge, a gradient with "**Agent**Dock" (no space; bold, then semi-light) reading bottom to top. The fill is 70% opaque
   (`BannerFillOpacity` must match the XAML); the text isn't, and is black or white, picked against
   the fill as it looks over the flyout. WinUI has no layout transform, so `LayoutBanner` rotates and
   places the text in a Canvas.
@@ -365,7 +365,11 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     1.6 s. Small hearts float from it to the top of the strip (`FloatHeart`; owner's request,
     2026-10-19: irregular, the whole height, several at once): released every 0.4–2.6 s, now and then
     two or three together (`ReleaseHearts`), each with its own size, tilt, rocking, wobble, brightness
-    and speed (55–110 DIP/s, so several are on the way up at once; at most 8). They run only
+    and speed (55–110 DIP/s, so several are on the way up at once; at most 8). Opening the flyout
+    starts with three to five already partway up, spread over the trip (`SeedHearts`, through
+    `Storyboard.Seek`; owner's request, 2026-10-19). What floats is picked by weight from
+    `Floaters`: mostly hearts (❤️ 💕 💖 💗 💞 🩷, sideways), now and then 💋 🌸 ✨ (nearly upright).
+    No faces: too busy at that size. They run only
     while the flyout is visible and Windows animations are on (`SyncHearts`). Not yet seen by eye.
   - `ListWidthDip` (412) is the banner plus the 380 DIP list; `ListColumn` and `FooterContent` match it.
     The footer's left padding lines its text up with the list, past the banner.

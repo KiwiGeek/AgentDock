@@ -120,7 +120,7 @@
                             <TextBlock.Foreground>
                                 <SolidColorBrush x:Name="BannerTextBrush" />
                             </TextBlock.Foreground>
-                            <Run Text="Agent" FontWeight="Bold" /><Run Text=" Dock" FontWeight="SemiLight" />
+                            <Run Text="Agent" FontWeight="Bold" /><Run Text="Dock" FontWeight="SemiLight" />
                         </TextBlock>
                         <!-- Sideways like the text, and beating (StartHearts). -->
                         <TextBlock x:Name="BannerHeart" Text="&#x2764;&#xFE0F;" FontSize="14" Visibility="Collapsed">
