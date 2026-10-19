@@ -115,7 +115,7 @@ Details per agent are under Reference; what's still to review per agent is in `t
 - [ ] **OpenCode** (`opencode`): icon, picture and recent folders. No usage bars: its providers have
   separate billing and quota systems.
 - [ ] **Aider** (`aider`): icon, picture, model setting, Aider-driven model search and recent folders. No usage bars: it can use arbitrary providers.
-- [ ] **Qwen Code** (`qwen`): icon and picture only.
+- [ ] **Qwen Code** (`qwen`): icon, picture and recent folders. No usage bars yet.
 - [ ] **Amp** (`amp`): icon and picture only.
 - [ ] **Kiro CLI** (`kiro-cli`): icon and picture only.
 - [ ] **Goose** (`goose`): icon and picture only.
@@ -891,14 +891,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Aider, Cursor CLI or Copilot CLI (each copy separately) was launched
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Cursor CLI or Copilot CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Aider, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, OpenCode, Aider, Cursor CLI and Copilot CLI added at the owner's request. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, OpenCode, Aider, Qwen Code, Cursor CLI and Copilot CLI added at the owner's request. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
