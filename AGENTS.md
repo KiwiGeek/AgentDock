@@ -322,7 +322,9 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   are missing or a desktop agent in the list isn't found (owner's request, 2026-10-16: agents added
   but not detected are looked for again each time). Not yet verified in-app.
   A generation counter discards results from an earlier show.
-- Number keys 1–9 launch the corresponding available agent. Up/Down cross between the two lists.
+- Keys 1–9, then A–Z once the digits run out (owner's request, 2026-10-19), launch the corresponding
+  available agent; not with Ctrl, Alt or Windows held, and letters not while the folder box has the
+  focus (it uses them to find a folder). Up/Down cross between the two lists.
   Neither does anything while the settings page is open.
 - **Settings page:** the gear in the footer swaps the list for a page in the same window (so
   placement, acrylic and hide-on-deactivate stay as they are). The page keeps the list's height (see "Height can be dragged"), not its
@@ -360,8 +362,11 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     (`ThemeColors.FromStreamAsync`, good on logos; black and white logos get the accent). Leaving a row resets after 250 ms unless
     the pointer lands on another row or the drawer.
   - **Hearts** (waifus on only): a ❤️ above the text, turned sideways like it, beats twice every
-    1.6 s, and a small heart floats up the strip from it on each beat (`FloatHeart`). They run only
-    while the flyout is visible and Windows animations are on (`SyncHearts`).
+    1.6 s. Small hearts float from it to the top of the strip (`FloatHeart`; owner's request,
+    2026-10-19: irregular, the whole height, several at once): released every 0.4–2.6 s, now and then
+    two or three together (`ReleaseHearts`), each with its own size, tilt, rocking, wobble, brightness
+    and speed (55–110 DIP/s, so several are on the way up at once; at most 8). They run only
+    while the flyout is visible and Windows animations are on (`SyncHearts`). Not yet seen by eye.
   - `ListWidthDip` (412) is the banner plus the 380 DIP list; `ListColumn` and `FooterContent` match it.
     The footer's left padding lines its text up with the list, past the banner.
   - With the drawer on the left, the banner sits between the drawer and the list.

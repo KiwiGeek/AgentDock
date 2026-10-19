@@ -42,7 +42,7 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 
 | Action | Result |
 | --- | --- |
-| Click an agent, or press its number (1–9) | Launches it and closes the flyout |
+| Click an agent, or press its key (1–9, then A–Z) | Launches it and closes the flyout |
 | Arrow keys, Enter | Move through the list and launch |
 | Folder drop-down / folder button | Pick a recent folder or browse for a new one |
 | Terminal button (footer) | Plain shell in the working folder, no agent |

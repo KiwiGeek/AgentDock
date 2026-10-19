@@ -465,12 +465,32 @@ public sealed partial class FlyoutWindow : Window
 
         if (_floatTimer is null)
         {
+            // One-shot and rescheduled each time, so the gaps between hearts vary (owner's request, 2026-10-19).
             _floatTimer = DispatcherQueue.CreateTimer();
-            _floatTimer.Interval = TimeSpan.FromSeconds(HeartbeatSeconds);
-            _floatTimer.IsRepeating = true;
-            _floatTimer.Tick += (_, _) => FloatHeart();
+            _floatTimer.IsRepeating = false;
+            _floatTimer.Tick += (_, _) =>
+            {
+                ReleaseHearts();
+                ScheduleNextHeart();
+            };
         }
+        ScheduleNextHeart();
+    }
+
+    private void ScheduleNextHeart()
+    {
+        if (_floatTimer is null)
+            return;
+        _floatTimer.Interval = TimeSpan.FromSeconds(0.4 + _random.NextDouble() * 2.2);
         _floatTimer.Start();
+    }
+
+    /// <summary>Usually one heart, now and then a little burst of two or three.</summary>
+    private void ReleaseHearts()
+    {
+        var count = _random.NextDouble() switch { < 0.7 => 1, < 0.92 => 2, _ => 3 };
+        for (var i = 0; i < count; i++)
+            FloatHeart(TimeSpan.FromSeconds(i * (0.15 + _random.NextDouble() * 0.35)));
     }
 
     private void StopHearts()
@@ -481,51 +501,84 @@ public sealed partial class FlyoutWindow : Window
             BannerCanvas.Children.Remove(floater);
     }
 
-    /// <summary>A small sideways heart that drifts up the banner from the big one and fades away.</summary>
-    private void FloatHeart()
+    /// <summary>At most this many floating hearts at once, so a burst on a tall flyout doesn't pile up.</summary>
+    private const int MaxFloatingHearts = 8;
+
+    /// <summary>
+    /// A small sideways heart that drifts from the big one all the way to the top of the banner, and
+    /// fades out there. Each is a little different (size, tilt, wobble, speed, brightness), and they
+    /// rise at a steady speed, so a trip takes several seconds and a few are usually on the way up.
+    /// </summary>
+    private void FloatHeart(TimeSpan delay)
     {
+        if (BannerCanvas.Children.OfType<TextBlock>().Count(t => t.Tag is "float") >= MaxFloatingHearts)
+            return;
         var heartTop = Canvas.GetTop(BannerHeart) + BannerHeart.DesiredSize.Height / 2 - BannerHeart.DesiredSize.Width / 2;
-        var room = heartTop - 8;
+        var room = heartTop - 4;
         if (room < 30)
             return;
 
-        var transform = new Microsoft.UI.Xaml.Media.CompositeTransform { Rotation = -90 };
+        var tilt = (_random.NextDouble() - 0.5) * 36; // ±18° off sideways
+        var transform = new Microsoft.UI.Xaml.Media.CompositeTransform { Rotation = -90 + tilt };
         var heart = new TextBlock
         {
-            Text = BannerHeart.Text, FontSize = 8 + _random.Next(5), Tag = "float", Opacity = 0,
+            Text = BannerHeart.Text, FontSize = 7 + _random.NextDouble() * 7, Tag = "float", Opacity = 0,
             IsHitTestVisible = false, RenderTransform = transform
         };
         heart.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var size = heart.DesiredSize;
         transform.CenterX = size.Width / 2;
         transform.CenterY = size.Height / 2;
-        Canvas.SetLeft(heart, BannerWidthDip / 2 - size.Width / 2);
+        // Turned sideways, its height is what takes up the banner's width; keep the wobble inside it.
+        var slack = Math.Max(0, (BannerWidthDip - size.Height) / 2 - 1);
+        var start = (_random.NextDouble() - 0.5) * slack;
+        Canvas.SetLeft(heart, BannerWidthDip / 2 - size.Width / 2 + start);
         Canvas.SetTop(heart, heartTop - size.Height / 2);
         BannerCanvas.Children.Add(heart);
 
-        var duration = TimeSpan.FromSeconds(2.2);
-        var storyboard = new Storyboard();
+        var distance = room - size.Width / 2;
+        var duration = TimeSpan.FromSeconds(distance / (55 + _random.NextDouble() * 55)); // 55–110 DIP/s
+        var storyboard = new Storyboard { BeginTime = delay };
+
         var rise = new DoubleAnimation
         {
-            To = -Math.Min(room, 70 + _random.Next(60)), Duration = duration,
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            To = -distance, Duration = duration,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseIn } // drifts off slowly, then floats
         };
         Storyboard.SetTarget(rise, transform);
         Storyboard.SetTargetProperty(rise, "TranslateY");
+
+        var wobble = Math.Min(slack - Math.Abs(start), 1.5 + _random.NextDouble() * 3.5);
         var sway = new DoubleAnimation
         {
-            From = -3, To = 3, Duration = TimeSpan.FromSeconds(0.55), AutoReverse = true,
-            RepeatBehavior = new RepeatBehavior(2), BeginTime = TimeSpan.FromSeconds(_random.NextDouble() * 0.3)
+            From = -wobble, To = wobble, Duration = TimeSpan.FromSeconds(0.5 + _random.NextDouble() * 0.9),
+            AutoReverse = true, RepeatBehavior = new RepeatBehavior(duration),
+            BeginTime = TimeSpan.FromSeconds(_random.NextDouble() * 0.4),
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
         };
         Storyboard.SetTarget(sway, transform);
         Storyboard.SetTargetProperty(sway, "TranslateX");
+
+        var rock = new DoubleAnimation
+        {
+            From = -90 + tilt - 8, To = -90 + tilt + 8, Duration = TimeSpan.FromSeconds(0.7 + _random.NextDouble() * 0.8),
+            AutoReverse = true, RepeatBehavior = new RepeatBehavior(duration),
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Storyboard.SetTarget(rock, transform);
+        Storyboard.SetTargetProperty(rock, "Rotation");
+
+        var peak = 0.55 + _random.NextDouble() * 0.4;
+        var total = duration.TotalSeconds;
         var fade = new DoubleAnimationUsingKeyFrames();
-        foreach (var (seconds, opacity) in new[] { (0.0, 0.0), (0.3, 0.9), (1.2, 0.7), (duration.TotalSeconds, 0.0) })
+        foreach (var (seconds, opacity) in new[] { (0.0, 0.0), (0.4, peak), (total * 0.75, peak * 0.85), (total, 0.0) })
             fade.KeyFrames.Add(new LinearDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromSeconds(seconds)), Value = opacity });
         Storyboard.SetTarget(fade, heart);
         Storyboard.SetTargetProperty(fade, "Opacity");
+
         storyboard.Children.Add(rise);
         storyboard.Children.Add(sway);
+        storyboard.Children.Add(rock);
         storyboard.Children.Add(fade);
         storyboard.Completed += (_, _) => BannerCanvas.Children.Remove(heart);
         storyboard.Begin();
@@ -681,9 +734,11 @@ public sealed partial class FlyoutWindow : Window
             (agent.IsCli ? _cli : _desktop).Add(agent);
         }
 
-        var shortcut = 1;
+        // 1–9, then letters once the digits run out (owner's request, 2026-10-19).
+        const string keys = "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        var next = 0;
         foreach (var agent in AllItems)
-            agent.Shortcut = agent.IsAvailable && shortcut <= 9 ? (shortcut++).ToString() : null;
+            agent.Shortcut = agent.IsAvailable && next < keys.Length ? keys[next++].ToString() : null;
 
         PresetHeader.Visibility = _presets.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         PresetList.Visibility = PresetHeader.Visibility;
@@ -1874,22 +1929,29 @@ public sealed partial class FlyoutWindow : Window
         if (SettingsPage.Visibility == Visibility.Visible || FolderBox.IsDropDownOpen)
             return;
 
-        var digit = e.Key switch
+        var key = e.Key switch
         {
-            >= VirtualKey.Number1 and <= VirtualKey.Number9 => e.Key - VirtualKey.Number1 + 1,
-            >= VirtualKey.NumberPad1 and <= VirtualKey.NumberPad9 => e.Key - VirtualKey.NumberPad1 + 1,
-            _ => 0
+            >= VirtualKey.Number1 and <= VirtualKey.Number9 => (char)('1' + (e.Key - VirtualKey.Number1)),
+            >= VirtualKey.NumberPad1 and <= VirtualKey.NumberPad9 => (char)('1' + (e.Key - VirtualKey.NumberPad1)),
+            >= VirtualKey.A and <= VirtualKey.Z => (char)('A' + (e.Key - VirtualKey.A)),
+            _ => '\0'
         };
-        if (digit == 0)
+        // Not with Ctrl, Alt or Windows held (Alt+F4 and the like), and letters still type into the
+        // folder box when it has the focus.
+        if (key == '\0' || IsDown(VirtualKey.Control) || IsDown(VirtualKey.Menu) || IsDown(VirtualKey.LeftWindows)
+            || IsDown(VirtualKey.RightWindows) || (char.IsLetter(key) && FolderBox.FocusState != FocusState.Unfocused))
             return;
 
-        var target = AllItems.FirstOrDefault(a => a.Shortcut == digit.ToString());
+        var target = AllItems.FirstOrDefault(a => a.Shortcut == key.ToString());
         if (target is not null)
         {
             Launch(target);
             e.Handled = true;
         }
     }
+
+    private static bool IsDown(VirtualKey key) =>
+        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
     /// <summary>Lets Up/Down arrows cross between the lists.</summary>
     private void List_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
