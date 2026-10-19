@@ -64,9 +64,15 @@ public sealed class AgentDefinition
     /// <summary>
     /// CLI agents: environment variables set in the shell before the agent starts, e.g.
     /// <c>CLAUDE_CONFIG_DIR</c> or <c>CODEX_HOME</c> for a second account. <c>%NAME%</c> in a value is
-    /// read from Windows' environment by the shell, so keys don't have to be written here.
+    /// read from Windows' environment by the shell.
     /// </summary>
     public Dictionary<string, string>? Env { get; set; }
+
+    /// <summary>
+    /// The <see cref="ApiAccount.Id"/> whose usage this agent's drawer shows: for agents that run on
+    /// an API key (Aider, OpenCode…) rather than a plan.
+    /// </summary>
+    public string? ApiAccount { get; set; }
 
     /// <summary>A copy with different arguments (presets can override them).</summary>
     public AgentDefinition WithArguments(string? arguments)
@@ -108,11 +114,63 @@ public sealed class DockSettings
 
     public List<AgentDefinition> Agents { get; set; } = [];
 
+    /// <summary>API keys whose balance is shown in the usage overview, and in the drawer of agents linked to them.</summary>
+    public List<ApiAccount> ApiAccounts { get; set; } = [];
+
     /// <summary>
     /// No agents: the user picks them, from a scan of what's installed (<see cref="Services.KnownAgents"/>)
     /// or by hand. A first run with an empty list offers the scan.
     /// </summary>
     public static DockSettings CreateDefault() => new();
+}
+
+/// <summary>
+/// An API key with a prepaid balance (agents.json; owner's decision, 2026-10-19: the key is stored
+/// here as it is, since this is the user's own tool). <see cref="Services.ApiUsage"/> checks it.
+/// </summary>
+public sealed class ApiAccount
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    /// <summary>Which service: "deepseek" or "anthropic" (<see cref="Services.ApiUsage.Providers"/>).</summary>
+    public string Provider { get; set; } = "deepseek";
+    /// <summary>
+    /// The key agents use (Aider bound to this account gets it as <c>DEEPSEEK_API_KEY</c> or
+    /// <c>ANTHROPIC_API_KEY</c>), or <c>%NAME%</c> to read it from Windows' environment. For DeepSeek it
+    /// also reads the balance.
+    /// </summary>
+    public string? ApiKey { get; set; }
+
+    /// <summary>
+    /// Anthropic only: an Admin API key, which is what reads spending (an ordinary key can't, and an
+    /// Admin key can't run models, so an Anthropic account has both). Same <c>%NAME%</c> rule.
+    /// </summary>
+    public string? AdminKey { get; set; }
+}
+
+/// <summary>
+/// What's known about an <see cref="ApiAccount"/>'s balance (state.json): the last one seen, and the
+/// amount that counts as 100%. That's the balance after the last top-up, worked out as balances come
+/// in (a rise is a top-up and is added to it), or set by hand ("I paid $20").
+/// </summary>
+public sealed class ApiBalanceState
+{
+    public double Balance { get; set; }
+    public double Full { get; set; }
+    public string Currency { get; set; } = "USD";
+    /// <summary>The service says the balance is too low for calls.</summary>
+    public bool Exhausted { get; set; }
+    /// <summary>Unix seconds.</summary>
+    public long UpdatedAt { get; set; }
+
+    /// <summary>
+    /// Services that report spending rather than a balance (Anthropic): what's been spent since
+    /// <see cref="Since"/>. With <see cref="Full"/> set by hand at <see cref="Since"/>, the balance is
+    /// worked out from it; without, only the spend is known.
+    /// </summary>
+    public double? Spent { get; set; }
+    /// <summary>Unix seconds: when <see cref="Full"/> was set by hand. 0 means the start of this month.</summary>
+    public long Since { get; set; }
 }
 
 /// <summary>A command line agent pinned to a folder (presets.json), for work that comes up again and again.</summary>
@@ -257,6 +315,12 @@ public sealed class DockState
     public bool ShowUsageSummary { get; set; } = true;
 
     /// <summary>
+    /// The overview's suggestion picks agents on a plan (included usage) before ones spending an API
+    /// balance, which it suggests only when no plan has room (owner's request, 2026-10-19). Missing means on.
+    /// </summary>
+    public bool PreferPlansOverApi { get; set; } = true;
+
+    /// <summary>
     /// The taskbar icon chosen in settings (<see cref="Services.TaskbarIcon"/>): "plain-dock",
     /// "waifu-claude" and so on. Null or "default" is Agent Dock's own icon.
     /// </summary>
@@ -274,6 +338,9 @@ public sealed class DockState
     /// Launching one already in the list moves it to the front and shifts the newer ones down.
     /// </summary>
     public Dictionary<string, List<string>> RecentLaunches { get; set; } = [];
+
+    /// <summary>Each API account's balance as last seen, and its 100% amount, by <see cref="ApiAccount.Id"/>.</summary>
+    public Dictionary<string, ApiBalanceState> ApiBalances { get; set; } = [];
 
     /// <summary>
     /// Where the Claude drawer reads plan limits. Missing from an older state.json means the

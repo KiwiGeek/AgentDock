@@ -282,6 +282,47 @@ GitHub CLI (`gh`) with gh's own sign-in. Sign in to gh once (`gh auth login`); n
 is needed. This isn't a published GitHub API, so it can stop working. Results are cached for five
 minutes. (The `monthlyAllowance` setting of earlier versions is no longer used.)
 
+### API usage (DeepSeek, Anthropic)
+
+Agents that run on an API key rather than a plan, like Aider or OpenCode, can show that key's
+balance. Add the key in settings under **API usage** (**Add an API key**): a name, the service, and
+the key itself, or `%DEEPSEEK_API_KEY%` to read it from an environment variable. It's kept in
+`agents.json` as you type it:
+
+```json
+"apiAccounts": [
+  { "id": "deepseek", "name": "DeepSeek", "provider": "deepseek", "apiKey": "sk-..." },
+  { "id": "anthropic", "name": "Anthropic", "provider": "anthropic", "apiKey": "sk-ant-api...", "adminKey": "sk-ant-admin..." }
+]
+```
+
+**Aider bound to a key needs no variables.** Link Aider to an account on its page, and Agent Dock
+starts it with `DEEPSEEK_API_KEY` or `ANTHROPIC_API_KEY` set to that account's key. A variable of
+the same name on Aider's own page wins. (Only Aider: linking another agent just shows the usage.)
+
+**Anthropic has no balance API**, only spending, through the Admin API's cost report, which needs an
+**Admin API key** (`sk-ant-admin…`, from an organization's Console settings; individual accounts
+don't have one). An ordinary key can't read it, and an Admin key can't run models, so an Anthropic
+account has both: the **API key** for Aider and the **Admin API key** for the spending. Until you
+type your **balance now, from the Console** and choose **Set**, it shows what was spent this month;
+after that, the balance left and a percentage, with spending counted from that day (the report is
+by day, so that day's earlier spending counts too). Set it again after a top-up.
+
+Each key gets a line in the usage overview, like "42% used · $5.80 left". To show it in an agent's
+drawer as well, choose it under **API usage** on that agent's page (or add `"apiAccount": "deepseek"`
+to the agent). When Aider's model is a `deepseek/` one, or OpenCode has a DeepSeek key, the page
+offers to link it.
+
+A prepaid balance has no limit to measure against, so the percentage is of the balance after your
+last top-up: the first balance Agent Dock sees counts as 100%, and a later rise is taken as a top-up
+and added to it. If that's off (you paid $20 but it first saw $19.57), type the real amount under
+**Balance after your last top-up** and choose **Set**.
+
+The overview's suggestion uses your plans' included usage first: with **Prefer plans over API
+keys** on (the default, in General settings), it suggests an agent on an API key only once no agent
+on a plan has room left. The balance comes from DeepSeek's documented
+`GET /user/balance`, at most every five minutes while the flyout is open.
+
 ### Icons
 
 Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,

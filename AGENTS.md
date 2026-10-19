@@ -457,8 +457,9 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     process: when Windows Terminal is already running, wt.exe hands the tab to that Terminal, which
     starts it with its own environment. For PowerShell with variables, the script is passed with
     `-EncodedCommand`, so Windows Terminal cannot split its semicolons. `%NAME%` in a value stays a reference
-    (`${env:NAME}` in PowerShell; cmd expands `%NAME%` itself), so keys kept in Windows'
-    environment never appear in agents.json or in Agent Dock's command lines.
+    (`${env:NAME}` in PowerShell; cmd expands `%NAME%` itself), so a value can stay in Windows'
+    environment instead of agents.json. Writing a key into agents.json directly is fine too
+    (owner, 2026-10-19: their own keys aren't hidden from them).
 
 #### Agent list (owner's decision, 2026-10-16)
 
@@ -620,6 +621,8 @@ there degrade to a missing icon or entry, never an error.
 | `Services/CopilotUsage.cs` | GitHub Copilot usage this month (AI credits against the plan), via `gh api copilot_internal/user` |
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts), and setting a pin's icon |
+| `Services/ApiUsage.cs` | API keys' balances: the DeepSeek check, the 100% logic, which agents seem to use a provider |
+| `FlyoutWindow.ApiAccounts.cs` | The API usage settings section, the agent page's link, the checks and the drawer |
 | `Services/TaskbarIcon.cs` | The taskbar icon choices, applying one to the pin, restarting File Explorer to show it |
 | `Models/TaskbarIconChoice.cs` | An icon in the settings page's taskbar icon picker |
 | `Assets/AppIcons/` | Taskbar icon sources (`appicon-<id>.png`, 1024 px, not shipped) and the built `ico/<id>.ico` (compiled in) |
@@ -638,7 +641,8 @@ there degrade to a missing icon or entry, never an error.
   allowed. Schema is documented in `README.md`; keep the two in sync.
 - `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids,
   whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
-  folders, the dragged list height, and where Claude usage comes from).
+  folders, the dragged list height, where Claude usage comes from, the taskbar icon choice, and each
+  API account's last balance and 100% amount).
 - `%LOCALAPPDATA%\AgentDock\Icons\`: PNG icon cache.
 - `%LOCALAPPDATA%\AgentDock\TaskbarIcons\`: the chosen taskbar icon, which the pin's shortcut points at.
 
@@ -1088,6 +1092,58 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   flyout resets it.
 - **Not yet verified in-app:** loading from the embedded resources. The build embeds all 10, but
   nobody has hovered since.
+
+#### API usage (owner's request, 2026-10-19; `Services/ApiUsage.cs`, `FlyoutWindow.ApiAccounts.cs`)
+
+- **Accounts:** `DockSettings.ApiAccounts` in agents.json: id (`ApiUsage.NewId`: the provider, then
+  "-2"…), name, provider (only `deepseek` so far, `ApiUsage.Providers`), and `apiKey`, stored as typed
+  (owner: keys are not hidden from the user; settings shows them in a plain text box), or `%NAME%`
+  read from the environment (`ApiUsage.KeyFor`). An agent links to one with `AgentDefinition.ApiAccount`.
+- **DeepSeek:** `GET https://api.deepseek.com/user/balance` with the key as a bearer token
+  (api-docs.deepseek.com, "Get User Balance"): `is_available`, and `balance_infos` per currency with
+  `total_balance` as a string. USD is preferred. 401/403 is "not accepted". No limit or spend in it.
+- **The percentage** (owner's choice): of `ApiBalanceState.Full`, in state.json `apiBalances` by account
+  id with the last balance. The first balance sets it; a rise of more than half a cent is a top-up and is
+  added to it, so earlier use still counts; it never sits below the balance. Settings' **Balance after
+  your last top-up** + **Set** overrides it ("I paid $20, it first saw $19.57"). `is_available: false`
+  counts as 100% used.
+- **Checks:** `StartApiCheck`, at most every 5 minutes (`ApiUsage.MinInterval`), when the overview
+  opens, on hovering a linked agent, and on opening settings; **Check now** forces one. Results stay
+  across shows (`_apiChecks`); balances are saved. A key or service change drops the check (and a
+  service change the balance).
+- **Shown:** the overview has a row per account (`ApiSummaryEntry`; a linked agent's row is the
+  account's, so copies share it), with the service's logo (DeepSeek Harness's icon) when no agent is
+  linked; clicking launches the first linked agent, or opens settings. In the suggestion a balance is a
+  long window ("balance"); an unlinked key isn't suggested, and a key two or more listed agents are
+  linked to is named itself, with them ("Suggested: DeepSeek (Aider, OpenCode)", `SuggestedName`;
+  owner, 2026-10-19), since any of them uses the same balance. Settings → General → **Prefer plans
+  over API keys** (`DockState.PreferPlansOverApi`, on by default, missing = on; owner's request): while
+  any plan agent is usable, the suggestion and its alternatives come only from plan agents, so
+  included usage goes first; API keys are suggested once no plan has room. The two-candidate rule
+  counts before that narrowing. A linked agent's drawer shows one bar,
+  "42% · $5.80 left of $10.00" (`ShowApiUsage`), before its own usage logic, then its recents.
+- **Anthropic** (owner's request, 2026-10-19): no balance API (the Console shows it; claude-code issue
+  #47574), so the Admin API's documented Cost Report, `GET /v1/organizations/cost_report` with
+  `x-api-key` and `anthropic-version: 2023-06-01`, daily buckets (at most 31 a page, through
+  `next_page`), amounts in cents. Needs an Admin key (`ApiAccount.AdminKey`, `sk-ant-admin…`; checked
+  before sending); `ApiKey` is the ordinary key for Aider. `ApiUsage.ReportsSpend`: `Spent` since
+  `ApiBalanceState.Since` (0 = this month); 100% only once the user sets the Console's balance
+  (`Full`, `Since` = then; spending from that day, so its earlier spend counts). No top-up
+  detection. Without it: "$12.40 spent since 1 Oct", no bar, not in the suggestion. Logo: Claude's.
+  The Spend Limits API is Claude Enterprise members' limits, not a Console balance.
+- **Aider bound to a key** (owner's request, 2026-10-19): `ApiUsage.EnvironmentFor` adds
+  `DEEPSEEK_API_KEY` or `ANTHROPIC_API_KEY` = the account's `ApiKey` as written (`%NAME%` stays a
+  reference) to Aider's env at launch (`Launcher`, all launch paths), unless Aider's own env sets it.
+  Aider only: linking Claude Code would otherwise move it from its plan to API billing. The agent
+  page says which variable it gets (`AgentApiNote`).
+- **Linking offer** (owner's choice B): the agent page's **API usage** box (command line agents, when
+  accounts exist) and an InfoBar when `ApiUsage.AgentUses`: Aider's model starts with `deepseek/` or
+  `deepseek-`, or OpenCode's `~\.local\share\opencode\auth.json` has a `deepseek` entry (only the names
+  are read). For Anthropic also Claude Code with `ANTHROPIC_API_KEY` in its env, and Aider on a `claude…` model.
+- **Verified 2026-10-19:** parser cases and the 100% logic in a throwaway project (deleted); a real
+  call gets DeepSeek's 401 for a bad key; through UI Automation, adding an account, the key saved, the
+  "not accepted" status, **Set** saving 20, and the overview row. **Not yet:** a real balance (the
+  owner's key needed), the drawer, the agent page, removing through the UI.
 
 #### Taskbar icon (owner's request, 2026-10-19; `Services/TaskbarIcon.cs`)
 

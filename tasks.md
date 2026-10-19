@@ -65,11 +65,20 @@ Things to decide:
 - Which host agent to use, and whether that's per entry (e.g. `"host": "opencode"`).
 - How the provider and model are passed: command-line arguments, environment variables, or the
   host agent's own config file.
-- **Where the API key lives.** It must not go in `agents.json` in plain text. Options: an
-  environment variable the user sets, the host agent's own credential store, or Windows Credential
-  Manager.
+- API keys go in `agents.json` as they are (owner's decision, 2026-10-19: a tool for programmers,
+  their own keys aren't hidden from them), or a `%NAME%` environment variable.
 - The entry should use DeepSeek's icon and background while launching the host agent.
-- Possibly usage or balance in the drawer, if DeepSeek's API offers it.
+- The balance part is built: API keys in settings, linked to agents (see "API usage" in `AGENTS.md`).
+
+## API usage: follow-ups
+
+- **Verify against a real DeepSeek key.** The parser and the 100% logic were checked with sample
+  replies; the only real reply so far was a 401 (OpenCode's stored "deepseek" key was rejected).
+- **Verify Anthropic against a real Admin key** (only the parser and a bad-key reply are checked),
+  and Aider actually running on a bound key.
+- More services: OpenRouter (`GET /api/v1/key` gives a real limit and usage, so no top-up guessing),
+  Moonshot/Kimi. OpenAI's billing needs an organisation admin key, like Anthropic's.
+- Not yet verified by eye: the settings section, the agent page's choice and offer, the drawer, the overview row.
 
 ## Maybe later: custom groups
 

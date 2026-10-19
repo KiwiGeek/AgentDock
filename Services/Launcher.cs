@@ -26,8 +26,9 @@ public static class Launcher
                         AiderModelArgument(item.Definition) }
                     .Where(s => !string.IsNullOrWhiteSpace(s)));
                 var profile = waifuBackgrounds ? TerminalProfiles.TryGetReadyProfile(item.Definition) : null;
+                // Aider bound to an API account also gets that key's variable (ApiUsage.EnvironmentFor).
                 StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal,
-                    item.Definition.Env, settings.CloseTerminalWhenAgentExits, profile);
+                    ApiUsage.EnvironmentFor(item.Definition, settings.ApiAccounts), settings.CloseTerminalWhenAgentExits, profile);
             }
             else if (KnownAgents.FolderLink(item.Definition) is { } link)
             {

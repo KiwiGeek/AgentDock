@@ -381,6 +381,23 @@
                                   AutomationProperties.Name="Usage overview"
                                   AutomationProperties.HelpText="Show every agent's usage beside the list while the pointer isn't over one, to help pick an agent." />
                 </Grid>
+                <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="Prefer plans over API keys" />
+                        <TextBlock Text="Suggest agents whose plan includes usage before ones that spend an API balance, until the plans run out."
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="PreferPlansSwitch" Grid.Column="1" MinWidth="0"
+                                  VerticalAlignment="Center" OffContent="" OnContent=""
+                                  Toggled="PreferPlansSwitch_Toggled"
+                                  AutomationProperties.Name="Prefer plans over API keys"
+                                  AutomationProperties.HelpText="Suggest agents whose plan includes usage before ones that spend an API balance, until the plans run out." />
+                </Grid>
 
                 <Grid Margin="16,0,16,16" ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
@@ -462,6 +479,22 @@
                         <StackPanel Orientation="Horizontal" Spacing="12">
                             <FontIcon Glyph="&#xE710;" FontSize="16" Width="24" />
                             <TextBlock Text="Add your own command" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- API keys whose balance shows in the overview and linked agents' drawers (FlyoutWindow.ApiAccounts.cs). -->
+                <TextBlock Text="API usage" Style="{StaticResource SectionHeaderStyle}" />
+                <TextBlock Margin="16,0,16,8" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="Your API keys' balances, in the usage overview and in the drawer of agents you link them to (on the agent's page). The percentage is of the balance after your last top-up, or of the amount you set." />
+                <StackPanel x:Name="ApiAccountsList" Margin="16,0,16,4" Spacing="16" />
+                <StackPanel Margin="8,0,8,12" Spacing="2">
+                    <Button Padding="8,6" Click="AddApiAccount_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            AutomationProperties.Name="Add an API key">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <FontIcon Glyph="&#xE710;" FontSize="16" Width="24" />
+                            <TextBlock Text="Add an API key" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -547,6 +580,19 @@
                     <TextBlock x:Name="AgentCommandText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <!-- Which API key's balance this agent's drawer shows (command line agents, when there are keys). -->
+                    <StackPanel x:Name="AgentApiSection" Spacing="8" Margin="0,8,0,0" Visibility="Collapsed">
+                        <ComboBox x:Name="AgentApiBox" Header="API usage" HorizontalAlignment="Stretch"
+                                  SelectionChanged="AgentApiBox_SelectionChanged" AutomationProperties.Name="API usage" />
+                        <TextBlock x:Name="AgentApiNote" TextWrapping="Wrap" Visibility="Collapsed"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <InfoBar x:Name="AgentApiOffer" IsOpen="False" Severity="Informational" IsClosable="True">
+                            <InfoBar.ActionButton>
+                                <Button x:Name="AgentApiOfferButton" Content="Link" Click="AgentApiOffer_Click" />
+                            </InfoBar.ActionButton>
+                        </InfoBar>
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel x:Name="AgentEnvSection">

@@ -1354,6 +1354,7 @@ public sealed partial class FlyoutWindow : Window
         _editingAgent.Model = model;
         SaveAgentList();
         AgentCommandText.Text = LaunchDescription(_editingAgent);
+        UpdateAgentApiSection(_editingAgent); // a deepseek/ model brings the offer to link DeepSeek's key
     }
 
     private static string LaunchDescription(AgentDefinition definition)
@@ -1566,6 +1567,7 @@ public sealed partial class FlyoutWindow : Window
             : null;
         foreach (var other in AgentSettingsPanels)
             other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
+        UpdateAgentApiSection(definition);
 
         if (panel == CopilotSettings)
         {
@@ -1682,6 +1684,7 @@ public sealed partial class FlyoutWindow : Window
         CloseTerminalOnExitSwitch.IsOn = _settings.CloseTerminalWhenAgentExits;
         RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
         UsageSummarySwitch.IsOn = _state.ShowUsageSummary;
+        PreferPlansSwitch.IsOn = _state.PreferPlansOverApi;
         HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
         // Lives in agents.json, which isn't written while it can't be read.
         HideUnavailableSwitch.IsEnabled = _settingsError is null;
@@ -1690,6 +1693,7 @@ public sealed partial class FlyoutWindow : Window
             : "Fix agents.json to change this here.";
         ClearRecentsButton.IsEnabled = RecentLaunches.Any(_state);
         BuildTaskbarIconPicker();
+        BuildApiAccountsList();
         if (_taskbarIconPending)
             ShowTaskbarIconBar(null);
         else
@@ -1775,6 +1779,14 @@ public sealed partial class FlyoutWindow : Window
         if (!_settingsToggleReady || _state.ShowUsageSummary == UsageSummarySwitch.IsOn)
             return;
         _state.ShowUsageSummary = UsageSummarySwitch.IsOn;
+        _store.SaveState(_state);
+    }
+
+    private void PreferPlansSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsToggleReady || _state.PreferPlansOverApi == PreferPlansSwitch.IsOn)
+            return;
+        _state.PreferPlansOverApi = PreferPlansSwitch.IsOn;
         _store.SaveState(_state);
     }
 
@@ -2256,6 +2268,16 @@ public sealed partial class FlyoutWindow : Window
         RecentSection.Visibility = Visibility.Collapsed;
         if (!item.IsAgentAvailable)
             return false;
+        // Linked to an API key (Aider or OpenCode on DeepSeek, say): that balance, whatever the agent.
+        if (ApiAccountFor(item.Definition) is { } api)
+        {
+            _drawerItem = item;
+            UsageOffer.IsOpen = false;
+            StartApiCheck(api);
+            ShowApiUsage(api);
+            ShowRecents(item);
+            return true;
+        }
         // The CLI and the desktop app share one account, so both show its usage.
         if (IsCursor(item.Definition))
         {
@@ -2503,13 +2525,21 @@ public sealed partial class FlyoutWindow : Window
     /// <summary>The drawer is showing the overview rather than one agent.</summary>
     private bool _summaryShowing;
 
-    /// <summary>One line of the overview: an agent's usage, by account.</summary>
-    private sealed record SummaryEntry(string Key, AgentItem Item, PlanUsage? Usage, bool Checking, string WeekWord,
-        CopilotUsageResult? Copilot = null);
+    /// <summary>
+    /// One line of the overview: an agent's usage, by account, or an API key's balance (<see cref="Api"/>;
+    /// <see cref="Item"/> is the first agent linked to it, null when none is).
+    /// </summary>
+    private sealed record SummaryEntry(string Key, AgentItem? Item, PlanUsage? Usage, bool Checking, string WeekWord,
+        CopilotUsageResult? Copilot = null, ApiAccount? Api = null, ApiBalanceState? Balance = null, string? Problem = null)
+    {
+        /// <summary>The row's name: the API account's, else the agent's.</summary>
+        public string Title => Api?.Name ?? Item!.Definition.Name;
+    }
 
     /// <summary>
     /// The agents in the list with usage to show, one per account (copies on one account share a
-    /// line, named after the first). Presets are left out; their agent stands for them.
+    /// line, named after the first), then API keys no listed agent is linked to. Presets are left
+    /// out; their agent stands for them.
     /// </summary>
     private List<SummaryEntry> SummaryEntries()
     {
@@ -2518,11 +2548,23 @@ public sealed partial class FlyoutWindow : Window
         foreach (var item in _cli.Concat(_desktop).Where(i => i.IsAgentAvailable))
             if (SummaryEntryFor(item) is { } entry && keys.Add(entry.Key))
                 entries.Add(entry);
+        foreach (var account in _settings.ApiAccounts)
+            if (ApiSummaryEntry(account, null) is var entry && keys.Add(entry.Key))
+                entries.Add(entry);
         return entries;
+    }
+
+    private SummaryEntry ApiSummaryEntry(ApiAccount account, AgentItem? item)
+    {
+        var check = _apiChecks.GetValueOrDefault(account.Id);
+        return new SummaryEntry($"api|{account.Id}", item, null, check?.Running == true, "balance",
+            Api: account, Balance: BalanceOf(account) is { UpdatedAt: > 0 } state ? state : null, Problem: check?.Problem);
     }
 
     private SummaryEntry? SummaryEntryFor(AgentItem item)
     {
+        if (ApiAccountFor(item.Definition) is { } api)
+            return ApiSummaryEntry(api, item);
         LiveCheck? Check(string key) => _liveChecks.GetValueOrDefault(key);
         PlanUsage? SavedFor(string key, Func<PlanUsage?> load)
         {
@@ -2571,8 +2613,16 @@ public sealed partial class FlyoutWindow : Window
     {
         if (!_state.ShowUsageSummary)
             return;
+        foreach (var account in _settings.ApiAccounts)
+        {
+            StartApiCheck(account);
+            if (ApiProviderIcon(account) is { } source)
+                _ = _icons.LoadFromDiskAsync(source); // for the row of a key no agent is linked to
+        }
         foreach (var item in _cli.Concat(_desktop).Where(i => i.IsAgentAvailable))
         {
+            if (ApiAccountFor(item.Definition) is not null)
+                continue; // its balance, checked above
             if (IsCursor(item.Definition))
             {
                 StartCursorCheck();
@@ -2657,6 +2707,14 @@ public sealed partial class FlyoutWindow : Window
             end > start ? Math.Clamp((now - start) / (end - start) * 100, 0, 100) : null;
 
         var windows = new List<PaceWindow>();
+        // A prepaid balance has no window: how much of the last top-up is gone, for as long as it lasts.
+        if (entry.Api is not null)
+        {
+            // Spend with no balance set (Anthropic) has nothing to compare, so it isn't suggested.
+            if (entry.Balance is { } balance && ApiUsage.HasPercent(balance))
+                windows.Add(new PaceWindow("balance", ApiUsage.UsedPercent(balance), null, null));
+            return windows;
+        }
         if (entry.Copilot is { } copilot)
         {
             if (copilot is { Used: { } used, Unlimited: false, Entitlement: { } entitlement })
@@ -2700,12 +2758,26 @@ public sealed partial class FlyoutWindow : Window
 
         var bottleneck = windows.OrderByDescending(window => window.Used).First();
         var session = windows.FirstOrDefault(window => window.Word == "session");
-        var longer = windows.FirstOrDefault(window => window.Word is "week" or "month");
+        var longer = windows.FirstOrDefault(window => window.Word is "week" or "month" or "balance");
         return new CapacityChoice(entry, bottleneck, bottleneck.Used, session?.Used ?? bottleneck.Used,
             longer?.Used ?? bottleneck.Used);
     }
 
     private static bool MateriallyBetter(double current, double alternative) => current - alternative >= 15;
+
+    /// <summary>
+    /// Who the suggestion names: the agent, or for an API key that several listed agents use, the key,
+    /// with them, since any of them draws on the same balance (owner, 2026-10-19).
+    /// </summary>
+    private string SuggestedName(SummaryEntry entry)
+    {
+        if (entry.Api is not { } api)
+            return entry.Item!.Definition.Name;
+        var linked = _cli.Concat(_desktop)
+            .Where(i => i.IsAgentAvailable && ApiAccountFor(i.Definition) == api)
+            .Select(i => i.Definition.Name).Distinct().ToList();
+        return linked.Count > 1 ? $"{api.Name} ({string.Join(", ", linked)})" : entry.Item!.Definition.Name;
+    }
 
     /// <summary>
     /// Suggests the least constrained agent across every active quota window. The main choice uses
@@ -2714,12 +2786,19 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private void ShowSuggestion(List<SummaryEntry> entries, DateTimeOffset now)
     {
+        // A key no agent is linked to can't be suggested: there's nothing to start.
+        entries = entries.Where(entry => entry.Item is not null).ToList();
         var choices = entries
             .Select(entry => (Entry: entry, Windows: PaceWindows(entry, now)))
             .Select(data => CapacityFor(data.Entry, data.Windows))
             .OfType<CapacityChoice>()
             .ToList();
-        if (choices.Count < 2)
+        // A suggestion needs something to choose between, counted before the preference below narrows it.
+        var candidates = choices.Count;
+        // Included usage first: API balances only once no plan has room (the setting, on by default).
+        if (_state.PreferPlansOverApi && choices.Any(choice => choice.Entry.Api is null))
+            choices = choices.Where(choice => choice.Entry.Api is null).ToList();
+        if (candidates < 2)
         {
             SummarySuggestion.Visibility = Visibility.Collapsed;
             return;
@@ -2727,7 +2806,7 @@ public sealed partial class FlyoutWindow : Window
 
         var pick = choices.OrderBy(choice => choice.Balanced).ThenBy(choice => choice.Sustained)
             .ThenBy(choice => choice.QuickTask).First();
-        SummarySuggestionTitle.Text = $"Suggested: {pick.Entry.Item.Definition.Name}";
+        SummarySuggestionTitle.Text = $"Suggested: {SuggestedName(pick.Entry)}";
         var lines = new List<string>
         {
             pick.Bottleneck is null ? "Unlimited usage." : $"Best balanced capacity: {Math.Round(pick.Balanced)}% at its tightest limit ({pick.Bottleneck.Word})."
@@ -2741,18 +2820,18 @@ public sealed partial class FlyoutWindow : Window
             .OrderBy(candidate => candidate.Choice.QuickTask).ThenBy(candidate => candidate.Choice.Balanced).FirstOrDefault();
         if (quick.Choice is not null && MateriallyBetter(pick.QuickTask, quick.Choice.QuickTask))
         {
-            lines.Add($"For a quick task: {quick.Choice.Entry.Item.Definition.Name} - {Math.Round(quick.Choice.QuickTask)}% of this session used.");
+            lines.Add($"For a quick task: {SuggestedName(quick.Choice.Entry)} - {Math.Round(quick.Choice.QuickTask)}% of this session used.");
             shown.Add(quick.Choice.Entry.Key);
         }
 
         var sustained = choices.Where(choice => !shown.Contains(choice.Entry.Key))
             .Select(choice => (Choice: choice, Window: PaceWindows(choice.Entry, now)
-                .FirstOrDefault(window => window.Word is "week" or "month")))
+                .FirstOrDefault(window => window.Word is "week" or "month" or "balance")))
             .Where(candidate => candidate.Window is not null)
             .OrderBy(candidate => candidate.Choice.Sustained).ThenBy(candidate => candidate.Choice.Balanced).FirstOrDefault();
         if (sustained.Choice is not null && MateriallyBetter(pick.Sustained, sustained.Choice.Sustained))
         {
-            lines.Add($"For sustained work: {sustained.Choice.Entry.Item.Definition.Name} - {Math.Round(sustained.Choice.Sustained)}% of its {sustained.Window!.Word} used.");
+            lines.Add($"For sustained work: {SuggestedName(sustained.Choice.Entry)} - {Math.Round(sustained.Choice.Sustained)}% of its {sustained.Window!.Word} used.");
             shown.Add(sustained.Choice.Entry.Key);
         }
 
@@ -2774,7 +2853,7 @@ public sealed partial class FlyoutWindow : Window
             }
         }
         if (afterReset is { } resetChoice && MateriallyBetter(pick.Balanced, resetChoice.Choice.Balanced))
-            lines.Add($"After {ResetTime(resetChoice.Window.Reset!.Value)}: {resetChoice.Choice.Entry.Item.Definition.Name} - {resetChoice.Window.Word} limit resets.");
+            lines.Add($"After {ResetTime(resetChoice.Window.Reset!.Value)}: {SuggestedName(resetChoice.Choice.Entry)} - {resetChoice.Window.Word} limit resets.");
 
         SummarySuggestionNote.Text = string.Join('\n', lines);
         SummarySuggestion.Visibility = Visibility.Visible;
@@ -2788,7 +2867,18 @@ public sealed partial class FlyoutWindow : Window
     {
         string text;
         double? most;
-        if (entry.Copilot is { } copilot)
+        if (entry.Api is not null)
+        {
+            if (entry.Balance is { } balance)
+                (text, most) = (ApiUsage.Summary(balance), ApiUsage.HasPercent(balance) ? ApiUsage.UsedPercent(balance) : null);
+            else if (entry.Checking)
+                (text, most) = ("Checking…", null);
+            else if (entry.Problem is { } problem)
+                (text, most) = (problem, null);
+            else
+                return null;
+        }
+        else if (entry.Copilot is { } copilot)
         {
             if (copilot.Used is not { } used)
                 return null;
@@ -2826,15 +2916,17 @@ public sealed partial class FlyoutWindow : Window
         }
 
         var item = entry.Item;
-        var icon = item.Icon is { } image
+        // An API key shows its service's logo (DeepSeek's), else the linked agent's icon.
+        var iconImage = (entry.Api is { } api ? _icons.Get(ApiProviderIcon(api)) : null) ?? item?.Icon;
+        var icon = iconImage is { } image
             ? (UIElement)new Image { Source = image, Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center }
-            : new FontIcon { Glyph = item.Glyph, FontSize = 16, Width = 20, VerticalAlignment = VerticalAlignment.Center };
+            : new FontIcon { Glyph = item?.Glyph ?? "", FontSize = 16, Width = 20, VerticalAlignment = VerticalAlignment.Center };
         var lines = new StackPanel { Spacing = 2 };
-        lines.Children.Add(new TextBlock { Text = item.Definition.Name, TextTrimming = TextTrimming.CharacterEllipsis });
+        lines.Children.Add(new TextBlock { Text = entry.Title, TextTrimming = TextTrimming.CharacterEllipsis });
         if (most is { } value)
         {
             var bar = new ProgressBar { Maximum = 100, Value = value, ShowError = value >= 90, ShowPaused = value is >= 75 and < 90 };
-            AutomationProperties.SetName(bar, $"{item.Definition.Name} usage");
+            AutomationProperties.SetName(bar, $"{entry.Title} usage");
             lines.Children.Add(bar);
         }
         lines.Children.Add(new TextBlock
@@ -2859,8 +2951,16 @@ public sealed partial class FlyoutWindow : Window
             Content = content,
             Tag = item
         };
+        if (item is null)
+        {
+            // A key no agent is linked to: settings, where an agent can be linked to it.
+            AutomationProperties.SetName(button, $"{entry.Title}: {text}");
+            ToolTipService.SetToolTip(button, "Link it to an agent in settings");
+            button.Click += (_, _) => ShowSettingsPage();
+            return button;
+        }
         AutomationProperties.SetName(button, $"Open {item.Definition.Name}: {text}");
-        ToolTipService.SetToolTip(button, $"Open {item.Definition.Name}");
+        ToolTipService.SetToolTip(button, entry.Api is null ? $"Open {item.Definition.Name}" : $"Open {item.Definition.Name} ({entry.Title})");
         button.Click += (_, _) => Launch(item);
         return button;
     }
