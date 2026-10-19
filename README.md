@@ -127,6 +127,12 @@ After that, manage them on the settings page (the gear in the footer), under **A
   agent's picture. It writes hidden, app-owned profiles into Terminal's Fragments folder (and
   removes them when Waifus are off). Your other profiles are left alone. If Terminal has not loaded
   a profile yet, the agent opens normally.
+- **Taskbar icon** picks the picture on Agent Dock's pinned taskbar button: Agent Dock's own, seven
+  plain logos, or (with Waifu backgrounds on) a waifu for Agent Dock or any agent it knows.
+  Windows only redraws a pinned icon when File Explorer restarts, so Agent Dock offers
+  **Restart now** (which closes any open File Explorer windows); otherwise it changes at your next
+  sign-in. Turning Waifu backgrounds off switches a waifu icon back to Agent Dock's own, and
+  turning them on again brings it back, unless you've picked another icon in between.
 - Or right-click an agent in the flyout (or press Shift+F10) for **Settings** (its page) and
   **Remove from list**.
 - **Duplicate** makes a second copy of the same agent with its own name and variables, for example a

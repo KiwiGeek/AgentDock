@@ -10,7 +10,8 @@ namespace AgentDock.Services;
 /// </summary>
 internal static class JumpList
 {
-    public static void Update(IEnumerable<AgentItem> presets, IEnumerable<AgentItem> agents, string folder)
+    /// <param name="appIcon">The chosen taskbar icon's file (<see cref="TaskbarIcon"/>), for Agent Dock's own entries; null for the exe's.</param>
+    public static void Update(IEnumerable<AgentItem> presets, IEnumerable<AgentItem> agents, string folder, string? appIcon = null)
     {
         try
         {
@@ -54,7 +55,7 @@ internal static class JumpList
             }
 
             var tasks = NewCollection();
-            tasks.AddObject(NewLink(self, "--quit", "Quit Agent Dock", "Stop the background instance", self));
+            tasks.AddObject(NewLink(self, "--quit", "Quit Agent Dock", "Stop the background instance", appIcon ?? self));
             list.AddUserTasks(tasks);
 
             list.CommitList();

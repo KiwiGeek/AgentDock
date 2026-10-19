@@ -82,6 +82,13 @@ shows a usage overview of every agent with a suggestion of which to use.
 - Hand-set `Cookie` headers need `SocketsHttpHandler { UseCookies = false }`.
 - A failed C# compile makes the XAML compiler report misleading WMC0909/WMC1509 errors; fix the C#
   error first.
+- **A pinned taskbar icon can't be refreshed live** (tested 2026-10-19). Changing the icon of the
+  pin's shortcut (`User Pinned\TaskBar\AgentDock.lnk`) showed on the taskbar only 2 times in about
+  12. None of these made it reliable: `SHChangeNotify` (`UPDATEITEM` with or without `FLUSH`,
+  `UPDATEDIR`, `ASSOCCHANGED`), `SHUpdateImage`, `ie4uinit -show`, fresh icon file names, waiting,
+  or opening the flyout. Cendio's ThinLinc hit the same wall and gave up (bugzilla.cendio.com bug
+  7970). **Restarting Explorer does work**, and the resident Agent Dock survives it. Check the
+  taskbar through UI Automation (the button is named "AgentDock pinned"), capturing just its rectangle.
 - Verify network parsers against the real service with a throwaway console project in the
   scratchpad that compiles the service file(s) directly, then delete it. Print numbers, never tokens.
 
@@ -310,7 +317,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - **Settings page:** the gear in the footer swaps the list for a page in the same window (so
   placement, acrylic and hide-on-deactivate stay as they are). The page keeps the list's height (see "Height can be dragged"), not its
   content. Two levels (owner's request, 2026-10-16):
-  - **General**: Waifu backgrounds, Hide unavailable agents, Usage overview (see Drawer), Remember recents and **Clear recents**
+  - **General**: Waifu backgrounds, Taskbar icon (see "Taskbar icon"), Hide unavailable agents, Usage overview (see Drawer), Remember recents and **Clear recents**
     (a confirm flyout; disabled when nothing is saved). Remember recents is general on purpose,
     and its text doesn't name Claude: several agents record them, including OpenCode and Aider. Below it, **Agents**:
     a row for every agent in the list, in order
@@ -584,7 +591,11 @@ there degrade to a missing icon or entry, never an error.
 | `Services/CursorUsage.cs` | Cursor usage from cursor.com (`/api/usage-summary`, with Cursor CLI's sign-in from `%APPDATA%\cursor\auth.json`) |
 | `Services/CopilotUsage.cs` | GitHub Copilot usage this month (AI credits against the plan), via `gh api copilot_internal/user` |
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
-| `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts) |
+| `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts), and setting a pin's icon |
+| `Services/TaskbarIcon.cs` | The taskbar icon choices, applying one to the pin, restarting File Explorer to show it |
+| `Models/TaskbarIconChoice.cs` | An icon in the settings page's taskbar icon picker |
+| `Assets/AppIcons/` | Taskbar icon sources (`appicon-<id>.png`, 1024 px, not shipped) and the built `ico/<id>.ico` (compiled in) |
+| `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
 | `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
 | `AGENTS.md` | This handoff: the owner's rules, lessons learned, which agents are done, and the reference |
@@ -601,6 +612,7 @@ there degrade to a missing icon or entry, never an error.
   whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
   folders, the dragged list height, and where Claude usage comes from).
 - `%LOCALAPPDATA%\AgentDock\Icons\`: PNG icon cache.
+- `%LOCALAPPDATA%\AgentDock\TaskbarIcons\`: the chosen taskbar icon, which the pin's shortcut points at.
 
 ### Conventions
 
@@ -1047,6 +1059,40 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   flyout resets it.
 - **Not yet verified in-app:** loading from the embedded resources. The build embeds all 10, but
   nobody has hovered since.
+
+#### Taskbar icon (owner's request, 2026-10-19; `Services/TaskbarIcon.cs`)
+
+- **The choice:** Settings → General → Taskbar icon, a `GridView` (`TaskbarIconPicker`) under Waifu
+  backgrounds. Agent Dock's own icon (`default`, the exe's `Assets\AgentDock.ico`), seven plain logos,
+  and with waifus on the host character (`waifu-dock-1..3`) and one waifu per known agent, named after
+  it. Only icons compiled in are offered. One choice overall, whatever the waifu mode (owner's decision).
+  `SingleSelectionFollowsFocus="False"`: each choice rewrites the pin, so arrowing through mustn't
+  (with it on, a choice changed by itself once in testing).
+- **Artwork:** 1024 px sources in `Assets\AppIcons\appicon-<id>.png` (made by the owner's image
+  generator from a brief; not shipped). `tools\Build-AppIcons.ps1` crops each to what's drawn (the
+  sources have a 6% border, which looked small next to other taskbar icons; owner, 2026-10-19),
+  then writes `Assets\AppIcons\ico\<id>.ico` with PNG frames at 16, 20, 24, 32, 40, 48, 64 and 256 px
+  (stepwise halving, light unsharp mask at 48 px and below). Those are committed and compiled in as
+  `AppIcons.<id>.ico` (about 3.7 MB). Rerun the script after changing a source.
+- **Applying:** the pinned button is the pin's shortcut (Agent Dock's window is hidden from the
+  taskbar), so `TaskbarIcon.Apply` writes the icon to `%LOCALAPPDATA%\AgentDock\TaskbarIcons\<id>-<hash>.ico`
+  and sets it on every pin of this exe (`TaskbarPins.ShortcutsTo` / `SetIcon`: load, `SetIconLocation`,
+  save in place, so the pin stays). The default sets an empty location (the target's icon, as when
+  Windows pins it). The hash is of the icon's contents, because Windows' icon cache survives Explorer
+  restarts and is keyed by path; older files there are deleted. The jump list's Quit entry uses the
+  same file (`UpdateJumpList`). Not pinned: the picker is disabled with a note.
+- **Showing it:** Windows doesn't redraw a pinned icon (see "Things learned the hard way"), so after a
+  choice an InfoBar offers **Restart now** (`TaskbarIcon.RestartExplorer`: closes this session's
+  explorer.exe, which Windows restarts by itself; starts it by hand after 5 s). Otherwise it shows at
+  the next sign-in. The offer stays until a restart (`_taskbarIconPending`).
+- **Waifus off:** a waifu icon switches to Agent Dock's own, and the waifu one is kept in
+  `DockState.TaskbarWaifuIcon`; turning waifus on brings it back if no other icon was chosen in between
+  (my recommendation, not yet confirmed by the owner). The choice is `DockState.TaskbarIcon` (null =
+  default).
+- **Verified 2026-10-19** through UI Automation and a capture of the taskbar button: all 32 choices
+  listed, choosing sets the shortcut and state, waifus off/on as above (8 choices with waifus off), and
+  **Restart now** showed Grok's waifu on the taskbar, the same size as the icons beside it, with Agent
+  Dock still running. **Not yet verified:** the picker's look, keyboard use, the not-pinned note.
 
 ### Possible next steps (none requested yet; ask before starting)
 

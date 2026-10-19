@@ -29,6 +29,45 @@ internal static class TaskbarPins
         }
     }
 
+    /// <summary>The pin shortcuts that start this exe (normally one). Must be called on an STA thread.</summary>
+    public static List<string> ShortcutsTo(string exePath)
+    {
+        try
+        {
+            return Directory.Exists(PinFolder)
+                ? Directory.EnumerateFiles(PinFolder, "*.lnk")
+                    .Where(lnk => string.Equals(TargetOf(lnk), exePath, StringComparison.OrdinalIgnoreCase))
+                    .ToList()
+                : [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Sets a pin's icon: an .ico file, or empty for its target's own icon. Everything else in the
+    /// shortcut is kept (it's loaded, changed and saved in place), so the pin itself stays.
+    /// </summary>
+    public static bool SetIcon(string shortcut, string iconPath)
+    {
+        try
+        {
+            Check(ShellCom.CoCreateInstance(ShellCom.CLSID_ShellLink, 0, ShellCom.CLSCTX_INPROC_SERVER,
+                ShellCom.IID_IShellLinkW, out IShellLinkW link));
+            var file = (IPersistFile)link;
+            file.Load(shortcut, ShellCom.STGM_READWRITE);
+            link.SetIconLocation(iconPath, 0);
+            file.Save(null, true);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return false;
+        }
+    }
+
     private static unsafe string? TargetOf(string shortcut)
     {
         try

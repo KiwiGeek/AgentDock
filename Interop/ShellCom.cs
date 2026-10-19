@@ -90,6 +90,8 @@ internal partial interface IPersistFile
     [PreserveSig]
     int IsDirty();
     void Load(string fileName, uint mode);
+    /// <summary>Null file name: save back to the file it was loaded from.</summary>
+    void Save(string? fileName, [MarshalAs(UnmanagedType.Bool)] bool remember);
 }
 
 [StructLayout(LayoutKind.Sequential)]
@@ -142,6 +144,7 @@ internal static partial class ShellCom
     public const uint CLSCTX_INPROC_SERVER = 1;
     public const ushort VT_LPWSTR = 31;
     public const uint STGM_READ = 0;
+    public const uint STGM_READWRITE = 2;
 
     [LibraryImport("shell32.dll", StringMarshalling = StringMarshalling.Utf16)]
     public static partial int SHCreateItemFromParsingName(string path, nint bindContext, in Guid riid, out IShellItem item);

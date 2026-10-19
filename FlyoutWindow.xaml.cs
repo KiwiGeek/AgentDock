@@ -228,6 +228,9 @@ public sealed partial class FlyoutWindow : Window
             HideFlyout(byDeactivation: true);
     }
 
+    private void UpdateJumpList(string? folder = null) =>
+        JumpList.Update(_presets, _cli.Concat(_desktop), folder ?? CurrentFolder, TaskbarIcon.FileFor(_state.TaskbarIcon));
+
     private void SetStatus(string text)
     {
         StatusText.Text = text;
@@ -648,7 +651,7 @@ public sealed partial class FlyoutWindow : Window
                 }
             }
 
-            JumpList.Update(_presets, _cli.Concat(_desktop), CurrentFolder);
+            UpdateJumpList();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -923,7 +926,7 @@ public sealed partial class FlyoutWindow : Window
             .Take(Math.Max(1, _settings.MaxRecentFolders))
             .ToList();
         _store.SaveState(_state);
-        JumpList.Update(_presets, _cli.Concat(_desktop), path);
+        UpdateJumpList(path);
     }
 
     private void FolderBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1610,6 +1613,11 @@ public sealed partial class FlyoutWindow : Window
             ? "Hide agents in your list that aren't installed any more, instead of showing them dimmed."
             : "Fix agents.json to change this here.";
         ClearRecentsButton.IsEnabled = RecentLaunches.Any(_state);
+        BuildTaskbarIconPicker();
+        if (_taskbarIconPending)
+            ShowTaskbarIconBar(null);
+        else
+            TaskbarIconRestartBar.IsOpen = false;
         _settingsToggleReady = true;
 
         MainPage.Visibility = Visibility.Collapsed;
@@ -1649,6 +1657,7 @@ public sealed partial class FlyoutWindow : Window
         UpdateBannerHeart();
         if (!_state.ShowHoverBackgrounds)
             FadeBackdrop(null);
+        TaskbarIconFollowWaifus();
     }
 
     private void CloseTerminalOnExitSwitch_Toggled(object sender, RoutedEventArgs e)
@@ -1691,6 +1700,132 @@ public sealed partial class FlyoutWindow : Window
             return;
         _state.ShowUsageSummary = UsageSummarySwitch.IsOn;
         _store.SaveState(_state);
+    }
+
+    // ---------- Taskbar icon ----------
+
+    private readonly Dictionary<string, BitmapImage> _taskbarIconPreviews = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>False while the picker is being filled, so setting its selection doesn't count as a choice.</summary>
+    private bool _taskbarIconPickerReady;
+    /// <summary>An icon was set but Explorer hasn't restarted since, so the restart offer stays.</summary>
+    private bool _taskbarIconPending;
+
+    private string CurrentTaskbarIcon => _state.TaskbarIcon ?? TaskbarIcon.DefaultId;
+
+    /// <summary>Fills the picker for the current waifu setting, with the current icon selected.</summary>
+    private void BuildTaskbarIconPicker()
+    {
+        _taskbarIconPickerReady = false;
+        var choices = TaskbarIcon.Choices(_state.ShowHoverBackgrounds)
+            .Select(c => new TaskbarIconChoice(c.Id, c.Name, TaskbarIconPreview(c.Id)))
+            .ToList();
+        TaskbarIconPicker.ItemsSource = choices;
+        TaskbarIconPicker.SelectedItem = choices.FirstOrDefault(c => c.Id.Equals(CurrentTaskbarIcon, StringComparison.OrdinalIgnoreCase));
+        var pinned = Environment.ProcessPath is { } exe && TaskbarPins.IsPinned(exe);
+        TaskbarIconPicker.IsEnabled = pinned;
+        TaskbarIconNote.Text = pinned
+            ? "The picture on Agent Dock's taskbar button."
+            : "Pin Agent Dock to the taskbar to choose its icon.";
+        _taskbarIconPickerReady = true;
+    }
+
+    /// <summary>The 256 px frame, decoded small; kept for the life of the process like the agent icons.</summary>
+    private BitmapImage? TaskbarIconPreview(string id)
+    {
+        if (_taskbarIconPreviews.TryGetValue(id, out var cached))
+            return cached;
+        if (TaskbarIcon.Preview(id) is not { } png)
+            return null;
+        var image = new BitmapImage { DecodePixelWidth = 96 };
+        _taskbarIconPreviews[id] = image;
+        _ = LoadTaskbarIconPreviewAsync(image, png);
+        return image;
+    }
+
+    private static async Task LoadTaskbarIconPreviewAsync(BitmapImage image, byte[] png)
+    {
+        try
+        {
+            using var stream = new MemoryStream(png).AsRandomAccessStream();
+            await image.SetSourceAsync(stream);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // A blank tile; the icon itself still works.
+        }
+    }
+
+    private void TaskbarIconPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_taskbarIconPickerReady || TaskbarIconPicker.SelectedItem is not TaskbarIconChoice choice
+            || choice.Id.Equals(CurrentTaskbarIcon, StringComparison.OrdinalIgnoreCase))
+            return;
+        // Chosen by hand, so there's no earlier waifu icon to bring back any more.
+        _state.TaskbarWaifuIcon = null;
+        if (!SetTaskbarIcon(choice.Id))
+            BuildTaskbarIconPicker(); // back to the icon that's really there
+    }
+
+    /// <summary>
+    /// Waifu backgrounds was switched: off takes a waifu icon off the taskbar (Agent Dock's own icon
+    /// instead, remembering the waifu one), and on brings that one back if nothing was chosen since.
+    /// </summary>
+    private void TaskbarIconFollowWaifus()
+    {
+        if (!_state.ShowHoverBackgrounds && TaskbarIcon.IsWaifu(_state.TaskbarIcon))
+        {
+            var waifu = _state.TaskbarIcon;
+            if (SetTaskbarIcon(TaskbarIcon.DefaultId))
+            {
+                _state.TaskbarWaifuIcon = waifu;
+                _store.SaveState(_state);
+            }
+        }
+        else if (_state.ShowHoverBackgrounds && _state.TaskbarIcon is null && _state.TaskbarWaifuIcon is { } earlier
+                 && SetTaskbarIcon(earlier))
+        {
+            _state.TaskbarWaifuIcon = null;
+            _store.SaveState(_state);
+        }
+        BuildTaskbarIconPicker();
+    }
+
+    /// <summary>Sets the pinned icon and saves the choice. On failure, says why and changes nothing.</summary>
+    private bool SetTaskbarIcon(string id)
+    {
+        if (TaskbarIcon.Apply(id) is { } error)
+        {
+            ShowTaskbarIconBar(error);
+            return false;
+        }
+        _state.TaskbarIcon = id == TaskbarIcon.DefaultId ? null : id;
+        _store.SaveState(_state);
+        UpdateJumpList();
+        _taskbarIconPending = true;
+        ShowTaskbarIconBar(null);
+        return true;
+    }
+
+    /// <summary>The restart offer, or (with <paramref name="error"/>) why the icon couldn't be set.</summary>
+    private void ShowTaskbarIconBar(string? error)
+    {
+        TaskbarIconRestartBar.Severity = error is null ? InfoBarSeverity.Informational : InfoBarSeverity.Warning;
+        TaskbarIconRestartBar.Title = error is null ? "Restart File Explorer to see it" : "";
+        TaskbarIconRestartBar.Message = error
+            ?? "Windows shows the new icon after File Explorer restarts, or the next time you sign in. Restarting closes any open File Explorer windows.";
+        TaskbarIconRestartButton.Visibility = error is null ? Visibility.Visible : Visibility.Collapsed;
+        TaskbarIconRestartBar.IsOpen = true;
+    }
+
+    private async void TaskbarIconRestart_Click(object sender, RoutedEventArgs e)
+    {
+        TaskbarIconRestartButton.IsEnabled = false;
+        var cameBack = await Task.Run(TaskbarIcon.RestartExplorer);
+        TaskbarIconRestartButton.IsEnabled = true;
+        _taskbarIconPending = false;
+        TaskbarIconRestartBar.IsOpen = false;
+        if (!cameBack)
+            ShowTaskbarIconBar("File Explorer didn't start again by itself, so Agent Dock started it.");
     }
 
     private void ClearRecents_Click(object sender, RoutedEventArgs e)
@@ -1966,7 +2101,7 @@ public sealed partial class FlyoutWindow : Window
         ShowAgents(_agents);
         StatusText.Text = status ?? "";
         PlaceWindow();
-        JumpList.Update(_presets, _cli.Concat(_desktop), CurrentFolder);
+        UpdateJumpList();
     }
 
     private string UniquePresetName(string baseName)

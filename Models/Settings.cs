@@ -257,6 +257,19 @@ public sealed class DockState
     public bool ShowUsageSummary { get; set; } = true;
 
     /// <summary>
+    /// The taskbar icon chosen in settings (<see cref="Services.TaskbarIcon"/>): "plain-dock",
+    /// "waifu-claude" and so on. Null or "default" is Agent Dock's own icon.
+    /// </summary>
+    public string? TaskbarIcon { get; set; }
+
+    /// <summary>
+    /// The waifu icon that was chosen when Waifu backgrounds was turned off, which switched the
+    /// taskbar to Agent Dock's own icon. Turning waifus back on brings it back, unless another icon
+    /// was chosen in between.
+    /// </summary>
+    public string? TaskbarWaifuIcon { get; set; }
+
+    /// <summary>
     /// Newest folder first, per agent id, at most <see cref="Services.RecentLaunches.MaxCount"/>.
     /// Launching one already in the list moves it to the front and shifts the newer ones down.
     /// </summary>

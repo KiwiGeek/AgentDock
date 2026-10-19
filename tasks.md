@@ -40,6 +40,17 @@ Verify their appearance in the running app; close-on-exit is already good.
 Answered: Cursor CLI's command is still `cursor-agent` (2026.10.16), with `agent` as an alias;
 `IsCursor` and `RecentLaunches.Records` match it by catalog id too.
 
+## Taskbar icon picker: follow-ups
+
+Built 2026-10-19 (see "Taskbar icon" in `AGENTS.md`). Left:
+
+- Confirm with the owner: turning waifus back on restores the earlier waifu icon (built that way,
+  on my recommendation), and Agent Dock's own icon is the plain default.
+- A pinned shortcut that's re-created (unpinned and pinned again) gets the exe's icon back, and
+  settings would still show the old choice. Possibly re-apply the choice when the pin prompt sees a new pin.
+- Fallback if an Explorer restart ever doesn't show it: set `PKEY_AppUserModel_RelaunchIconResource`
+  on the pin prompt window, so re-pinning picks up the chosen icon.
+
 ## Clean up Copilot naming (raised 2026-10-19)
 
 Three different products are all called "Copilot", and Agent Dock's names don't make clear which is which:

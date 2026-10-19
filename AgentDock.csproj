@@ -42,6 +42,16 @@
     <EmbeddedResource Include="Assets\Agents\*-background.png" LogicalName="AgentBackgrounds.%(Filename)%(Extension)" />
     <!-- The Windows App SDK would otherwise also copy them next to the exe as loose files. -->
     <Content Remove="Assets\Agents\*.png" />
+
+    <!--
+      Taskbar icon choices (Services/TaskbarIcon.cs), named "AppIcons.<id>.ico". Built from the
+      1024 px Assets\AppIcons\appicon-<id>.png sources by tools\Build-AppIcons.ps1; the sources
+      themselves don't ship. Agent Dock's own icon is the "default" choice.
+    -->
+    <EmbeddedResource Include="Assets\AppIcons\ico\*.ico" LogicalName="AppIcons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\AgentDock.ico" LogicalName="AppIcons.default.ico" />
+    <Content Remove="Assets\AppIcons\**" />
+    <None Remove="Assets\AppIcons\**" />
   </ItemGroup>
 
   <ItemGroup>

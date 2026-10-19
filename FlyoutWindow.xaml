@@ -298,6 +298,43 @@
                                   AutomationProperties.Name="Waifu backgrounds"
                                   AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
                 </Grid>
+                <!-- The pinned button's icon (TaskbarIcon). Waifu icons are offered only with waifus on. -->
+                <StackPanel Margin="16,0,16,16" Spacing="8">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Taskbar icon" />
+                        <TextBlock x:Name="TaskbarIconNote" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <!-- Selection doesn't follow focus: each choice rewrites the pin, so arrowing through mustn't. -->
+                    <GridView x:Name="TaskbarIconPicker" SelectionMode="Single" SingleSelectionFollowsFocus="False" Margin="-4,0"
+                              SelectionChanged="TaskbarIconPicker_SelectionChanged"
+                              ScrollViewer.VerticalScrollMode="Disabled"
+                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                              AutomationProperties.Name="Taskbar icon">
+                        <GridView.ItemContainerStyle>
+                            <Style TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                                <Setter Property="Margin" Value="2" />
+                                <Setter Property="Padding" Value="4" />
+                                <Setter Property="MinWidth" Value="0" />
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </GridView.ItemContainerStyle>
+                        <GridView.ItemTemplate>
+                            <DataTemplate x:DataType="models:TaskbarIconChoice">
+                                <Image Source="{x:Bind Preview}" Width="36" Height="36"
+                                       ToolTipService.ToolTip="{x:Bind Name}"
+                                       AutomationProperties.Name="{x:Bind Name}" />
+                            </DataTemplate>
+                        </GridView.ItemTemplate>
+                    </GridView>
+                    <InfoBar x:Name="TaskbarIconRestartBar" IsOpen="False" Severity="Informational" IsClosable="True"
+                             Title="Restart File Explorer to see it"
+                             Message="Windows shows the new icon after File Explorer restarts, or the next time you sign in. Restarting closes any open File Explorer windows.">
+                        <InfoBar.ActionButton>
+                            <Button x:Name="TaskbarIconRestartButton" Content="Restart now" Click="TaskbarIconRestart_Click" />
+                        </InfoBar.ActionButton>
+                    </InfoBar>
+                </StackPanel>
                 <Grid Margin="16,0,16,16" ColumnSpacing="12">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel Spacing="2" VerticalAlignment="Center">
