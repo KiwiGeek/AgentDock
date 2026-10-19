@@ -130,7 +130,9 @@ Details per agent are under Reference; what's still to review per agent is in `t
   folder** (`codex://threads/new?path=`, added 2026-10-16), with presets and recent folders. Usage is
   Codex's default account (assumes the app is signed in as the Codex CLI is). Not yet verified by an
   actual launch. A row button and its right-click menu also open the app plainly, without a folder.
-- [ ] **Copilot** (desktop): icon, picture, launch. No usage.
+- [ ] **Copilot** (desktop): icon, picture, launch. No usage. It's **Microsoft** Copilot, though the
+  UI just says "Copilot"; GitHub's Copilot desktop app isn't a known agent yet. Naming clean-up is
+  in `tasks.md` ("Clean up Copilot naming").
 - [ ] **Perplexity** (desktop): icon, picture, launch. No usage.
 
 ## Not done, across the app

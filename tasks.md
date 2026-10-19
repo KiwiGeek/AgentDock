@@ -40,6 +40,24 @@ Verify their appearance in the running app; close-on-exit is already good.
 Answered: Cursor CLI's command is still `cursor-agent` (2026.10.16), with `agent` as an alias;
 `IsCursor` and `RecentLaunches.Records` match it by catalog id too.
 
+## Clean up Copilot naming (raised 2026-10-19)
+
+Three different products are all called "Copilot", and Agent Dock's names don't make clear which is which:
+
+- `copilot` is **GitHub Copilot CLI** (the `copilot` command). Named correctly.
+- `copilot-desktop` is shown as just **"Copilot"**, but it's **Microsoft Copilot** (the consumer
+  assistant, copilot.com; Start menu "Copilot" / "Microsoft Copilot"). Its icon and picture are
+  Microsoft's. It isn't installed on the owner's PC.
+- **GitHub Copilot desktop** (Start menu "GitHub Copilot", app id `com.github.githubapp`) is installed
+  on the owner's PC, but Agent Dock doesn't know it. The `copilot-desktop` names don't match it
+  (Start menu names match exactly).
+
+To decide: rename `copilot-desktop`'s display name to "Microsoft Copilot" (and whether its id should
+change too: existing agents.json files, the picture `copilot-desktop-background.png` and the icon all
+use that id). Also whether to add GitHub Copilot desktop as its own known agent, with an icon, a
+picture, a check for whether it opens in a folder, and possibly Copilot CLI's usage (if it's the
+same GitHub account). Use these names consistently in the UI, README, AGENTS.md and the app-icon brief.
+
 ## Maybe later: profiles for API credits
 
 Decided 2026-10-16: DeepSeek is covered by its own agent, DeepSeek Harness (above), so this is
