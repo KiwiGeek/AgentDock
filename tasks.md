@@ -31,7 +31,8 @@ confirm the command (or Start menu name), keep or remove it, and look for a usag
 | `claude-desktop` | Claude | Start menu "Claude" | yes | Done: opens a Claude Code session in the working folder (`claude://code/new?folder=`), presets, recents, and Claude Code's usage |
 | `chatgpt-desktop` | ChatGPT | Start menu "ChatGPT" | yes | Opens a new chat in the working folder (`codex://threads/new?path=`), presets, recents, and Codex's usage. Still to confirm by an actual launch |
 | `cursor` | Cursor | Start menu "Cursor" | yes | Usage (Cursor CLI's account), and opens the working folder as a workspace (`Cursor.exe <folder>`), presets, recents. Still to confirm the folder launch by an actual launch |
-| `copilot-desktop` | Copilot | Start menu "Copilot" | yes | Launch only. Microsoft Copilot, not GitHub's |
+| `github-copilot-desktop` | GitHub Copilot | Start menu "GitHub Copilot" | yes | Opens a session in the working folder (via `copilot app`), presets, recents, Copilot CLI's usage; chat button opens it without a folder. Still to verify by eye: the drawer and picture. No waifu taskbar icon of its own (owner: not needed for now) |
+| `microsoft-copilot` | Microsoft Copilot | Start menu "Copilot" | yes | Launch only. Renamed from `copilot-desktop` / "Copilot" on 2026-10-19 (older entries are migrated). Not installed on the owner's PC |
 | `perplexity` | Perplexity | Start menu "Perplexity" | yes | Launch only |
 
 Windows Terminal waifu profiles now use the shared Fragments folder (not a settings `"import"`).
@@ -50,24 +51,6 @@ Built 2026-10-19 (see "Taskbar icon" in `AGENTS.md`). Left:
   settings would still show the old choice. Possibly re-apply the choice when the pin prompt sees a new pin.
 - Fallback if an Explorer restart ever doesn't show it: set `PKEY_AppUserModel_RelaunchIconResource`
   on the pin prompt window, so re-pinning picks up the chosen icon.
-
-## Clean up Copilot naming (raised 2026-10-19)
-
-Three different products are all called "Copilot", and Agent Dock's names don't make clear which is which:
-
-- `copilot` is **GitHub Copilot CLI** (the `copilot` command). Named correctly.
-- `copilot-desktop` is shown as just **"Copilot"**, but it's **Microsoft Copilot** (the consumer
-  assistant, copilot.com; Start menu "Copilot" / "Microsoft Copilot"). Its icon and picture are
-  Microsoft's. It isn't installed on the owner's PC.
-- **GitHub Copilot desktop** (Start menu "GitHub Copilot", app id `com.github.githubapp`) is installed
-  on the owner's PC, but Agent Dock doesn't know it. The `copilot-desktop` names don't match it
-  (Start menu names match exactly).
-
-To decide: rename `copilot-desktop`'s display name to "Microsoft Copilot" (and whether its id should
-change too: existing agents.json files, the picture `copilot-desktop-background.png` and the icon all
-use that id). Also whether to add GitHub Copilot desktop as its own known agent, with an icon, a
-picture, a check for whether it opens in a folder, and possibly Copilot CLI's usage (if it's the
-same GitHub account). Use these names consistently in the UI, README, AGENTS.md and the app-icon brief.
 
 ## Maybe later: profiles for API credits
 

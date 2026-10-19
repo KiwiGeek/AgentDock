@@ -37,7 +37,6 @@ public static class AgentIcons
         ?? BundledBackground(definition.Id)
         ?? BundledBackground(definition.Catalog)
         ?? (definition.Kind == AgentKind.Cli ? BundledBackground(CommandName(definition.Command)) : null);
-
     public static bool IsBundledBackground(string source) => source.StartsWith(BackgroundPrefix, StringComparison.Ordinal);
 
     public static Stream? OpenBundledBackground(string source) =>

@@ -141,8 +141,7 @@ public partial class App : Application
         if (mode is not null)
         {
             var other = KnownAgents.OtherLaunches(definition)
-                .FirstOrDefault(o => o.Mode.Equals(mode, StringComparison.OrdinalIgnoreCase));
-            var otherError = other is null
+                .FirstOrDefault(o => o.Mode.Equals(mode, StringComparison.OrdinalIgnoreCase));            var otherError = other is null
                 ? $"{definition.Name} can't be opened as \"{mode}\"."
                 : Launcher.Launch(item, other);
             if (otherError is not null)

@@ -48,8 +48,8 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Terminal button (footer) | Plain shell in the working folder, no agent |
 | Pencil button (footer) | Opens `agents.json` |
 | Gear button (footer) | Settings, including your agents (add, rename, duplicate, remove). Esc there goes back to the list |
-| Chat button on the Claude or ChatGPT row | Opens the app for a plain chat, without the working folder (see below) |
-| Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (agents that open in a folder), **Settings**, or **Remove from list**. Claude also has **New chat** and **New Cowork session**, ChatGPT **Open without a folder** |
+| Chat button on the Claude, ChatGPT or GitHub Copilot row | Opens the app for a plain chat, without the working folder (see below) |
+| Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (agents that open in a folder), **Settings**, or **Remove from list**. Claude also has **New chat** and **New Cowork session**, ChatGPT and GitHub Copilot **Open without a folder** |
 | Right-click a preset | Rename or remove it |
 | Drag the top edge (the bottom edge if your taskbar is at the top) | Makes the list taller or shorter. Double-click the edge to fit the list again |
 | Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. In settings, Esc goes back one level first (an agent's page, then the list) |
@@ -102,8 +102,8 @@ moment longer.
 The flyout shows only the agents you've chosen. The first time it opens, it offers to **Find
 agents**: Agent Dock looks for the agents it knows about (Claude Code, Codex, Antigravity CLI, GitHub
 Copilot CLI, OpenCode, Aider, Qwen Code, Cursor, Amp, Kiro, Goose, Crush, Factory Droid, Grok
-Build, Hermes Agent, DeepSeek Harness, and the Claude, ChatGPT, Copilot, Perplexity and Cursor
-desktop apps), lists the ones installed, and adds the ones you leave ticked. **Not now** starts
+Build, Hermes Agent, DeepSeek Harness, and the Claude, ChatGPT, GitHub Copilot, Microsoft Copilot,
+Perplexity and Cursor desktop apps), lists the ones installed, and adds the ones you leave ticked. **Not now** starts
 you with an empty list.
 
 After that, manage them on the settings page (the gear in the footer), under **Agents**:
@@ -286,13 +286,14 @@ minutes. (The `monthlyAllowance` setting of earlier versions is no longer used.)
 
 Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,
 `codex`, `antigravity`, `copilot`, `opencode`, `aider`, `qwen`, `cursor-cli`, `amp`, `kiro`, `goose`,
-`crush`, `droid`, `grok`, `hermes`, `deepseek`, `claude-desktop`, `chatgpt-desktop`, `copilot-desktop`,
-`perplexity`, `cursor`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
+`crush`, `droid`, `grok`, `hermes`, `deepseek`, `claude-desktop`, `chatgpt-desktop`,
+`github-copilot-desktop`, `microsoft-copilot`, `perplexity`, `cursor`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
 under any id. An `icon` setting overrides that. Desktop apps without either use the icon the Start
 menu shows. Anything else gets a plain terminal or app symbol.
 
 Hover pictures are built in the same way, as `Assets\Agents\<agent id>-background.png` (currently
-Aider, Amp, Antigravity CLI, ChatGPT, Claude, Claude Code, Codex, Copilot, Copilot desktop, Crush, Cursor, Cursor CLI,
+Aider, Amp, Antigravity CLI, ChatGPT, Claude, Claude Code, Codex, GitHub Copilot CLI, GitHub Copilot,
+Microsoft Copilot, Crush, Cursor, Cursor CLI,
 DeepSeek, Factory Droid, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
 by agent id or command name. A `background` setting overrides one. Turn them off with **Waifu
 backgrounds** on the settings page (the gear in the footer), which also hides the hearts on the
@@ -329,6 +330,11 @@ cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's ic
   Cowork session (`claude://cowork/new`). ChatGPT has no documented link for a plain chat (all its
   links are Codex's), so it just opens the app, showing whatever it showed last. None of these use
   the working folder or add to recent folders.
+- **GitHub Copilot (the desktop app) opens the working folder too**, as a new session there. GitHub
+  has no link for a local folder, so Agent Dock runs Copilot CLI's own `copilot app` in the folder,
+  hidden (without Copilot CLI it just opens the app). It has presets and recent folders, and the
+  same AI credits as Copilot CLI (one line in the usage overview). Its chat button opens the app
+  without a folder.
 - **Cursor opens the working folder too**, as a workspace (Agent Dock runs `Cursor.exe` with the
   folder, as Cursor's own `cursor .` command does). If that folder is already open, Cursor switches
   to its window. Presets and recent folders work for it as well.

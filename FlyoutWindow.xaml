@@ -605,6 +605,18 @@
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                            Text="Cursor's usage comes from cursor.com, using Cursor CLI's sign-in, for both the CLI and the desktop app. To switch accounts, sign in again in Cursor CLI. This is not a published Cursor API, and it can stop working." />
             </StackPanel>
+            <!-- GitHub Copilot CLI's and GitHub Copilot desktop's pages: where usage comes from, and (desktop) how it opens in a folder. -->
+            <StackPanel x:Name="CopilotSettings" Visibility="Collapsed">
+                <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                <TextBlock Margin="16,0,16,16" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Text="GitHub Copilot's AI credits come from GitHub, using the GitHub CLI's sign-in (gh), for both Copilot CLI and the desktop app. To switch accounts, sign in again with gh auth login. This is not a published GitHub API, and it can stop working." />
+                <StackPanel x:Name="CopilotFolderSection">
+                    <TextBlock Text="Working folder" Style="{StaticResource SectionHeaderStyle}" />
+                    <TextBlock x:Name="CopilotFolderNote" Margin="16,0,16,16" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </StackPanel>
             <!-- Shown under the agent's page for Claude Code (and its copies). -->
             <StackPanel x:Name="ClaudeSettings" Visibility="Collapsed">
                 <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />

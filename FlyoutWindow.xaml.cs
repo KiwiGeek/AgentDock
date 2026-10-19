@@ -1002,7 +1002,8 @@ public sealed partial class FlyoutWindow : Window
     /// <summary>Only for the agents in <see cref="RecentLaunches.Records"/>. A folder already in the list moves to the front.</summary>
     public void RememberLaunch(AgentDefinition agent, string agentId, string folder)
     {
-        if (RecentLaunches.Remember(_state, agent, agentId, folder))
+        // GitHub Copilot desktop without Copilot CLI opened without the folder.
+        if (KnownAgents.CanOpenFolder(agent) && RecentLaunches.Remember(_state, agent, agentId, folder))
             _store.SaveState(_state);
     }
 
@@ -1077,12 +1078,20 @@ public sealed partial class FlyoutWindow : Window
         };
     }
 
-    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings, CursorSettings, AiderSettings];
+    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings, CursorSettings, CopilotSettings, AiderSettings];
 
     /// <summary>
     /// Cursor CLI or the Cursor desktop app (one account, one usage), by catalog id or CLI command.
     /// The CLI's command can also be plain "agent", so the catalog id matters.
     /// </summary>
+    /// <summary>
+    /// GitHub Copilot CLI or GitHub Copilot desktop: one GitHub account (gh's sign-in), so the same
+    /// usage, drawer and overview row. The desktop app is matched by catalog id, having no command.
+    /// </summary>
+    private static bool IsGitHubCopilot(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "github-copilot-desktop", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "copilot");
+
     private static bool IsCursor(AgentDefinition definition) =>
         (definition.Catalog ?? definition.Id).ToLowerInvariant() is "cursor" or "cursor-cli"
         || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "cursor-agent");
@@ -1495,12 +1504,24 @@ public sealed partial class FlyoutWindow : Window
         // Claude desktop is Claude Code's default account (UsageAccount.For), so it gets Claude's choice too.
         var account = UsageAccount.For(definition);
         var panel = IsCursor(definition) ? CursorSettings
+            : IsGitHubCopilot(definition) ? CopilotSettings
             : account is { UsesOtherProvider: true } ? null
             : account is { Agent: "claude" } ? ClaudeSettings
             : definition.Kind == AgentKind.Cli ? AgentSettingsPanelFor(definition)
             : null;
         foreach (var other in AgentSettingsPanels)
             other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
+
+        if (panel == CopilotSettings)
+        {
+            // The desktop app opens in a folder only through Copilot CLI, so say whether that's there.
+            var desktop = KnownAgents.OpensFolderThroughCli(definition);
+            CopilotFolderSection.Visibility = desktop ? Visibility.Visible : Visibility.Collapsed;
+            if (desktop)
+                CopilotFolderNote.Text = KnownAgents.CanOpenFolder(definition)
+                    ? "GitHub Copilot opens a new session in the working folder, through GitHub Copilot CLI's copilot app command."
+                    : "Opening in the working folder needs GitHub Copilot CLI (the copilot command), which isn't installed, so GitHub Copilot opens without a folder.";
+        }
 
         if (panel == AiderSettings)
         {
@@ -2183,6 +2204,15 @@ public sealed partial class FlyoutWindow : Window
             ShowRecents(item);
             return true;
         }
+        if (IsGitHubCopilot(item.Definition))
+        {
+            _drawerItem = item;
+            UsageOffer.IsOpen = false;
+            StartCopilotCheck();
+            ShowCopilotUsage();
+            ShowRecents(item);
+            return true;
+        }
         // Claude and ChatGPT desktop share Claude Code's and Codex's default accounts (UsageAccount.For),
         // so they get the same drawer as those, below, with their own recents.
         if (!item.IsCli && UsageAccount.For(item.Definition) is null)
@@ -2228,13 +2258,6 @@ public sealed partial class FlyoutWindow : Window
                 UsageOffer.IsOpen = false;
                 StartGrokCheck();
                 ShowGrokCheck();
-                ShowRecents(item);
-                return true;
-            case "copilot":
-                _drawerItem = item;
-                UsageOffer.IsOpen = false;
-                StartCopilotCheck();
-                ShowCopilotUsage();
                 ShowRecents(item);
                 return true;
             default:
@@ -2452,6 +2475,8 @@ public sealed partial class FlyoutWindow : Window
             return new SummaryEntry(CursorCheckKey, item, check?.Result?.Usage ?? SavedFor(CursorCheckKey, CursorUsage.LoadSaved),
                 check?.Running == true, "month");
         }
+        if (IsGitHubCopilot(item.Definition))
+            return new SummaryEntry("copilot", item, null, _copilotFetching && _copilotUsage is null, "month", _copilotUsage);
         // Claude desktop has Claude Code's account, so it shares that row (or has it, if alone).
         var account = UsageAccount.For(item.Definition);
         if (account is { UsesOtherProvider: true } || (!item.IsCli && account is null))
@@ -2474,8 +2499,6 @@ public sealed partial class FlyoutWindow : Window
                 return new SummaryEntry(GrokCheckKey, item, check?.Result?.Usage ?? SavedFor(GrokCheckKey, GrokUsage.LoadSaved),
                     check?.Running == true, "week");
             }
-            case "copilot":
-                return new SummaryEntry("copilot", item, null, _copilotFetching && _copilotUsage is null, "month", _copilotUsage);
             default:
                 return null;
         }
@@ -2493,6 +2516,11 @@ public sealed partial class FlyoutWindow : Window
                 StartCursorCheck();
                 continue;
             }
+            if (IsGitHubCopilot(item.Definition))
+            {
+                StartCopilotCheck();
+                continue;
+            }
             var account = UsageAccount.For(item.Definition);
             if (account is { UsesOtherProvider: true } || (!item.IsCli && account is null))
                 continue;
@@ -2506,9 +2534,6 @@ public sealed partial class FlyoutWindow : Window
                     break;
                 case "grok":
                     StartGrokCheck();
-                    break;
-                case "copilot":
-                    StartCopilotCheck();
                     break;
             }
         }
@@ -3028,7 +3053,7 @@ public sealed partial class FlyoutWindow : Window
             _copilotFetching = false;
         }
         // Still showing Copilot? Fill in what arrived.
-        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && CommandName(item.Definition.Command) == "copilot")
+        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && IsGitHubCopilot(item.Definition))
             ShowCopilotUsage();
         else if (_summaryShowing)
             ShowSummary();

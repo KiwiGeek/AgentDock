@@ -40,6 +40,7 @@ public sealed class SettingsStore
             var settings = JsonSerializer.Deserialize(File.ReadAllText(SettingsPath), DockJsonContext.Default.DockSettings)
                            ?? DockSettings.CreateDefault();
             settings.Agents.RemoveAll(a => string.IsNullOrWhiteSpace(a.Id) || string.IsNullOrWhiteSpace(a.Name));
+            KnownAgents.MigrateRenamed(settings);
             return (settings, null);
         }
         catch (JsonException ex)
@@ -66,8 +67,12 @@ public sealed class SettingsStore
     {
         try
         {
-            if (File.Exists(StatePath))
-                return JsonSerializer.Deserialize(File.ReadAllText(StatePath), DockJsonContext.Default.DockState) ?? new DockState();
+            if (File.Exists(StatePath)
+                && JsonSerializer.Deserialize(File.ReadAllText(StatePath), DockJsonContext.Default.DockState) is { } state)
+            {
+                KnownAgents.MigrateRenamed(state);
+                return state;
+            }
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {

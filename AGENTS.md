@@ -137,9 +137,19 @@ Details per agent are under Reference; what's still to review per agent is in `t
   folder** (`codex://threads/new?path=`, added 2026-10-16), with presets and recent folders. Usage is
   Codex's default account (assumes the app is signed in as the Codex CLI is). Not yet verified by an
   actual launch. A row button and its right-click menu also open the app plainly, without a folder.
-- [ ] **Copilot** (desktop): icon, picture, launch. No usage. It's **Microsoft** Copilot, though the
-  UI just says "Copilot"; GitHub's Copilot desktop app isn't a known agent yet. Naming clean-up is
-  in `tasks.md` ("Clean up Copilot naming").
+- [ ] **GitHub Copilot** (desktop, `github-copilot-desktop`, Start menu "GitHub Copilot", GitHub's
+  own app): icon, and it **opens a session in the working folder** through Copilot CLI's `copilot app`
+  (added 2026-10-19), with presets, recent folders, and Copilot CLI's usage (same GitHub account:
+  shared drawer content, one overview row). Its chat button opens the app without a folder. Picture:
+  the goggles one that was Copilot CLI's until 2026-10-19 (the CLI has a new one with a terminal
+  prompt). Verified: added through Add agents, the launch from its row (a session with `cwd` in the
+  folder), recents; not yet: the hover drawer and picture by eye, the chat button.
+- [ ] **Microsoft Copilot** (desktop, `microsoft-copilot`, Start menu "Copilot"; Store id
+  `9NHT9RB2F4HD`): icon, picture, launch. No usage. Renamed 2026-10-19 from `copilot-desktop` /
+  "Copilot" (owner: fix the legacy naming), which read as GitHub's next to GitHub Copilot.
+  `KnownAgents.MigrateRenamed` moves older agents.json entries (catalog id, and the name if it was
+  still "Copilot"; the agent's own id stays, since presets, recents and the jump list use it) and
+  state.json's dismissed offers and taskbar icon choice. Not installed on the owner's PC.
 - [ ] **Perplexity** (desktop): icon, picture, launch. No usage.
 
 ## Not done, across the app
@@ -174,7 +184,7 @@ just above the taskbar button, listing AI agents:
   and a welcome offering **Find agents**, which scans for the agents in `Services/KnownAgents.cs`
   (Claude Code, Codex, Antigravity CLI, Copilot CLI, OpenCode, Aider, Qwen Code, Cursor CLI, Amp, Kiro,
   Goose, Crush, Factory Droid, Grok Build, Hermes Agent, DeepSeek Harness; Claude, ChatGPT,
-  Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
+  GitHub Copilot, Microsoft Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
 - Gemini CLI stopped serving personal Google accounts on 2026-06-18 (API keys and Code Assist
   licences still work), so it was removed from the known agents, with its icon and picture (owner,
   2026-10-16). Google moved those users to **Antigravity CLI** (`agy`, id `antigravity`), added the
@@ -325,7 +335,8 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Agent-specific settings show
     under it: Claude Code's (`ClaudeSettings`: "Usage limits", how Claude usage is found: "Read them
     from the status line" or "Ask Claude for them directly"), and text-only notes for Grok Build
-    (`GrokSettings`) and Cursor CLI / desktop (`CursorSettings`) saying where usage comes from, plus Aider's
+    (`GrokSettings`), Cursor CLI / desktop (`CursorSettings`) and GitHub Copilot CLI / desktop
+    (`CopilotSettings`, plus how the desktop app opens in a folder) saying where usage comes from, plus Aider's
     (`AiderSettings`) model name and model finder. Agent Dock runs Aider's local `--list-models <search>` to find
     its known model identifiers, then appends the selection as `--model`; credentials and providers remain configured
     in Aider, and its catalogue is not a check of account access. To add another, add a
@@ -411,6 +422,18 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     payload "mode id"). `Launcher.Launch(item, OtherLaunch)` doesn't record a recent folder.
     Verified 2026-10-19 through UI Automation: the "New chat" and "Open without a folder" buttons
     are on the rows. **Not yet verified:** an actual launch from the button, the menu or the jump list.
+  - **GitHub Copilot desktop** (owner's request, 2026-10-19; installed per user as
+    `%LOCALAPPDATA%\Programs\GitHub Copilot\github.exe`, registers `ghapp`, `github-app` and `gh`) has
+    no documented link for a local folder (docs.github.com, "Using deep links to open the GitHub
+    Copilot app": session links take `OWNER/REPO`). Copilot CLI's `copilot app` does it: it creates a
+    session workspace for the current folder in `~\.copilot\session-state` and opens
+    `github-app://sessions/<id>` (read from the CLI's bundle, 1.0.95). So `Launcher` runs
+    `copilot app` in the folder with no window (`KnownAgents.OpensFolderThroughCli`); without Copilot
+    CLI on PATH it opens the app plainly. Making the session ourselves would copy Copilot's internals.
+    Its chat button opens the app with no folder, like ChatGPT's (owner, 2026-10-19; it briefly opened
+    Microsoft Copilot instead, with that app's picture on hover, which was taken out again). Usage is Copilot CLI's (`IsGitHubCopilot`, by catalog id or the `copilot` command). Without Copilot
+    CLI the folder isn't recorded as a recent (`KnownAgents.CanOpenFolder`), and its settings page
+    says why (`CopilotSettings`, shown for Copilot CLI too: where the AI credits come from).
   - **Cursor** has no such link, but is a VS Code fork, so it opens a folder given on its command
     line (`KnownAgents.OpensFolderInExe`; its documented `cursor .` shell command does the same).
     `FolderAppExe` finds Cursor.exe: the agent's `path`, else three folders up from the `cursor`
@@ -637,7 +660,7 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
 - **Downloaded from official sites, with the owner's OK:**
   - `opencode`: opencode.ai/web-app-manifest-512x512.png
   - `perplexity`: perplexity.ai/apple-touch-icon.png (180 px)
-  - `copilot-desktop`: the copilot.com favicon, Microsoft's CDN. Its largest frame is 48 px, so it
+  - `microsoft-copilot` (was `copilot-desktop`): the copilot.com favicon, Microsoft's CDN. Its largest frame is 48 px, so it
     is slightly soft at 200% scaling.
   - `codex`: openai.com/apple-icon.png, the OpenAI mark (180 px). Codex has no logo of its own on
     any official page or in its repo, so it looks like ChatGPT's. Replace it if one appears.
@@ -653,6 +676,7 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
     (`APP_ICON_25D_DARK`, the same design `cursor-cli` used to have), and the CLI the bare shaded cube
     (`CUBE_25D`, transparent, so it shows on both themes). Cursor has no logo of its own for the CLI.
   - `hermes`: Hermes Agent's own icon from its site. Only 48 px, so it's soft at high scaling.
+  - `github-copilot-desktop` (2026-10-19): the installed app's own `icons\icon.png` (512 px), scaled to 256 px.
   - `antigravity`: antigravity.google/assets/image/antigravity-logo.png (276 px, transparent), the
     site's largest icon.
 

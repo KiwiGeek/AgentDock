@@ -33,7 +33,10 @@ public static class KnownAgents
 
         new() { Id = "claude-desktop",  Name = "Claude",     Kind = AgentKind.Desktop, StartMenuNames = ["Claude"] },
         new() { Id = "chatgpt-desktop", Name = "ChatGPT",    Kind = AgentKind.Desktop, StartMenuNames = ["ChatGPT"] },
-        new() { Id = "copilot-desktop", Name = "Copilot",    Kind = AgentKind.Desktop, StartMenuNames = ["Copilot", "Microsoft Copilot"] },
+        // GitHub's own desktop app (installed per user as github.exe), not Microsoft Copilot below.
+        new() { Id = "github-copilot-desktop", Name = "GitHub Copilot", Kind = AgentKind.Desktop, StartMenuNames = ["GitHub Copilot"] },
+        // Microsoft's consumer assistant (copilot.com; Store id 9NHT9RB2F4HD). Was "copilot-desktop" / "Copilot".
+        new() { Id = "microsoft-copilot", Name = "Microsoft Copilot", Kind = AgentKind.Desktop, StartMenuNames = ["Copilot", "Microsoft Copilot"] },
         new() { Id = "perplexity",      Name = "Perplexity", Kind = AgentKind.Desktop, StartMenuNames = ["Perplexity"] },
         new() { Id = "cursor",          Name = "Cursor",     Kind = AgentKind.Desktop, StartMenuNames = ["Cursor"] },
     ];
@@ -73,7 +76,7 @@ public static class KnownAgents
     /// as well as coding ones, and a click opens them in the working folder. Claude documents links
     /// for a plain chat and for Cowork (support.claude.com, "Open Claude Desktop with a link").
     /// ChatGPT registers only <c>codex://</c>, whose links are all Codex's, so it just opens as it is
-    /// (<see cref="OtherLaunch.Link"/> null).
+    /// (<see cref="OtherLaunch.Link"/> null), and so does GitHub Copilot desktop.
     /// </summary>
     public static IReadOnlyList<OtherLaunch> OtherLaunches(AgentDefinition definition) =>
         definition.Kind != AgentKind.Desktop ? []
@@ -85,11 +88,31 @@ public static class KnownAgents
                 new("cowork", "New Cowork session", "", "claude://cowork/new")
             ],
             "chatgpt-desktop" => [new("app", "Open without a folder", "", null)],
+            // Its chats aren't tied to a folder either (owner, 2026-10-19).
+            "github-copilot-desktop" => [new("app", "Open without a folder", "", null)],
             _ => []
         };
 
-    /// <summary>A desktop agent that can start in a folder, by link or by its exe (presets, recents, the working folder).</summary>
-    public static bool TakesFolder(AgentDefinition definition) => FolderLink(definition) is not null || OpensFolderInExe(definition);
+    /// <summary>
+    /// GitHub Copilot desktop, which opens a folder through Copilot CLI: <c>copilot app</c>, run in the
+    /// folder, creates a session for it and opens <c>github-app://sessions/&lt;id&gt;</c>. GitHub
+    /// documents no link that takes a local folder (docs.github.com, "Using deep links to open the
+    /// GitHub Copilot app"), and making the session ourselves would copy Copilot's internals.
+    /// </summary>
+    public static bool OpensFolderThroughCli(AgentDefinition definition) =>
+        definition.Kind == AgentKind.Desktop
+        && string.Equals(definition.Catalog ?? definition.Id, "github-copilot-desktop", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether a launch right now would really open the folder. Only GitHub Copilot desktop can fail
+    /// to: without Copilot CLI on PATH it opens with no folder, so it mustn't be recorded as a recent.
+    /// </summary>
+    public static bool CanOpenFolder(AgentDefinition definition) =>
+        !OpensFolderThroughCli(definition) || PathResolver.Find("copilot") is not null;
+
+    /// <summary>A desktop agent that can start in a folder, by link, its exe or a CLI (presets, recents, the working folder).</summary>
+    public static bool TakesFolder(AgentDefinition definition) =>
+        FolderLink(definition) is not null || OpensFolderInExe(definition) || OpensFolderThroughCli(definition);
 
     /// <summary>
     /// Cursor.exe, for opening a folder: the agent's own <c>path</c> if it set one, else found from
@@ -110,6 +133,44 @@ public static class KnownAgents
         var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "cursor", "Cursor.exe");
         return File.Exists(installed) ? installed : null;
     }
+
+    /// <summary>
+    /// Known ids that were renamed, old to new. "copilot-desktop" was Microsoft Copilot, shown as
+    /// just "Copilot", which read as GitHub's once GitHub Copilot desktop was added (owner, 2026-10-19).
+    /// </summary>
+    private static readonly Dictionary<string, (string Id, string? OldName, string NewName)> Renamed =
+        new(StringComparer.OrdinalIgnoreCase) { ["copilot-desktop"] = ("microsoft-copilot", "Copilot", "Microsoft Copilot") };
+
+    /// <summary>
+    /// Brings older agents.json entries up to the renamed ids, in memory (the next save writes them):
+    /// the catalog id moves, and the name too if the user hadn't changed it. The agent's own id stays,
+    /// because presets, recent folders and the jump list refer to it.
+    /// </summary>
+    public static void MigrateRenamed(DockSettings settings)
+    {
+        foreach (var agent in settings.Agents)
+        {
+            // Entries from before the catalog existed have only the id.
+            if (!Renamed.TryGetValue(agent.Catalog ?? agent.Id, out var renamed))
+                continue;
+            agent.Catalog = renamed.Id;
+            if (string.Equals(agent.Name, renamed.OldName, StringComparison.Ordinal))
+                agent.Name = renamed.NewName;
+        }
+    }
+
+    /// <summary>The same for state.json: dismissed offers, and a waifu taskbar icon named after the agent.</summary>
+    public static void MigrateRenamed(DockState state)
+    {
+        state.DismissedAgentOffers = state.DismissedAgentOffers.Select(NewId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        state.TaskbarIcon = NewIcon(state.TaskbarIcon);
+        state.TaskbarWaifuIcon = NewIcon(state.TaskbarWaifuIcon);
+
+        static string? NewIcon(string? icon) =>
+            icon is not null && icon.StartsWith("waifu-", StringComparison.OrdinalIgnoreCase) ? "waifu-" + NewId(icon["waifu-".Length..]) : icon;
+    }
+
+    private static string NewId(string id) => Renamed.TryGetValue(id, out var renamed) ? renamed.Id : id;
 
     /// <summary>Fresh copies of every known agent, each with <see cref="AgentDefinition.Catalog"/> set.</summary>
     public static List<AgentDefinition> All() => Catalog.Select(Template).ToList();

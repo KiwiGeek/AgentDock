@@ -36,6 +36,22 @@ public static class Launcher
                     return "That folder no longer exists. Choose another one.";
                 Process.Start(new ProcessStartInfo(link.Replace("{folder}", Uri.EscapeDataString(folder))) { UseShellExecute = true });
             }
+            else if (KnownAgents.OpensFolderThroughCli(item.Definition))
+            {
+                // GitHub Copilot desktop: Copilot CLI's "copilot app", run in the folder, opens a session there.
+                if (!Directory.Exists(folder))
+                    return "That folder no longer exists. Choose another one.";
+                if (PathResolver.Find("copilot") is { } cli)
+                {
+                    var start = new ProcessStartInfo(cli) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = folder };
+                    start.ArgumentList.Add("app");
+                    Process.Start(start);
+                }
+                else
+                {
+                    StartApp(item); // without Copilot CLI it can't be given the folder, but still opens
+                }
+            }
             else if (KnownAgents.OpensFolderInExe(item.Definition) && KnownAgents.FolderAppExe(item) is { } app)
             {
                 // A desktop app that opens a folder given on its command line (Cursor).

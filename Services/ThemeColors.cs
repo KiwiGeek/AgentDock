@@ -23,8 +23,9 @@ internal static class ThemeColors
         ["claude"] = Hex(0xD97757),          // Claude's orange
         ["claude-desktop"] = Hex(0xB5532A),  // rust skirt
         ["codex"] = Hex(0x5E6B7D),           // black and white, so slate
-        ["copilot"] = Hex(0x2F6FD6),         // blue neon
-        ["copilot-desktop"] = Hex(0x3E8EDE), // blue top
+        ["copilot"] = Hex(0x1F5FD8),         // electric blue neon prompt (new picture, 2026-10-19)
+        ["microsoft-copilot"] = Hex(0x3E8EDE), // blue top
+        ["github-copilot-desktop"] = Hex(0x2F6FD6), // blue neon (Copilot CLI's picture until 2026-10-19)
         ["crush"] = Hex(0xE0408A),           // pink neon
         ["cursor"] = Hex(0x8C939C),          // silver skirt
         ["cursor-cli"] = Hex(0x7D8590),      // grey and white
