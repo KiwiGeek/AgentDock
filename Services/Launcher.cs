@@ -7,7 +7,7 @@ namespace AgentDock.Services;
 public static class Launcher
 {
     /// <summary>Launches an agent. Returns null on success, or a message describing what went wrong.</summary>
-    public static string? Launch(AgentItem item, string folder, DockSettings settings)
+    public static string? Launch(AgentItem item, string folder, DockSettings settings, bool waifuBackgrounds = false)
     {
         if (!item.IsAvailable)
             return item.Subtitle;
@@ -25,8 +25,9 @@ public static class Launcher
                 var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments,
                         AiderModelArgument(item.Definition) }
                     .Where(s => !string.IsNullOrWhiteSpace(s)));
+                var profile = waifuBackgrounds ? TerminalProfiles.TryGetReadyProfile(item.Definition) : null;
                 StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal,
-                    item.Definition.Env);
+                    item.Definition.Env, settings.CloseTerminalWhenAgentExits, profile);
             }
             else if (KnownAgents.FolderLink(item.Definition) is { } link)
             {
@@ -92,15 +93,20 @@ public static class Launcher
     /// left at a prompt in the folder when the agent exits.
     /// </summary>
     private static void StartInTerminal(string? title, string? command, string folder, string shellSetting, string terminalSetting,
-        IReadOnlyDictionary<string, string>? env = null)
+        IReadOnlyDictionary<string, string>? env = null, bool closeWhenDone = false, string? profile = null)
     {
-        var (shellExe, shellArgs) = BuildShell(shellSetting, command, env);
+        var (shellExe, shellArgs) = BuildShell(shellSetting, command, env, closeWhenDone);
         var wt = terminalSetting.Equals("console", StringComparison.OrdinalIgnoreCase) ? null : PathResolver.Find("wt.exe");
 
         ProcessStartInfo psi;
         if (wt is not null)
         {
             psi = new ProcessStartInfo(wt);
+            if (profile is not null)
+            {
+                psi.ArgumentList.Add("--profile");
+                psi.ArgumentList.Add(profile);
+            }
             if (title is not null)
             {
                 psi.ArgumentList.Add("--title");
@@ -127,7 +133,7 @@ public static class Launcher
     }
 
     private static (string Exe, List<string> Args) BuildShell(string shellSetting, string? command,
-        IReadOnlyDictionary<string, string>? env = null)
+        IReadOnlyDictionary<string, string>? env = null, bool closeWhenDone = false)
     {
         var shell = shellSetting.ToLowerInvariant() switch
         {
@@ -148,7 +154,7 @@ public static class Launcher
         {
             // cmd expands %NAME% itself. "set "N=v"" keeps trailing spaces and & out of trouble.
             var prefix = string.Concat(variables.Select(v => $"set \"{v.Key}={v.Value.Replace("\"", "")}\" && "));
-            return ("cmd.exe", command is null ? [] : ["/k", prefix + command]);
+            return ("cmd.exe", command is null ? [] : [closeWhenDone ? "/c" : "/k", prefix + command]);
         }
 
         var exe = shell == "pwsh" ? (PathResolver.Find("pwsh.exe") ?? "pwsh.exe") : "powershell.exe";
@@ -160,11 +166,11 @@ public static class Launcher
             // argument, so per-agent variables reach the shell that runs the agent.
             var script = assignments + command;
             var encoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
-            return (exe, ["-NoLogo", "-NoExit", "-EncodedCommand", encoded]);
+            return (exe, closeWhenDone ? ["-NoLogo", "-EncodedCommand", encoded] : ["-NoLogo", "-NoExit", "-EncodedCommand", encoded]);
         }
         return command is null
             ? (exe, ["-NoLogo"])
-            : (exe, ["-NoLogo", "-NoExit", "-Command", assignments + command]);
+            : (exe, closeWhenDone ? ["-NoLogo", "-Command", assignments + command] : ["-NoLogo", "-NoExit", "-Command", assignments + command]);
     }
 
     /// <summary>Letters, digits and underscores (and the parentheses of names like ProgramFiles(x86)).</summary>

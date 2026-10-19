@@ -572,6 +572,11 @@ public sealed partial class FlyoutWindow : Window
         StatusText.Text = _settingsError ?? _presetsError ?? "";
         Autostart.Apply(_settings.StartWithWindows);
 
+        if (_state.ShowHoverBackgrounds)
+            TerminalProfiles.Prepare(_settings.Agents);
+        else
+            TerminalProfiles.Clear();
+
         UpdateBannerHeart();
         _bannerColorSource = null;
         SetBannerColors(null, animate: false);
@@ -967,7 +972,7 @@ public sealed partial class FlyoutWindow : Window
     private void Launch(AgentItem item, string? folder = null)
     {
         var dir = folder ?? item.Preset?.Folder ?? CurrentFolder;
-        if (Launcher.Launch(item, dir, _settings) is { } error)
+        if (Launcher.Launch(item, dir, _settings, _state.ShowHoverBackgrounds) is { } error)
             SetStatus(error);
         else
         {
@@ -1580,6 +1585,7 @@ public sealed partial class FlyoutWindow : Window
         FadeBackdrop(null);
         _settingsToggleReady = false;
         HoverBackgroundsSwitch.IsOn = _state.ShowHoverBackgrounds;
+        CloseTerminalOnExitSwitch.IsOn = _settings.CloseTerminalWhenAgentExits;
         RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
         UsageSummarySwitch.IsOn = _state.ShowUsageSummary;
         HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
@@ -1621,9 +1627,26 @@ public sealed partial class FlyoutWindow : Window
             return;
         _state.ShowHoverBackgrounds = HoverBackgroundsSwitch.IsOn;
         _store.SaveState(_state);
+        if (_state.ShowHoverBackgrounds)
+            TerminalProfiles.Prepare(_settings.Agents);
+        else
+            TerminalProfiles.Clear();
         UpdateBannerHeart();
         if (!_state.ShowHoverBackgrounds)
             FadeBackdrop(null);
+    }
+
+    private void CloseTerminalOnExitSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsToggleReady || _settings.CloseTerminalWhenAgentExits == CloseTerminalOnExitSwitch.IsOn)
+            return;
+        _settings.CloseTerminalWhenAgentExits = CloseTerminalOnExitSwitch.IsOn;
+        if (SaveAgentList())
+            return;
+        _settings.CloseTerminalWhenAgentExits = !CloseTerminalOnExitSwitch.IsOn;
+        _settingsToggleReady = false;
+        CloseTerminalOnExitSwitch.IsOn = _settings.CloseTerminalWhenAgentExits;
+        _settingsToggleReady = true;
     }
 
     private void HideUnavailableSwitch_Toggled(object sender, RoutedEventArgs e)

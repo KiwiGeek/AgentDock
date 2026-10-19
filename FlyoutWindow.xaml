@@ -289,6 +289,17 @@
                                   AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
                 </Grid>
                 <Grid Margin="16,0,16,16" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="Close terminal when agent exits" />
+                        <TextBlock Text="Close Agent Dock's terminal tab when a command line agent finishes, instead of leaving a prompt."
+                                   TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="CloseTerminalOnExitSwitch" Grid.Column="1" MinWidth="0" VerticalAlignment="Center" OffContent="" OnContent=""
+                                  Toggled="CloseTerminalOnExitSwitch_Toggled" AutomationProperties.Name="Close terminal when agent exits" />
+                </Grid>
+                <Grid Margin="16,0,16,16" ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />

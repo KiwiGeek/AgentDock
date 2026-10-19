@@ -34,6 +34,9 @@ confirm the command (or Start menu name), keep or remove it, and look for a usag
 | `copilot-desktop` | Copilot | Start menu "Copilot" | yes | Launch only. Microsoft Copilot, not GitHub's |
 | `perplexity` | Perplexity | Start menu "Perplexity" | yes | Launch only |
 
+Windows Terminal waifu profiles use Native-AOT-safe fragment JSON and wait for Terminal to reload before
+passing a profile name; verify their appearance and the close-on-exit option in the running app.
+
 Answered: Cursor CLI's command is still `cursor-agent` (2026.10.16), with `agent` as an alias;
 `IsCursor` and `RecentLaunches.Records` match it by catalog id too.
 

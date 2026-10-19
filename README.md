@@ -120,6 +120,12 @@ After that, manage them on the settings page (the gear in the footer), under **A
   itself. Its **Find a model** search runs Aider's local `--list-models` catalogue query and lets
   you select the returned identifier; it is not a check of which models your account can use.
   Duplicate the entry when you want a second ready-to-use model.
+- **Close terminal when agent exits** is a global option that closes Agent Dock's tab after a CLI
+  agent finishes instead of leaving a prompt.
+- With **Waifu backgrounds** on, Agent Dock also gives supported Windows Terminal tabs the selected
+  agent's picture. It uses hidden, app-owned temporary profiles and a single temporary Terminal
+  settings import; it never changes your existing profiles. If Terminal has not loaded a profile
+  yet, the agent opens normally.
 - Or right-click an agent in the flyout (or press Shift+F10) for **Settings** (its page) and
   **Remove from list**.
 - **Duplicate** makes a second copy of the same agent with its own name and variables, for example a

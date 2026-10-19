@@ -103,6 +103,9 @@ public sealed class DockSettings
     /// <summary>Start hidden at sign-in so the first click is as fast as the rest.</summary>
     public bool StartWithWindows { get; set; } = true;
 
+    /// <summary>Close Agent Dock's terminal tab instead of leaving a shell prompt after a CLI agent exits.</summary>
+    public bool CloseTerminalWhenAgentExits { get; set; }
+
     public List<AgentDefinition> Agents { get; set; } = [];
 
     /// <summary>
@@ -128,6 +131,26 @@ public sealed class Preset
 public sealed class PresetList
 {
     public List<Preset> Presets { get; set; } = [];
+}
+
+/// <summary>
+/// The small JSON document Windows Terminal reads from Agent Dock's fragment directory. Keeping it
+/// as a model gives Native AOT a source-generated serializer instead of the reflection serializer.
+/// </summary>
+public sealed class TerminalProfileFragment
+{
+    public List<TerminalProfileDefinition> Profiles { get; set; } = [];
+}
+
+/// <summary>A temporary Windows Terminal profile used only to give one agent tab its waifu picture.</summary>
+public sealed class TerminalProfileDefinition
+{
+    public string Name { get; set; } = "";
+    public bool Hidden { get; set; } = true;
+    public string BackgroundImage { get; set; } = "";
+    public double BackgroundImageOpacity { get; set; } = 0.16;
+    public string BackgroundImageStretchMode { get; set; } = "uniformToFill";
+    public string BackgroundImageAlignment { get; set; } = "center";
 }
 
 /// <summary>One plan limit window: the 5-hour session or the week.</summary>
@@ -283,4 +306,5 @@ public enum ClaudeUsageSource
 [JsonSerializable(typeof(DockState))]
 [JsonSerializable(typeof(PresetList))]
 [JsonSerializable(typeof(PlanUsage))]
+[JsonSerializable(typeof(TerminalProfileFragment))]
 internal sealed partial class DockJsonContext : JsonSerializerContext;
