@@ -47,12 +47,12 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Folder drop-down / folder button | Pick a recent folder or browse for a new one |
 | Terminal button (footer) | Plain shell in the working folder, no agent |
 | Pencil button (footer) | Opens `agents.json` |
-| Gear button (footer) | Settings, including your agents (add, rename, duplicate, remove). Esc there goes back to the list |
+| Gear button (footer) | Opens the settings window (closing the flyout): left list of General, each agent, and each API key; the right pane shows that item's details. Esc closes the window |
 | Chat button on the Claude, ChatGPT or GitHub Copilot row | Opens the app for a plain chat, without the working folder (see below) |
 | Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (agents that open in a folder), **Settings**, or **Remove from list**. Claude also has **New chat** and **New Cowork session**, ChatGPT and GitHub Copilot **Open without a folder** |
 | Right-click a preset | Rename or remove it |
 | Drag the top edge (the bottom edge if your taskbar is at the top) | Makes the list taller or shorter. Double-click the edge to fit the list again |
-| Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. In settings, Esc goes back one level first (an agent's page, then the list) |
+| Esc, click elsewhere, or click the taskbar icon again | Closes the flyout |
 
 ### Presets
 
@@ -106,7 +106,7 @@ Build, Hermes Agent, DeepSeek Harness, and the Claude, ChatGPT, GitHub Copilot, 
 Perplexity and Cursor desktop apps), lists the ones installed, and adds the ones you leave ticked. **Not now** starts
 you with an empty list.
 
-After that, manage them on the settings page (the gear in the footer), under **Agents**:
+After that, manage them in the settings window (the gear in the footer), under **Agents**:
 
 - **Scan for new agents** looks again for agents Agent Dock knows; **Add your own command** takes
   any other command line tool (a name, a command, and optional arguments). Agents it knows but
@@ -336,9 +336,10 @@ Hover pictures are built in the same way, as `Assets\Agents\<agent id>-backgroun
 Aider, Amp, Antigravity CLI, ChatGPT, Claude, Claude Code, Codex, GitHub Copilot CLI, GitHub Copilot,
 Microsoft Copilot, Crush, Cursor, Cursor CLI,
 DeepSeek, Factory Droid, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
-by agent id or command name. A `background` setting overrides one. Turn them off with **Waifu
-backgrounds** on the settings page (the gear in the footer), which also hides the hearts on the
-banner. That choice is saved in `state.json`.
+by agent id or command name. A `background` setting overrides one. With waifus on, the same picture
+also sits behind that agent's page in the settings window. Turn them off with **Waifu backgrounds**
+on the settings page (the gear in the footer), which also hides the hearts on the banner. That
+choice is saved in `state.json`.
 
 The banner down the left of the flyout takes on the colour of whichever agent is highlighted: a
 colour picked for its picture when it has one, even if waifu backgrounds are hidden, or one taken
@@ -388,6 +389,7 @@ cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's ic
 | `Program.cs` | Entry point: forwards to the running instance, or becomes it |
 | `App.xaml(.cs)` | The background instance; handles show / launch / quit requests |
 | `FlyoutWindow.xaml(.cs)` | The flyout |
+| `SettingsWindow.xaml(.cs)` | The settings window (left list: General, each agent, each API key), opened from the gear |
 | `Models` | Config/state classes, JSON context, and the `AgentItem` view model |
 | `Services` | Settings I/O, PATH lookup, launching, agent resolution, IPC, autostart, jump list |
 | `Interop` | Win32 and shell COM declarations, icon extraction, Start menu enumeration |

@@ -302,14 +302,14 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   Taskbar edge is inferred from where the cursor sits outside the work area. If the cursor is
   inside the work area (launched from a terminal), the flyout centres. Height comes from
   `Root.Measure(380 DIP, ∞)`, capped at 640 DIP and the work area.
-- **Height can be dragged** (owner's request, 2026-10-16), on the list and settings. `HeightGrip` (a
+- **Height can be dragged** (owner's request, 2026-10-16), on the list. `HeightGrip` (a
   `ResizeGrip`, a `Grid` subclass because only a subclass can set `ProtectedCursor`) is a 6 DIP strip
   on the edge away from the taskbar (bottom if the taskbar is at the top); the edge by the taskbar
   stays put. The drag works in screen pixels (`GetCursorPos`) because the grip moves with the window.
   The result is saved as `DockState.FlyoutHeight` (client DIPs), which `PlaceWindow` uses instead
   of fitting the content (min 240 DIP, max the work area; the 640 DIP cap applies only to fitting).
-  Double-clicking the grip clears it. Settings uses the same height and grip (owner, 2026-10-16): the dragged height, or with none, the list's last height (`_listHeightDip`); its body scrolls.
-  The window itself stays non-resizable. Not yet verified in-app.
+  Double-clicking the grip clears it. Settings shared this height until it became its own window
+  (2026-10-19), which is resizable by itself. The flyout stays non-resizable. Not yet verified in-app.
 - **Hide on deactivation**, except while the folder picker is open (`_keepOpen`).
 - **Toggle guard**: clicking the taskbar icon while open deactivates (hides) on mouse-down,
   then launches #2 on mouse-up. `ShowFlyout` ignores a show within 600 ms of a deactivation-hide.
@@ -325,30 +325,38 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - Keys 1–9, then A–Z once the digits run out (owner's request, 2026-10-19), launch the corresponding
   available agent; not with Ctrl, Alt or Windows held, and letters not while the folder box has the
   focus (it uses them to find a folder). Up/Down cross between the two lists.
-  Neither does anything while the settings page is open.
-- **Settings page:** the gear in the footer swaps the list for a page in the same window (so
-  placement, acrylic and hide-on-deactivate stay as they are). The page keeps the list's height (see "Height can be dragged"), not its
-  content. Two levels (owner's request, 2026-10-16):
-  - **General**: Waifu backgrounds, Taskbar icon (see "Taskbar icon"), Hide unavailable agents, Usage overview (see Drawer), Remember recents and **Clear recents**
-    (a confirm flyout; disabled when nothing is saved). Remember recents is general on purpose,
-    and its text doesn't name Claude: several agents record them, including OpenCode and Aider. Below it, **Agents**:
-    a row for every agent in the list, in order
-    (`BuildAgentSettingsRows`), with its icon, "Not installed" if so, and a chevron; then **Add agents**.
-  - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Agent-specific settings show
-    under it: Claude Code's (`ClaudeSettings`: "Usage limits", how Claude usage is found: "Read them
-    from the status line" or "Ask Claude for them directly"), and text-only notes for Grok Build
-    (`GrokSettings`), Cursor CLI / desktop (`CursorSettings`) and GitHub Copilot CLI / desktop
-    (`CopilotSettings`, plus how the desktop app opens in a folder) saying where usage comes from, plus Aider's
-    (`AiderSettings`) model name and model finder. Agent Dock runs Aider's local `--list-models <search>` to find
-    its known model identifiers, then appends the selection as `--model`; credentials and providers remain configured
-    in Aider, and its catalogue is not a check of account access. To add another, add a
-    panel in the XAML, return it from `AgentSettingsPanelFor` (by command name), list it in
-    `AgentSettingsPanels`, and fill it in `ShowSettingsPage`.
-  - **Add agents** (`ShowAddAgents`): the scan and a custom command; see "Agent list".
-  - The page body scrolls (`SettingsScroller`), since an agent's page can be long.
-  - The back button and Esc go up one level (`SettingsBack`). Hiding the flyout returns to the
-    list, and settings reopens at the first level.
-  - Verified by screenshot (2026-10-16, driven through UI Automation): both levels render.
+  Esc only hides the flyout, since settings isn't in it any more.
+- **Settings window** (`SettingsWindow.xaml(.cs)`, `SettingsWindow.ApiAccounts.cs`; owner's decision,
+  2026-10-19: master-detail after a stacked page and a section-only nav both felt wrong). The flyout
+  no longer hosts settings. The gear (`OpenSettings` → General), the context menu's Settings
+  (`agentId`), the welcome's Find agents and the offer's Choose (`addAgents: true`), and the
+  overview's unlinked API row (`section: "api"`) go to `App.OpenSettings`, which **hides the flyout
+  first** and shows the window.
+  - **The window:** Mica, a normal title bar, a taskbar button and Alt+Tab entry, resizable (minimum
+    560×400 DIP), 720×720 DIP at first, then wherever the user leaves it. One instance owned by `App`;
+    closing only hides it; `Quit` closes it. Esc hides the window (ignored while a pop-up is open).
+  - **Master list** (left `NavigationView`, rebuilt by `RebuildNavMenu`): **General**; an **Agents**
+    header, then each agent (icon + name) and **Add agents**; an **API usage** header, then each API
+    account and **Add an API key**. Selecting an item shows only that item's details on the right
+    (max 640 DIP). Choosing Add an API key creates an account and opens its editor.
+  - **General**: Waifu backgrounds, Taskbar icon (see "Taskbar icon"), Close terminal when agent
+    exits, Hide unavailable agents, Usage overview (see Drawer), Prefer plans over API keys,
+    Remember recents and **Clear recents**. Remember recents is general on purpose (several agents
+    record them, including OpenCode and Aider).
+  - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Duplicate, Remove. Drag agents
+    in the left list to reorder (`AgentNavList`, same as the flyout). With waifus on, her hover
+    picture sits behind the page (`SyncAgentBackdrop`, same opacity as the flyout). Agent-specific
+    panels: Claude's usage source, Grok / Cursor / Copilot notes, Aider model + search
+    (`AgentSettingsPanelFor` / `UpdateAgentPanel`).
+  - **Add agents** (`ShowAddAgents`): the scan and a custom command; see "Agent list". Adding from
+    the welcome or the offer hides the window when done.
+  - **An API account's page** (`ShowApiAccount`): that key's editor only (name, service, key, balance).
+  - **Data:** loads agents.json and state.json on every `Show`; own `ShellIcons`. Changes save at once;
+    `SettingsChange` → `FlyoutWindow.NotifySettingsChanged`. State via `UpdateState` so the two windows
+    don't overwrite each other's keys. **Known gap:** a flyout-side agents.json edit while the window
+    is open isn't seen until it's shown again.
+  - Verified 2026-10-19: master-detail build compiles. **Not yet verified by eye:** selecting agents
+    and API keys in the left list, drag to reorder, Add an API key, deep links.
 - Open animation: 250 ms slide + fade, skipped when Windows animations are off.
 - **Banner** (owner's request, after the Windows 98 Start menu): a 32 DIP strip on the list's left
   edge, a gradient with "**Agent**Dock" (no space; bold, then semi-light) reading bottom to top. The fill is 70% opaque
@@ -499,12 +507,12 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   `KnownAgents.UniqueId`, same catalog, name "… (copy)", opened with its name selected), **Remove**
   (confirms; presets for it stay). Changes save immediately. The flyout's right-click menu on an agent also has **Settings** (opens this page) and **Remove from list** (`ConfirmRemoveAgent`, a confirm flyout beside the row). Agent-specific panels (Claude's usage
   source) show under it.
-- **Reordering by dragging** (owner's request): the settings list (`AgentSettingsList`, a ListView
-  of `AgentListRow`) and the flyout's own lists (presets, command line, desktop) all have
-  `CanReorderItems`. A drop saves the order (`AgentList_DragItemsCompleted`,
-  `AgentSettingsList_DragItemsCompleted`); agents not shown in that list keep their places
-  (`ReorderShown`). Presets save to presets.json, refused while it can't be read. The agent page's
-  Move up/down buttons were removed at the owner's request (2026-10-16): dragging is the only way to reorder. Not yet verified by an actual drag.
+- **Reordering by dragging** (owner's request): the settings window's left agent list
+  (`AgentNavList`, `AgentListRow`) and the flyout's own lists (presets, command line, desktop) all
+  have `CanReorderItems`. A drop saves the order (`AgentNav_DragItemsCompleted`,
+  `AgentList_DragItemsCompleted`); in the flyout, agents not shown in that list keep their places
+  (`ReorderShown`). Presets save to presets.json, refused while it can't be read. Dragging is the
+  only way to reorder (no Move up/down). Not yet verified by an actual drag.
 - **Usage per account** (`Services/UsageAccount.cs`): the account is the config folder from the
   agent's `env` (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`, `%NAME%` expanded, full path), else the default.
   `UsageAccount.Key` keys every cache, so copies on one account share numbers and accounts never mix.
@@ -595,7 +603,10 @@ there degrade to a missing icon or entry, never an error.
 | --- | --- |
 | `Program.cs` | Entry point: hand-off or become resident |
 | `App.xaml(.cs)` | Resident instance; dispatches `DockCommand`s; jump-list launches |
-| `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard, settings page |
+| `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard (settings are not here; see `SettingsWindow`) |
+| `SettingsWindow.xaml(.cs)` | The settings window: master-detail (General, each agent with drag reorder, each API key), Add agents, taskbar icon; saves at once and notifies the flyout |
+| `SettingsWindow.ApiAccounts.cs` | The settings window's API usage section, the agent page's link and its own balance checks |
+| `Models/SettingsChange.cs` | Flags saying what a settings change touched, so the flyout refreshes only that |
 | `ResizeGrip.cs` | The strip that drags the flyout's height (shows the up-down cursor) |
 | `PinPromptWindow.xaml(.cs)` | Startup prompt asking the user to pin Agent Dock; waits for the pin |
 | `Models/Settings.cs` | `AgentDefinition`, `DockSettings` (+ defaults), `DockState`, `DockJsonContext` |
@@ -626,7 +637,7 @@ there degrade to a missing icon or entry, never an error.
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts), and setting a pin's icon |
 | `Services/ApiUsage.cs` | API keys' balances: the DeepSeek check, the 100% logic, which agents seem to use a provider |
-| `FlyoutWindow.ApiAccounts.cs` | The API usage settings section, the agent page's link, the checks and the drawer |
+| `FlyoutWindow.ApiAccounts.cs` | API usage in the flyout: the checks and the drawer (the settings section is in `SettingsWindow.ApiAccounts.cs`) |
 | `Services/TaskbarIcon.cs` | The taskbar icon choices, applying one to the pin, restarting File Explorer to show it |
 | `Models/TaskbarIconChoice.cs` | An icon in the settings page's taskbar icon picker |
 | `Assets/AppIcons/` | Taskbar icon sources (`appicon-<id>.png`, 1024 px, not shipped) and the built `ico/<id>.ico` (compiled in) |

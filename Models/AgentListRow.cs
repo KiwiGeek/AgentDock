@@ -10,6 +10,7 @@ public sealed partial class AgentListRow(AgentDefinition definition, ImageSource
     public AgentDefinition Definition { get; } = definition;
     public string Name => Definition.Name;
     public ImageSource? Icon { get; } = icon;
+    public Visibility IconVisibility => Icon is null ? Visibility.Collapsed : Visibility.Visible;
     public Visibility GlyphVisibility => Icon is null ? Visibility.Visible : Visibility.Collapsed;
     public string Glyph => Definition.Kind == AgentKind.Cli ? "" : "";
     public string Note => installed ? "" : "Not installed";

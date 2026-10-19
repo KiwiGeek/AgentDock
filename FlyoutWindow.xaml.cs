@@ -45,7 +45,6 @@ public sealed partial class FlyoutWindow : Window
     private readonly ObservableCollection<AgentItem> _cli = [];
     private readonly ObservableCollection<AgentItem> _desktop = [];
     private readonly ObservableCollection<FolderItem> _folders = [];
-    private readonly ObservableCollection<string> _aiderModels = [];
     private readonly Stopwatch _sinceHide = new();
     private readonly Stopwatch _sinceShellRefresh = new();
     private readonly TaskCompletionSource _rootLoaded = new();
@@ -65,8 +64,6 @@ public sealed partial class FlyoutWindow : Window
     private bool _keepOpen;
     private bool _hiddenByDeactivation;
     private bool _loadingFolders;
-    /// <summary>False while the settings switch is being set from state, so that doesn't count as a change.</summary>
-    private bool _settingsToggleReady;
     /// <summary>Why agents.json couldn't be read this time, if it couldn't.</summary>
     private string? _settingsError;
 
@@ -114,7 +111,6 @@ public sealed partial class FlyoutWindow : Window
         CliList.ItemsSource = _cli;
         DesktopList.ItemsSource = _desktop;
         FolderBox.ItemsSource = _folders;
-        AiderModelResults.ItemsSource = _aiderModels;
     }
 
     public static string DefaultFolder()
@@ -202,7 +198,7 @@ public sealed partial class FlyoutWindow : Window
             _ = RefreshFromShellAsync(_generation);
     }
 
-    private void HideFlyout(bool byDeactivation = false)
+    public void HideFlyout(bool byDeactivation = false)
     {
         if (!AppWindow.IsVisible)
             return;
@@ -210,10 +206,9 @@ public sealed partial class FlyoutWindow : Window
         _sinceHide.Restart();
         AppWindow.Hide();
         SyncHearts();
-        // Don't reopen with the last hover's image, the drawer, or the settings page showing.
+        // Don't reopen with the last hover's image or the drawer showing.
         FadeBackdrop(null);
         CloseDrawer(animate: false);
-        ShowMainPage();
     }
 
     private void BringToFront()
@@ -744,7 +739,7 @@ public sealed partial class FlyoutWindow : Window
                 foreach (var item in AllItems.Where(i => i.Icon is null))
                     item.Icon = _icons.Get(item.IconSource);
 
-                if (_state.AgentSetupDone && MainPage.Visibility == Visibility.Visible)
+                if (_state.AgentSetupDone)
                 {
                     var wasOpen = NewAgentOffer.IsOpen;
                     OfferNewAgents(newlyFound);
@@ -866,12 +861,8 @@ public sealed partial class FlyoutWindow : Window
         }
     }
 
-    private void FindAgents_Click(object sender, RoutedEventArgs e)
-    {
-        ShowSettingsPage();
-        _addAgentsFromSetup = true;
-        ShowAddAgents();
-    }
+    /// <summary>Opens Add agents in the settings window; adding there closes it, back to the dock.</summary>
+    private void FindAgents_Click(object sender, RoutedEventArgs e) => OpenSettings(addAgents: true);
 
     private void SetupSkip_Click(object sender, RoutedEventArgs e)
     {
@@ -900,25 +891,6 @@ public sealed partial class FlyoutWindow : Window
             item.Icon = _icons.Get(item.IconSource);
         _ = RefreshFromShellAsync(_generation); // desktop apps, icons, the jump list
         return true;
-    }
-
-    /// <summary>
-    /// Known agents not in the list yet, resolved, so <see cref="AgentItem.IsAgentAvailable"/> says
-    /// whether each is installed. The Start menu is read on an STA thread, so this can take a moment.
-    /// If reading the Start menu fails, desktop apps come back not installed, so they can still be added.
-    /// </summary>
-    private async Task<List<AgentItem>> FindNewAgentsAsync()
-    {
-        var known = KnownAgents.All().Where(k => !KnownAgents.IsInList(k, _settings.Agents)).ToList();
-        try
-        {
-            return await StartMenuApps.RunOnStaThread(() =>
-                AgentCatalog.Resolve(new DockSettings { Agents = known }, AgentCatalog.FromStartMenu(StartMenuApps.Load())));
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            return AgentCatalog.Resolve(new DockSettings { Agents = known }, _ => null);
-        }
     }
 
     // New agents installed since: offered once, from the slow pass.
@@ -964,8 +936,7 @@ public sealed partial class FlyoutWindow : Window
                 PlaceWindow();
             return;
         }
-        ShowSettingsPage();
-        ShowAddAgents();
+        OpenSettings(addAgents: true); // several: choose which in settings
     }
 
     private void NewAgentOffer_CloseButtonClick(InfoBar sender, object args)
@@ -1136,858 +1107,83 @@ public sealed partial class FlyoutWindow : Window
         HideFlyout();
     }
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
-    {
-        if (SettingsPage.Visibility == Visibility.Visible)
-            ShowMainPage();
-        else
-            ShowSettingsPage();
-    }
-
-    private void SettingsBack_Click(object sender, RoutedEventArgs e) => SettingsBack();
-
-    /// <summary>Up one level: from an agent's page or Add agents to the general settings, from there to the list.</summary>
-    private void SettingsBack()
-    {
-        if (_editingAgent is not null || AddAgentsPage.Visibility == Visibility.Visible)
-            ShowSettingsGeneral(focusRowFor: _editingAgent);
-        else
-            ShowMainPage();
-    }
-
-    // ---------- Agents: the list in settings, each agent's page, adding ----------
-
-    /// <summary>The agent whose page is showing (the object in <see cref="DockSettings.Agents"/>), if one is.</summary>
-    private AgentDefinition? _editingAgent;
-    /// <summary>Add agents was opened from the welcome, so adding goes straight back to the list.</summary>
-    private bool _addAgentsFromSetup;
-
     /// <summary>
-    /// Settings that only some agents have, shown under the agent's page, by catalog id or command name. To give
-    /// another agent some, add a panel to the settings page in the XAML (like ClaudeSettings), return
-    /// it here, list it in <see cref="AgentSettingsPanels"/>, and fill it in <see cref="ShowSettingsPage"/>.
+    /// The gear: settings live in their own window (<see cref="SettingsWindow"/>), which hides the
+    /// flyout first, so the flyout's hide-on-deactivate can't race the window taking focus.
     /// </summary>
-    private FrameworkElement? AgentSettingsPanelFor(AgentDefinition definition)
-    {
-        if ((definition.Catalog ?? definition.Id).Equals("aider", StringComparison.OrdinalIgnoreCase)
-            || CommandName(definition.Command) == "aider")
-            return AiderSettings;
+    private void Settings_Click(object sender, RoutedEventArgs e) => OpenSettings();
 
-        return CommandName(definition.Command) switch
-        {
-            "claude" => ClaudeSettings,
-            "grok" => GrokSettings,
-            "cursor-agent" => CursorSettings,
-            _ => null
-        };
-    }
-
-    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings, CursorSettings, CopilotSettings, AiderSettings];
+    private static void OpenSettings(string? agentId = null, bool addAgents = false, string? section = null) =>
+        ((App)Application.Current).OpenSettings(agentId, addAgents, section);
 
     /// <summary>
     /// Cursor CLI or the Cursor desktop app (one account, one usage), by catalog id or CLI command.
-    /// The CLI's command can also be plain "agent", so the catalog id matters.
+    /// The CLI's command can also be plain "agent", so the catalog id matters. Also used by settings.
     /// </summary>
-    /// <summary>
-    /// GitHub Copilot CLI or GitHub Copilot desktop: one GitHub account (gh's sign-in), so the same
-    /// usage, drawer and overview row. The desktop app is matched by catalog id, having no command.
-    /// </summary>
-    private static bool IsGitHubCopilot(AgentDefinition definition) =>
-        string.Equals(definition.Catalog ?? definition.Id, "github-copilot-desktop", StringComparison.OrdinalIgnoreCase)
-        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "copilot");
-
-    private static bool IsCursor(AgentDefinition definition) =>
+    internal static bool IsCursor(AgentDefinition definition) =>
         (definition.Catalog ?? definition.Id).ToLowerInvariant() is "cursor" or "cursor-cli"
         || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "cursor-agent");
 
-    /// <summary>The settings page's list of agents, in order. Dragging reorders it.</summary>
-    private readonly ObservableCollection<AgentListRow> _agentRows = [];
+    /// <summary>
+    /// GitHub Copilot CLI or GitHub Copilot desktop: one GitHub account (gh's sign-in), so the same
+    /// usage, drawer and overview row. The desktop app is matched by catalog id, having no command.
+    /// Also used by settings.
+    /// </summary>
+    internal static bool IsGitHubCopilot(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "github-copilot-desktop", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "copilot");
 
-    /// <summary>A row for each agent in the list, in order, leading to its page.</summary>
-    private void BuildAgentSettingsRows()
+    /// <summary>
+    /// Settings changed something (the window saved it already): read the files again, so this
+    /// window's own later saves don't write the old values back, and refresh what depends on them.
+    /// Safe while the flyout is hidden, which it normally is while settings is open.
+    /// </summary>
+    public void NotifySettingsChanged(SettingsChange change)
     {
-        AgentSettingsList.ItemsSource ??= _agentRows;
-        _agentRows.Clear();
-        foreach (var definition in _settings.Agents)
-        {
-            var item = _agents.FirstOrDefault(a => a.Preset is null && ReferenceEquals(a.Definition, definition));
-            _agentRows.Add(new AgentListRow(definition, item?.Icon, item is not { IsAgentAvailable: false }));
-        }
-        // Agents.json that couldn't be read isn't really empty; changing the list would overwrite it.
-        var editable = _settingsError is null;
-        AgentSettingsList.CanReorderItems = AgentSettingsList.CanDragItems = editable;
-        AddAgentsButtons.Visibility = editable ? Visibility.Visible : Visibility.Collapsed;
-        AgentListNote.Visibility = !editable || _settings.Agents.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        AgentListNote.Text = !editable
-            ? "agents.json couldn't be read, so your agents can't be changed here. Fix it with the pencil button, or delete it to start again."
-            : "No agents yet.";
-    }
-
-    private void AgentSettingsList_ItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (e.ClickedItem is AgentListRow row)
-            ShowAgentSettings(row.Definition);
-    }
-
-    /// <summary>An agent was dragged to a new place: save the list in that order.</summary>
-    private void AgentSettingsList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
-    {
-        if (args.DropResult != Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move)
+        if (!_prepared)
             return;
-        var order = _agentRows.Select(r => r.Definition).ToList();
-        if (order.SequenceEqual(_settings.Agents))
-            return;
-        _settings.Agents = order;
-        SaveAgentList();
-    }
 
-    private void ShowAgentSettings(AgentDefinition definition)
-    {
-        _editingAgent = definition;
-        var isCli = definition.Kind == AgentKind.Cli;
-        var command = CommandName(definition.Command);
+        _state = _store.LoadState();
+        if (change.HasFlag(SettingsChange.ApiAccounts))
+            _apiChecks.Clear(); // a key or service changed: the last answers may not be for what's there now
+        ClearUsageCache();
+        if (change.HasFlag(SettingsChange.ClaudeUsageSource))
+            DropClaudeLiveChecks();
 
-        _settingsToggleReady = false;
-        AgentNameBox.Text = definition.Name;
-        AgentArgumentsBox.Text = definition.Arguments ?? "";
-        _settingsToggleReady = true;
-        AgentArgumentsBox.Visibility = isCli ? Visibility.Visible : Visibility.Collapsed;
-        AgentCommandText.Text = isCli
-            ? LaunchDescription(definition)
-            : "A desktop app, opened from the Start menu.";
-        AgentEnvSection.Visibility = isCli ? Visibility.Visible : Visibility.Collapsed;
-        AgentEnvNote.Text = command switch
+        if (change.HasFlag(SettingsChange.Agents))
         {
-            "claude" => @"Set when this agent starts. For a second Claude account, duplicate it and set CLAUDE_CONFIG_DIR to its own folder, such as %USERPROFILE%\.claude-work. Write %NAME% to use a value from Windows, so keys stay out of agents.json.",
-            "codex" => @"Set when this agent starts. For a second Codex account, duplicate it and set CODEX_HOME to its own folder, such as %USERPROFILE%\.codex-work. Write %NAME% to use a value from Windows, so keys stay out of agents.json.",
-            _ => "Set when this agent starts. Write %NAME% to use a value from Windows, so keys stay out of agents.json."
-        };
-        FillEnvRows();
-        EnvNameBox.Text = EnvValueBox.Text = "";
-        RemoveAgentText.Text = $"Remove {definition.Name} from your agents? Presets for it stay until you remove them.";
-
-        SettingsGeneral.Visibility = AddAgentsPage.Visibility = Visibility.Collapsed;
-        AgentEditor.Visibility = Visibility.Visible;
-        UpdateAgentPanel(definition);
-        SettingsTitle.Text = definition.Name;
-        SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
-        PlaceWindow();
-        DispatcherQueue.TryEnqueue(() => SettingsBackButton.Focus(FocusState.Programmatic));
-    }
-
-    private void FillEnvRows()
-    {
-        AgentEnvRows.Children.Clear();
-        foreach (var (name, value) in (_editingAgent?.Env ?? []).OrderBy(v => v.Key, StringComparer.OrdinalIgnoreCase))
-        {
-            var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
-            label.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            label.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = " = " + value });
-            ToolTipService.SetToolTip(label, $"{name} = {value}");
-            var remove = new Button { Width = 32, Height = 28, Padding = new Thickness(0), Content = new FontIcon { Glyph = "", FontSize = 12 } };
-            ToolTipService.SetToolTip(remove, "Remove");
-            AutomationProperties.SetName(remove, $"Remove {name}");
-            remove.Click += (_, _) =>
-            {
-                if (_editingAgent?.Env is not { } env || !env.Remove(name))
-                    return;
-                if (env.Count == 0)
-                    _editingAgent.Env = null;
-                SaveAgentList();
-                FillEnvRows();
-                UpdateAgentPanel(_editingAgent);
+            (_settings, _settingsError) = _store.LoadSettings();
+            // The rows hold the definitions in _settings, so they're rebuilt from the new ones.
+            ShowAgents(AgentCatalog.Resolve(_settings, def => _state.DesktopApps.GetValueOrDefault(def.Id)));
+            foreach (var item in AllItems.Where(i => i.Icon is null))
+                item.Icon = _icons.Get(item.IconSource);
+            _ = RefreshFromShellAsync(_generation); // desktop apps, icons, the jump list
+            if (AppWindow.IsVisible)
                 PlaceWindow();
-            };
-            Grid.SetColumn(remove, 1);
-            AgentEnvRows.Children.Add(new Grid
-            {
-                ColumnSpacing = 8,
-                ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, new ColumnDefinition { Width = GridLength.Auto } },
-                Children = { label, remove }
-            });
         }
+        else if (change.HasFlag(SettingsChange.TaskbarIcon))
+            UpdateJumpList(); // the Quit entry's icon
     }
 
-    private void AddEnv_Click(object sender, RoutedEventArgs e) => AddEnv();
-
-    private void EnvBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    /// <summary>Forgets the last direct check of every Claude account, after the choice of where usage comes from changed.</summary>
+    private void DropClaudeLiveChecks()
     {
-        if (e.Key != VirtualKey.Enter)
-            return;
-        AddEnv();
-        e.Handled = true;
-    }
-
-    private void AddEnv()
-    {
-        if (_editingAgent is null)
-            return;
-        var name = EnvNameBox.Text.Trim();
-        // Letters, digits and underscores, not starting with a digit: what both shells accept.
-        if (name.Length == 0 || char.IsDigit(name[0]) || !name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_'))
-        {
-            EnvNameBox.Focus(FocusState.Programmatic);
-            EnvNameBox.SelectAll();
-            return;
-        }
-        _editingAgent.Env ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        _editingAgent.Env[name] = EnvValueBox.Text;
-        SaveAgentList();
-        FillEnvRows();
-        UpdateAgentPanel(_editingAgent);
-        EnvNameBox.Text = EnvValueBox.Text = "";
-        EnvNameBox.Focus(FocusState.Programmatic);
-        PlaceWindow();
-    }
-
-    private void EditorBox_KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key != VirtualKey.Enter)
-            return;
-        if (ReferenceEquals(sender, AgentNameBox))
-            CommitAgentName();
-        else if (ReferenceEquals(sender, AiderModelBox))
-            CommitAiderModel();
-        else
-            CommitAgentArguments();
-        e.Handled = true;
-    }
-
-    private void AgentNameBox_LostFocus(object sender, RoutedEventArgs e) => CommitAgentName();
-
-    private void AgentArgumentsBox_LostFocus(object sender, RoutedEventArgs e) => CommitAgentArguments();
-
-    private void AiderModelBox_LostFocus(object sender, RoutedEventArgs e) => CommitAiderModel();
-
-    private void CommitAgentName()
-    {
-        if (!_settingsToggleReady || _editingAgent is null)
-            return;
-        var name = AgentNameBox.Text.Trim();
-        if (name.Length == 0)
-        {
-            AgentNameBox.Text = _editingAgent.Name; // a name is required; put it back
-            return;
-        }
-        if (name == _editingAgent.Name)
-            return;
-        _editingAgent.Name = name;
-        SettingsTitle.Text = name;
-        SaveAgentList();
-    }
-
-    private void CommitAgentArguments()
-    {
-        if (!_settingsToggleReady || _editingAgent is null)
-            return;
-        var arguments = AgentArgumentsBox.Text.Trim() is { Length: > 0 } text ? text : null;
-        if (arguments == _editingAgent.Arguments)
-            return;
-        _editingAgent.Arguments = arguments;
-        SaveAgentList();
-        AgentCommandText.Text = LaunchDescription(_editingAgent);
-    }
-
-    private void CommitAiderModel()
-    {
-        if (!_settingsToggleReady || _editingAgent is null)
-            return;
-        var model = AiderModelBox.Text.Trim() is { Length: > 0 } text ? text : null;
-        if (model?.Any(char.IsWhiteSpace) == true)
-        {
-            AiderModelBox.Text = _editingAgent.Model ?? "";
-            return;
-        }
-        if (model == _editingAgent.Model)
-            return;
-        _editingAgent.Model = model;
-        SaveAgentList();
-        AgentCommandText.Text = LaunchDescription(_editingAgent);
-        UpdateAgentApiSection(_editingAgent); // a deepseek/ model brings the offer to link DeepSeek's key
-    }
-
-    private static string LaunchDescription(AgentDefinition definition)
-    {
-        var model = ((definition.Catalog ?? definition.Id).Equals("aider", StringComparison.OrdinalIgnoreCase)
-                     || CommandName(definition.Command) == "aider") && !string.IsNullOrWhiteSpace(definition.Model)
-            ? $" --model {definition.Model.Trim()}" : "";
-        return $"Runs {definition.Command}{(string.IsNullOrWhiteSpace(definition.Arguments) ? "" : " " + definition.Arguments)}{model} in a terminal.";
-    }
-
-    /// <summary>
-    /// A second copy, right after the original, with its own id and name, e.g. for another account.
-    /// It keeps the original's catalog id, so it has the same icon and picture. Opens the copy.
-    /// </summary>
-    private void DuplicateAgent_Click(object sender, RoutedEventArgs e)
-    {
-        if (_editingAgent is not { } original)
-            return;
-        var copy = original.Clone();
-        copy.Id = KnownAgents.UniqueId(original.Catalog ?? original.Id, _settings.Agents);
-        copy.Catalog ??= original.Catalog;
-        copy.Name = $"{original.Name} (copy)";
-        _settings.Agents.Insert(_settings.Agents.IndexOf(original) + 1, copy);
-        if (!SaveAgentList())
-            return;
-        ShowAgentSettings(copy);
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            AgentNameBox.Focus(FocusState.Programmatic);
-            AgentNameBox.SelectAll();
-        });
-    }
-
-    private void RemoveAgent_Click(object sender, RoutedEventArgs e)
-    {
-        RemoveAgentFlyout.Hide();
-        if (_editingAgent is not { } removed)
-            return;
-        _settings.Agents.Remove(removed);
-        SaveAgentList();
-        ShowSettingsGeneral();
-    }
-
-    private void AddAgents_Click(object sender, RoutedEventArgs e)
-    {
-        _addAgentsFromSetup = false;
-        ShowAddAgents();
-    }
-
-    private void ScanAgain_Click(object sender, RoutedEventArgs e) => ShowAddAgents();
-
-    /// <summary>The same page, scrolled to the form for a command of your own.</summary>
-    private void AddCustomAgent_Click(object sender, RoutedEventArgs e)
-    {
-        _addAgentsFromSetup = false;
-        ShowAddAgents();
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            CustomNameBox.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0, AnimationDesired = false });
-            CustomNameBox.Focus(FocusState.Programmatic);
-        });
-    }
-
-    /// <summary>The Add agents page: a scan for known agents not in the list, and a command of your own.</summary>
-    private async void ShowAddAgents()
-    {
-        _editingAgent = null;
-        SettingsGeneral.Visibility = AgentEditor.Visibility = Visibility.Collapsed;
-        foreach (var panel in AgentSettingsPanels)
-            panel.Visibility = Visibility.Collapsed;
-        AddAgentsPage.Visibility = Visibility.Visible;
-        SettingsTitle.Text = "Add agents";
-        CustomNote.Visibility = Visibility.Collapsed;
-        FoundAgentsList.Children.Clear();
-        MissingAgentsList.Children.Clear();
-        MissingAgentsExpander.Visibility = Visibility.Collapsed;
-        MissingAgentsExpander.IsExpanded = false;
-        AddFoundButton.Visibility = Visibility.Collapsed;
-        FoundAgentsNote.Text = "Looking for agents on this PC…";
-        SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
-        PlaceWindow();
-        DispatcherQueue.TryEnqueue(() => SettingsBackButton.Focus(FocusState.Programmatic));
-
-        var agents = await FindNewAgentsAsync();
-        if (AddAgentsPage.Visibility != Visibility.Visible || SettingsPage.Visibility != Visibility.Visible)
-            return;
-        var found = agents.Where(a => a.IsAgentAvailable).ToList();
-        var missing = agents.Where(a => !a.IsAgentAvailable).ToList();
-        foreach (var agent in found)
-            FoundAgentsList.Children.Add(await AgentCheckBoxAsync(agent, isChecked: true));
-        foreach (var agent in missing)
-            MissingAgentsList.Children.Add(await AgentCheckBoxAsync(agent, isChecked: false));
-        FoundAgentsNote.Text = found.Count > 0
-            ? "These are installed and not in your list yet. Untick any you don't want."
-            : missing.Count > 0
-                ? "Nothing else Agent Dock knows about is installed. You can still add one, or your own command below."
-                : "Nothing else Agent Dock knows about is installed. You can add your own command below.";
-        MissingAgentsTitle.Text = $"Not found on this PC ({missing.Count})";
-        MissingAgentsExpander.Visibility = missing.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        MissingAgentsExpander.IsExpanded = found.Count == 0 && missing.Count > 0;
-        AddFoundButton.Visibility = agents.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        PlaceWindow();
-    }
-
-    /// <summary>A row on the Add agents page: icon, name, and its command (or "Desktop app").</summary>
-    private async Task<CheckBox> AgentCheckBoxAsync(AgentItem agent, bool isChecked)
-    {
-        agent.Icon ??= _icons.Get(agent.IconSource)
-                       ?? (agent.IconSource is { } source && ShellIcons.IsOnDisk(source) ? await _icons.LoadFromDiskAsync(source) : null);
-        var icon = agent.Icon is { } image
-            ? (UIElement)new Image { Source = image, Width = 24, Height = 24 }
-            : new FontIcon { Glyph = agent.Glyph, FontSize = 18, Width = 24 };
-        var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-        label.Children.Add(icon);
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock { Text = agent.Definition.Name });
-        text.Children.Add(new TextBlock
-        {
-            Text = agent.IsCli ? agent.Definition.Command : "Desktop app",
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-        });
-        label.Children.Add(text);
-        var box = new CheckBox { IsChecked = isChecked, Content = label, Tag = agent.Definition, Padding = new Thickness(8, 4, 0, 4) };
-        AutomationProperties.SetName(box, agent.Definition.Name);
-        return box;
-    }
-
-    private void AddFound_Click(object sender, RoutedEventArgs e)
-    {
-        var found = FoundAgentsList.Children.OfType<CheckBox>().ToList();
-        var chosen = found.Concat(MissingAgentsList.Children.OfType<CheckBox>())
-            .Where(b => b.IsChecked == true).Select(b => (AgentDefinition)b.Tag).ToList();
-        // Unticked installed ones aren't offered again; they can still be added from here. Missing
-        // ones aren't dismissed, so installing one later still brings the offer.
-        DismissOffers(found.Where(b => b.IsChecked != true).Select(b => (AgentDefinition)b.Tag));
-        AddAgents(chosen);
-        if (_addAgentsFromSetup)
-            ShowMainPage();
-        else
-            ShowSettingsGeneral();
-    }
-
-    private void AddCustom_Click(object sender, RoutedEventArgs e)
-    {
-        var name = CustomNameBox.Text.Trim();
-        var command = CustomCommandBox.Text.Trim();
-        if (name.Length == 0 || command.Length == 0)
-        {
-            CustomNote.Text = "Give it a name and a command.";
-            CustomNote.Visibility = Visibility.Visible;
-            (name.Length == 0 ? CustomNameBox : CustomCommandBox).Focus(FocusState.Programmatic);
-            return;
-        }
-        var slug = new string(name.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-').ToArray()).Trim('-');
-        _settings.Agents.Add(new AgentDefinition
-        {
-            Id = KnownAgents.UniqueId(slug.Length > 0 ? slug : "agent", _settings.Agents),
-            Name = name,
-            Command = command,
-            Arguments = CustomArgumentsBox.Text.Trim() is { Length: > 0 } arguments ? arguments : null
-        });
-        if (!SaveAgentList())
-            return;
-        CustomNameBox.Text = CustomCommandBox.Text = CustomArgumentsBox.Text = "";
-        if (_addAgentsFromSetup)
-            ShowMainPage();
-        else
-            ShowSettingsGeneral();
-    }
-
-    /// <summary>The first level of settings. Coming back from an agent's page focuses its row.</summary>
-    private void ShowSettingsGeneral(AgentDefinition? focusRowFor = null)
-    {
-        _editingAgent = null;
-        foreach (var panel in AgentSettingsPanels)
-            panel.Visibility = Visibility.Collapsed;
-        AgentEditor.Visibility = AddAgentsPage.Visibility = Visibility.Collapsed;
-        SettingsGeneral.Visibility = Visibility.Visible;
-        SettingsTitle.Text = "Settings";
-        if (!AppWindow.IsVisible || SettingsPage.Visibility != Visibility.Visible)
-            return;
-        BuildAgentSettingsRows();
-        PlaceWindow();
-        var row = _agentRows.FirstOrDefault(r => ReferenceEquals(r.Definition, focusRowFor));
-        if (row is not null)
-            DispatcherQueue.TryEnqueue(() => (AgentSettingsList.ContainerFromItem(row) as Control)?.Focus(FocusState.Programmatic));
-        else
-            SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
-    }
-
-    /// <summary>The Claude account whose usage setting the agent page shows.</summary>
-    private UsageAccount? _settingsAccount;
-    private AgentDefinition? _aiderModelsFor;
-
-    /// <summary>
-    /// The agent-specific panel under an agent's page, for its account: Claude's usage source is per
-    /// account, and doesn't apply at all to an agent using an API key or another endpoint. Run again
-    /// when its environment variables change, since they decide the account.
-    /// </summary>
-    private void UpdateAgentPanel(AgentDefinition definition)
-    {
-        // Claude desktop is Claude Code's default account (UsageAccount.For), so it gets Claude's choice too.
-        var account = UsageAccount.For(definition);
-        var panel = IsCursor(definition) ? CursorSettings
-            : IsGitHubCopilot(definition) ? CopilotSettings
-            : account is { UsesOtherProvider: true } ? null
-            : account is { Agent: "claude" } ? ClaudeSettings
-            : definition.Kind == AgentKind.Cli ? AgentSettingsPanelFor(definition)
-            : null;
-        foreach (var other in AgentSettingsPanels)
-            other.Visibility = other == panel ? Visibility.Visible : Visibility.Collapsed;
-        UpdateAgentApiSection(definition);
-
-        if (panel == CopilotSettings)
-        {
-            // The desktop app opens in a folder only through Copilot CLI, so say whether that's there.
-            var desktop = KnownAgents.OpensFolderThroughCli(definition);
-            CopilotFolderSection.Visibility = desktop ? Visibility.Visible : Visibility.Collapsed;
-            if (desktop)
-                CopilotFolderNote.Text = KnownAgents.CanOpenFolder(definition)
-                    ? "GitHub Copilot opens a new session in the working folder, through GitHub Copilot CLI's copilot app command."
-                    : "Opening in the working folder needs GitHub Copilot CLI (the copilot command), which isn't installed, so GitHub Copilot opens without a folder.";
-        }
-
-        if (panel == AiderSettings)
-        {
-            _settingsToggleReady = false;
-            AiderModelBox.Text = definition.Model ?? "";
-            _settingsToggleReady = true;
-            if (!ReferenceEquals(_aiderModelsFor, definition))
-            {
-                _aiderModelsFor = definition;
-                _aiderModels.Clear();
-                AiderModelResults.Visibility = Visibility.Collapsed;
-                AiderModelSearchNote.Text = "";
-                AiderModelQueryBox.Text = "";
-            }
-        }
-
-        _settingsAccount = account is { Agent: "claude", UsesOtherProvider: false } ? account : null;
-        if (_settingsAccount is null)
-            return;
-        _settingsToggleReady = false;
-        ClaudeUsageSourceButtons.SelectedIndex = SourceFor(_settingsAccount) == ClaudeUsageSource.Api ? 1 : 0;
-        _settingsToggleReady = true;
-        ClaudeUsageIntro.Text = _settingsAccount.IsDefault
-            ? "How Agent Dock finds out how much of your plan's session and weekly limits you've used, for the drawer beside Claude Code."
-            : $"How Agent Dock finds out how much of this account's session and weekly limits you've used (the sign-in in {_settingsAccount.ConfigDir}).";
-    }
-
-    private async void FindAiderModels_Click(object sender, RoutedEventArgs e) => await FindAiderModelsAsync();
-
-    private async void AiderModelQueryBox_KeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        if (e.Key != VirtualKey.Enter)
-            return;
-        await FindAiderModelsAsync();
-        e.Handled = true;
-    }
-
-    private async Task FindAiderModelsAsync()
-    {
-        if (_editingAgent is not { } agent)
-            return;
-        var search = AiderModelQueryBox.Text.Trim();
-        if (search.Length == 0)
-        {
-            AiderModelSearchNote.Text = "Enter part of a provider or model name first.";
-            AiderModelQueryBox.Focus(FocusState.Programmatic);
-            return;
-        }
-
-        FindAiderModelsButton.IsEnabled = false;
-        AiderModelProgress.Visibility = Visibility.Visible;
-        AiderModelProgress.IsActive = true;
-        AiderModelSearchNote.Text = "Searching Aider's model catalogue…";
-        _aiderModels.Clear();
-        AiderModelResults.Visibility = Visibility.Collapsed;
-        var result = await AiderModels.FindAsync(agent, search);
-        AiderModelProgress.IsActive = false;
-        AiderModelProgress.Visibility = Visibility.Collapsed;
-        FindAiderModelsButton.IsEnabled = true;
-        if (!ReferenceEquals(_editingAgent, agent) || AiderSettings.Visibility != Visibility.Visible)
-            return;
-
-        foreach (var model in result.Models)
-            _aiderModels.Add(model);
-        AiderModelResults.Visibility = _aiderModels.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        AiderModelSearchNote.Text = result.Message ?? $"{_aiderModels.Count} model{(_aiderModels.Count == 1 ? "" : "s")} found. Select one to use its name.";
-        PlaceWindow();
-    }
-
-    private void AiderModelResults_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (AiderModelResults.SelectedItem is not string model)
-            return;
-        AiderModelBox.Text = model;
-        CommitAiderModel();
-    }
-
-    private void ClaudeUsageSource_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        var source = ClaudeUsageSourceButtons.SelectedIndex == 1 ? ClaudeUsageSource.Api : ClaudeUsageSource.StatusLine;
-        if (!_settingsToggleReady || ClaudeUsageSourceButtons.SelectedIndex < 0 || _settingsAccount is not { } account
-            || SourceFor(account) == source)
-            return;
-        SetSource(account, source);
-        _store.SaveState(_state);
-        ClearUsageCache(sourceChangedFor: account.Key);
-        // A drawer open on Claude follows the new choice. (The settings page closes the drawer, so
-        // this only matters if that ever changes.)
-        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && UsageAccount.For(item.Definition) is { Agent: "claude" })
-            PrepareDrawer(item);
-    }
-
-    /// <summary>
-    /// The list and the settings page share this window. Settings is a short page, so the flyout
-    /// resizes to it; hiding always returns to the list, which is what the next click is for.
-    /// </summary>
-    private void ShowSettingsPage()
-    {
-        CloseDrawer(animate: false);
-        FadeBackdrop(null);
-        _settingsToggleReady = false;
-        HoverBackgroundsSwitch.IsOn = _state.ShowHoverBackgrounds;
-        CloseTerminalOnExitSwitch.IsOn = _settings.CloseTerminalWhenAgentExits;
-        RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
-        UsageSummarySwitch.IsOn = _state.ShowUsageSummary;
-        PreferPlansSwitch.IsOn = _state.PreferPlansOverApi;
-        HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
-        // Lives in agents.json, which isn't written while it can't be read.
-        HideUnavailableSwitch.IsEnabled = _settingsError is null;
-        HideUnavailableNote.Text = _settingsError is null
-            ? "Hide agents in your list that aren't installed any more, instead of showing them dimmed."
-            : "Fix agents.json to change this here.";
-        ClearRecentsButton.IsEnabled = RecentLaunches.Any(_state);
-        BuildTaskbarIconPicker();
-        BuildApiAccountsList();
-        if (_taskbarIconPending)
-            ShowTaskbarIconBar(null);
-        else
-            TaskbarIconRestartBar.IsOpen = false;
-        _settingsToggleReady = true;
-
-        MainPage.Visibility = Visibility.Collapsed;
-        SettingsPage.Visibility = Visibility.Visible;
-        ShowSettingsGeneral();
-        BuildAgentSettingsRows();
-        PlaceWindow();
-        DispatcherQueue.TryEnqueue(() => HoverBackgroundsSwitch.Focus(FocusState.Programmatic));
-    }
-
-    private void ShowMainPage()
-    {
-        if (MainPage.Visibility == Visibility.Visible)
-            return;
-        // Next time, settings opens at the first level.
-        ShowSettingsGeneral();
-        SettingsPage.Visibility = Visibility.Collapsed;
-        MainPage.Visibility = Visibility.Visible;
-        if (!AppWindow.IsVisible)
-            return;
-        PlaceWindow();
-        DispatcherQueue.TryEnqueue(FocusFirstAgent);
-        // Back from settings: the overview returns, after the window has its list size again.
-        DispatcherQueue.TryEnqueue(() => ShowSummary());
-    }
-
-    private void HoverBackgroundsSwitch_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_settingsToggleReady || _state.ShowHoverBackgrounds == HoverBackgroundsSwitch.IsOn)
-            return;
-        _state.ShowHoverBackgrounds = HoverBackgroundsSwitch.IsOn;
-        _store.SaveState(_state);
-        if (_state.ShowHoverBackgrounds)
-            TerminalProfiles.Prepare(_settings.Agents);
-        else
-            TerminalProfiles.Clear();
-        UpdateBannerHeart();
-        if (!_state.ShowHoverBackgrounds)
-            FadeBackdrop(null);
-        TaskbarIconFollowWaifus();
-    }
-
-    private void CloseTerminalOnExitSwitch_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_settingsToggleReady || _settings.CloseTerminalWhenAgentExits == CloseTerminalOnExitSwitch.IsOn)
-            return;
-        _settings.CloseTerminalWhenAgentExits = CloseTerminalOnExitSwitch.IsOn;
-        if (SaveAgentList())
-            return;
-        _settings.CloseTerminalWhenAgentExits = !CloseTerminalOnExitSwitch.IsOn;
-        _settingsToggleReady = false;
-        CloseTerminalOnExitSwitch.IsOn = _settings.CloseTerminalWhenAgentExits;
-        _settingsToggleReady = true;
-    }
-
-    private void HideUnavailableSwitch_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_settingsToggleReady || _settings.HideUnavailable == HideUnavailableSwitch.IsOn)
-            return;
-        _settings.HideUnavailable = HideUnavailableSwitch.IsOn;
-        if (SaveAgentList())
-            return;
-        _settings.HideUnavailable = !HideUnavailableSwitch.IsOn;
-        _settingsToggleReady = false;
-        HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
-        _settingsToggleReady = true;
-    }
-
-    private void RecentFoldersSwitch_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_settingsToggleReady || _state.RememberRecentLaunches == RecentFoldersSwitch.IsOn)
-            return;
-        _state.RememberRecentLaunches = RecentFoldersSwitch.IsOn;
-        _store.SaveState(_state);
-    }
-
-    private void UsageSummarySwitch_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_settingsToggleReady || _state.ShowUsageSummary == UsageSummarySwitch.IsOn)
-            return;
-        _state.ShowUsageSummary = UsageSummarySwitch.IsOn;
-        _store.SaveState(_state);
-    }
-
-    private void PreferPlansSwitch_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_settingsToggleReady || _state.PreferPlansOverApi == PreferPlansSwitch.IsOn)
-            return;
-        _state.PreferPlansOverApi = PreferPlansSwitch.IsOn;
-        _store.SaveState(_state);
-    }
-
-    // ---------- Taskbar icon ----------
-
-    private readonly Dictionary<string, BitmapImage> _taskbarIconPreviews = new(StringComparer.OrdinalIgnoreCase);
-    /// <summary>False while the picker is being filled, so setting its selection doesn't count as a choice.</summary>
-    private bool _taskbarIconPickerReady;
-    /// <summary>An icon was set but Explorer hasn't restarted since, so the restart offer stays.</summary>
-    private bool _taskbarIconPending;
-
-    private string CurrentTaskbarIcon => _state.TaskbarIcon ?? TaskbarIcon.DefaultId;
-
-    /// <summary>Fills the picker for the current waifu setting, with the current icon selected.</summary>
-    private void BuildTaskbarIconPicker()
-    {
-        _taskbarIconPickerReady = false;
-        var choices = TaskbarIcon.Choices(_state.ShowHoverBackgrounds)
-            .Select(c => new TaskbarIconChoice(c.Id, c.Name, TaskbarIconPreview(c.Id)))
-            .ToList();
-        TaskbarIconPicker.ItemsSource = choices;
-        TaskbarIconPicker.SelectedItem = choices.FirstOrDefault(c => c.Id.Equals(CurrentTaskbarIcon, StringComparison.OrdinalIgnoreCase));
-        var pinned = Environment.ProcessPath is { } exe && TaskbarPins.IsPinned(exe);
-        TaskbarIconPicker.IsEnabled = pinned;
-        TaskbarIconNote.Text = pinned
-            ? "The picture on Agent Dock's taskbar button."
-            : "Pin Agent Dock to the taskbar to choose its icon.";
-        _taskbarIconPickerReady = true;
-    }
-
-    /// <summary>The 256 px frame, decoded small; kept for the life of the process like the agent icons.</summary>
-    private BitmapImage? TaskbarIconPreview(string id)
-    {
-        if (_taskbarIconPreviews.TryGetValue(id, out var cached))
-            return cached;
-        if (TaskbarIcon.Preview(id) is not { } png)
-            return null;
-        var image = new BitmapImage { DecodePixelWidth = 96 };
-        _taskbarIconPreviews[id] = image;
-        _ = LoadTaskbarIconPreviewAsync(image, png);
-        return image;
-    }
-
-    private static async Task LoadTaskbarIconPreviewAsync(BitmapImage image, byte[] png)
-    {
-        try
-        {
-            using var stream = new MemoryStream(png).AsRandomAccessStream();
-            await image.SetSourceAsync(stream);
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            // A blank tile; the icon itself still works.
-        }
-    }
-
-    private void TaskbarIconPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_taskbarIconPickerReady || TaskbarIconPicker.SelectedItem is not TaskbarIconChoice choice
-            || choice.Id.Equals(CurrentTaskbarIcon, StringComparison.OrdinalIgnoreCase))
-            return;
-        // Chosen by hand, so there's no earlier waifu icon to bring back any more.
-        _state.TaskbarWaifuIcon = null;
-        if (!SetTaskbarIcon(choice.Id))
-            BuildTaskbarIconPicker(); // back to the icon that's really there
-    }
-
-    /// <summary>
-    /// Waifu backgrounds was switched: off takes a waifu icon off the taskbar (Agent Dock's own icon
-    /// instead, remembering the waifu one), and on brings that one back if nothing was chosen since.
-    /// </summary>
-    private void TaskbarIconFollowWaifus()
-    {
-        if (!_state.ShowHoverBackgrounds && TaskbarIcon.IsWaifu(_state.TaskbarIcon))
-        {
-            var waifu = _state.TaskbarIcon;
-            if (SetTaskbarIcon(TaskbarIcon.DefaultId))
-            {
-                _state.TaskbarWaifuIcon = waifu;
-                _store.SaveState(_state);
-            }
-        }
-        else if (_state.ShowHoverBackgrounds && _state.TaskbarIcon is null && _state.TaskbarWaifuIcon is { } earlier
-                 && SetTaskbarIcon(earlier))
-        {
-            _state.TaskbarWaifuIcon = null;
-            _store.SaveState(_state);
-        }
-        BuildTaskbarIconPicker();
-    }
-
-    /// <summary>Sets the pinned icon and saves the choice. On failure, says why and changes nothing.</summary>
-    private bool SetTaskbarIcon(string id)
-    {
-        if (TaskbarIcon.Apply(id) is { } error)
-        {
-            ShowTaskbarIconBar(error);
-            return false;
-        }
-        _state.TaskbarIcon = id == TaskbarIcon.DefaultId ? null : id;
-        _store.SaveState(_state);
-        UpdateJumpList();
-        _taskbarIconPending = true;
-        ShowTaskbarIconBar(null);
-        return true;
-    }
-
-    /// <summary>The restart offer, or (with <paramref name="error"/>) why the icon couldn't be set.</summary>
-    private void ShowTaskbarIconBar(string? error)
-    {
-        TaskbarIconRestartBar.Severity = error is null ? InfoBarSeverity.Informational : InfoBarSeverity.Warning;
-        TaskbarIconRestartBar.Title = error is null ? "Restart File Explorer to see it" : "";
-        TaskbarIconRestartBar.Message = error
-            ?? "Windows shows the new icon after File Explorer restarts, or the next time you sign in. Restarting closes any open File Explorer windows.";
-        TaskbarIconRestartButton.Visibility = error is null ? Visibility.Visible : Visibility.Collapsed;
-        TaskbarIconRestartBar.IsOpen = true;
-    }
-
-    private async void TaskbarIconRestart_Click(object sender, RoutedEventArgs e)
-    {
-        TaskbarIconRestartButton.IsEnabled = false;
-        var cameBack = await Task.Run(TaskbarIcon.RestartExplorer);
-        TaskbarIconRestartButton.IsEnabled = true;
-        _taskbarIconPending = false;
-        TaskbarIconRestartBar.IsOpen = false;
-        if (!cameBack)
-            ShowTaskbarIconBar("File Explorer didn't start again by itself, so Agent Dock started it.");
-    }
-
-    private void ClearRecents_Click(object sender, RoutedEventArgs e)
-    {
-        ClearRecentsFlyout.Hide();
-        RecentLaunches.Clear(_state);
-        _store.SaveState(_state);
-        ClearRecentsButton.IsEnabled = false;
-        // The button just went away under the focus; keep it on the page.
-        RecentFoldersSwitch.Focus(FocusState.Programmatic);
+        foreach (var definition in _settings.Agents)
+            if (UsageAccount.For(definition) is { Agent: "claude" } account)
+                _liveChecks.Remove(account.Key);
+        _liveCheckEpoch++;
     }
 
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key == VirtualKey.Escape)
         {
-            if (SettingsPage.Visibility == Visibility.Visible)
-                SettingsBack();
-            else
-                HideFlyout();
+            HideFlyout();
             e.Handled = true;
             return;
         }
 
-        if (SettingsPage.Visibility == Visibility.Visible || FolderBox.IsDropDownOpen)
+        if (FolderBox.IsDropDownOpen)
             return;
 
         var key = e.Key switch
@@ -2075,11 +1271,7 @@ public sealed partial class FlyoutWindow : Window
                 menu.Items.Add(MenuItem($"Save as preset for {new FolderItem(folder).Name}", "\uE718", () => SavePreset(item, folder)));
                 menu.Items.Add(new MenuFlyoutSeparator());
             }
-            menu.Items.Add(MenuItem("Settings", "\uE713", () =>
-            {
-                ShowSettingsPage();
-                ShowAgentSettings(item.Definition);
-            }));
+            menu.Items.Add(MenuItem("Settings", "\uE713", () => OpenSettings(agentId: item.Definition.Id)));
             var remove = MenuItem("Remove from list", "\uE74D", () => ConfirmRemoveAgent(item, anchor));
             remove.IsEnabled = _settingsError is null; // agents.json that couldn't be read isn't written
             menu.Items.Add(remove);
@@ -2404,7 +1596,7 @@ public sealed partial class FlyoutWindow : Window
         }
     }
 
-    /// <summary>Where this Claude account's usage comes from (settings → the agent's page).</summary>
+    /// <summary>Where this Claude account's usage comes from (set in the settings window, on the agent's page).</summary>
     private ClaudeUsageSource SourceFor(UsageAccount account)
     {
         if (account.IsDefault)
@@ -2413,18 +1605,6 @@ public sealed partial class FlyoutWindow : Window
             if (string.Equals(dir, account.ConfigDir, StringComparison.OrdinalIgnoreCase))
                 return source;
         return ClaudeUsageSource.StatusLine;
-    }
-
-    private void SetSource(UsageAccount account, ClaudeUsageSource source)
-    {
-        if (account.IsDefault)
-        {
-            _state.ClaudeUsageSource = source;
-            return;
-        }
-        foreach (var dir in _state.ClaudeUsageSources.Keys.Where(k => string.Equals(k, account.ConfigDir, StringComparison.OrdinalIgnoreCase)).ToList())
-            _state.ClaudeUsageSources.Remove(dir);
-        _state.ClaudeUsageSources[account.ConfigDir] = source;
     }
 
     private bool OfferDismissed(UsageAccount account) =>
@@ -2706,7 +1886,7 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private bool ShowSummary()
     {
-        if (!_state.ShowUsageSummary || !AppWindow.IsVisible || MainPage.Visibility != Visibility.Visible || _popupsOpen > 0)
+        if (!_state.ShowUsageSummary || !AppWindow.IsVisible || _popupsOpen > 0)
             return false;
 
         var now = DateTimeOffset.UtcNow;
@@ -3005,7 +2185,7 @@ public sealed partial class FlyoutWindow : Window
             // A key no agent is linked to: settings, where an agent can be linked to it.
             AutomationProperties.SetName(button, $"{entry.Title}: {text}");
             ToolTipService.SetToolTip(button, "Link it to an agent in settings");
-            button.Click += (_, _) => ShowSettingsPage();
+            button.Click += (_, _) => OpenSettings(section: "api");
             return button;
         }
         AutomationProperties.SetName(button, $"Open {item.Definition.Name}: {text}");
@@ -3534,7 +2714,7 @@ public sealed partial class FlyoutWindow : Window
         return days == 0 ? local.ToString("t") : days < 7 ? $"{local:ddd} {local:t}" : local.ToString("MMM d");
     }
 
-    private static string UpdatedAgo(DateTimeOffset when, DateTimeOffset now)
+    internal static string UpdatedAgo(DateTimeOffset when, DateTimeOffset now)
     {
         var age = now - when;
         return age.TotalMinutes < 1 ? "Updated just now"
@@ -3544,7 +2724,7 @@ public sealed partial class FlyoutWindow : Window
     }
 
     /// <summary>"claude" for "claude", "claude.exe" or a quoted full path to it.</summary>
-    private static string? CommandName(string? command) =>
+    internal static string? CommandName(string? command) =>
         string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"')).ToLowerInvariant();
 
     /// <summary>The script or program a status line command runs, e.g. "waifuops-statusline.ps1".</summary>
@@ -4080,16 +3260,11 @@ public sealed partial class FlyoutWindow : Window
         Root.Measure(new Windows.Foundation.Size(ListWidthDip + drawerDip, double.PositiveInfinity));
         var workHeightDip = (work.Height - 2 * gap) / scale;
         var fitDip = Root.DesiredSize.Height > 1 ? Root.DesiredSize.Height : AppWindow.ClientSize.Height / scale;
-        // The height the user dragged to, for the list and settings alike (both scroll if their
-        // content is taller). Without one, the list fits its content and settings matches the list.
-        var onList = MainPage.Visibility == Visibility.Visible;
+        // The height the user dragged to (the list scrolls if its content is taller); without one,
+        // the list fits its content.
         var heightDip = _state.FlyoutHeight is { } chosen
             ? Math.Clamp(chosen, Math.Min(MinHeightDip, workHeightDip), workHeightDip)
-            : !onList && _listHeightDip is { } listHeight
-                ? Math.Min(listHeight, workHeightDip)
-                : Math.Min(fitDip, Math.Min(MaxHeightDip, workHeightDip));
-        if (onList)
-            _listHeightDip = heightDip;
+            : Math.Min(fitDip, Math.Min(MaxHeightDip, workHeightDip));
         // The grip goes on the edge away from the taskbar; the edge by the taskbar stays put.
         _gripAtTop = !(_anchor.Y < work.Top && !work.Contains(_anchor));
         HeightGrip.VerticalAlignment = _gripAtTop ? VerticalAlignment.Top : VerticalAlignment.Bottom;
@@ -4126,8 +3301,6 @@ public sealed partial class FlyoutWindow : Window
     // ---------- Resizing the height ----------
 
     private bool _gripAtTop = true;
-    /// <summary>The list's height last time it was placed, which settings matches when no height was dragged.</summary>
-    private double? _listHeightDip;
     private bool _resizing;
     private int _resizeStartCursorY;
     private RectInt32 _resizeStart;

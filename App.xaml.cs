@@ -16,6 +16,7 @@ public partial class App : Application
     private readonly DockCommand _initial;
     private readonly CancellationTokenSource _shutdown = new();
     private FlyoutWindow? _flyout;
+    private SettingsWindow? _settings;
 
     public App(DockCommand initial)
     {
@@ -81,10 +82,26 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Opens the settings window. The flyout hides first so it does not sit on top.
+    /// <paramref name="section"/> is general, agents or api; <paramref name="agentId"/> opens that
+    /// agent's page under Agents; <paramref name="addAgents"/> opens Add agents.
+    /// </summary>
+    public void OpenSettings(string? agentId = null, bool addAgents = false, string? section = null)
+    {
+        _flyout?.HideFlyout();
+        _settings ??= new SettingsWindow(Store, NotifySettingsChanged);
+        _settings.Show(agentId, addAgents, section);
+    }
+
+    /// <summary>Tells the flyout what settings changed, so it refreshes what it already built.</summary>
+    private void NotifySettingsChanged(SettingsChange change) => _flyout?.NotifySettingsChanged(change);
+
     private void Quit()
     {
         IsExiting = true;
         _shutdown.Cancel();
+        _settings?.Close();
         _flyout?.Close();
         Exit();
     }

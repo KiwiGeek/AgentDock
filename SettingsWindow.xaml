@@ -1,0 +1,538 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Agent Dock's settings: master-detail. The left list is General, each agent (drag to reorder),
+    Add agents, each API account, and Add an API key. The right pane shows only that item's details.
+    Esc closes the window.
+-->
+<Window
+    x:Class="AgentDock.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:AgentDock.Models"
+    Title="Agent Dock settings">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="Root" PreviewKeyDown="Root_PreviewKeyDown">
+        <Grid.Resources>
+            <ResourceDictionary>
+                <ResourceDictionary.ThemeDictionaries>
+                    <!-- Borderless buttons, as the flyout's footer has them. -->
+                    <ResourceDictionary x:Key="Default">
+                        <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                    </ResourceDictionary>
+                    <ResourceDictionary x:Key="Light">
+                        <StaticResource x:Key="ButtonBackground" ResourceKey="SubtleFillColorTransparentBrush" />
+                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+                        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SubtleFillColorTransparentBrush" />
+                        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SubtleFillColorTransparentBrush" />
+                        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SubtleFillColorTransparentBrush" />
+                    </ResourceDictionary>
+                </ResourceDictionary.ThemeDictionaries>
+
+                <Style x:Key="SectionHeaderStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                    <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <Setter Property="Margin" Value="0,12,0,8" />
+                </Style>
+            </ResourceDictionary>
+        </Grid.Resources>
+
+        <!--
+            Left list is hand-built so agents can be dragged to reorder (NavigationView can't).
+            Agents and API accounts are filled in code; the other rows are fixed.
+        -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,1,0"
+                    AutomationProperties.Name="Settings">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Padding="4,8,4,8">
+                        <ListView x:Name="GeneralNav" SelectionMode="Single"
+                                  SelectionChanged="StaticNav_SelectionChanged"
+                                  ScrollViewer.VerticalScrollMode="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListViewItem x:Name="GeneralNavItem" Tag="general" Padding="12,8"
+                                          AutomationProperties.Name="General">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <FontIcon Glyph="&#xE713;" FontSize="16" Width="20" />
+                                    <TextBlock Text="General" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </ListViewItem>
+                        </ListView>
+
+                        <TextBlock Text="Agents" Margin="12,12,12,4"
+                                   Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                        <ListView x:Name="AgentNavList" SelectionMode="Single"
+                                  CanReorderItems="True" CanDragItems="True" AllowDrop="True"
+                                  DragItemsCompleted="AgentNav_DragItemsCompleted"
+                                  SelectionChanged="AgentNav_SelectionChanged"
+                                  ScrollViewer.VerticalScrollMode="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                  AutomationProperties.Name="Agents">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:AgentListRow">
+                                    <Grid Padding="0,2" ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="20" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Image Width="16" Height="16" VerticalAlignment="Center"
+                                               Source="{x:Bind Icon}" Stretch="Uniform"
+                                               Visibility="{x:Bind IconVisibility}" />
+                                        <FontIcon Glyph="{x:Bind Glyph}" FontSize="16"
+                                                  VerticalAlignment="Center"
+                                                  Visibility="{x:Bind GlyphVisibility}" />
+                                        <TextBlock Grid.Column="1" Text="{x:Bind Name}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="2" Text="{x:Bind Note}" VerticalAlignment="Center"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                   Visibility="{x:Bind NoteVisibility}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <ListView x:Name="AddAgentsNav" SelectionMode="Single"
+                                  SelectionChanged="StaticNav_SelectionChanged"
+                                  ScrollViewer.VerticalScrollMode="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListViewItem x:Name="AddAgentsNavItem" Tag="add-agents" Padding="12,8"
+                                          AutomationProperties.Name="Add agents">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <FontIcon Glyph="&#xE710;" FontSize="16" Width="20" />
+                                    <TextBlock Text="Add agents" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </ListViewItem>
+                        </ListView>
+
+                        <TextBlock Text="API usage" Margin="12,12,12,4"
+                                   Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                        <ListView x:Name="ApiNavList" SelectionMode="Single"
+                                  SelectionChanged="ApiNav_SelectionChanged"
+                                  ScrollViewer.VerticalScrollMode="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                  AutomationProperties.Name="API accounts">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="models:ApiAccount">
+                                    <StackPanel Orientation="Horizontal" Spacing="12" Padding="0,2">
+                                        <FontIcon Glyph="&#xE8C7;" FontSize="16" Width="20" />
+                                        <TextBlock Text="{x:Bind Name}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <ListView x:Name="AddApiNav" SelectionMode="Single"
+                                  SelectionChanged="StaticNav_SelectionChanged"
+                                  ScrollViewer.VerticalScrollMode="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListViewItem x:Name="AddApiNavItem" Tag="add-api" Padding="12,8"
+                                          AutomationProperties.Name="Add an API key">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <FontIcon Glyph="&#xE710;" FontSize="16" Width="20" />
+                                    <TextBlock Text="Add an API key" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </ListViewItem>
+                        </ListView>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- The agent's waifu picture, behind her settings page (only while waifus are on). -->
+                <Image x:Name="AgentBackdrop" Grid.RowSpan="2" Stretch="UniformToFill"
+                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                       Opacity="0.3" IsHitTestVisible="False" Visibility="Collapsed" />
+
+                <TextBlock x:Name="SettingsTitle" Text="General" Margin="24,16,24,0"
+                           TextTrimming="CharacterEllipsis" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                <ScrollViewer x:Name="SettingsScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                              Padding="24,8,24,24">
+                    <StackPanel>
+
+                    <!-- General: flyout behaviour and the taskbar icon. -->
+                    <StackPanel x:Name="GeneralPage" MaxWidth="640" HorizontalAlignment="Left">
+                        <Grid Margin="0,0,0,16" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Waifu backgrounds" />
+                                <TextBlock Text="Show a picture behind the flyout while the pointer is over an agent."
+                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="HoverBackgroundsSwitch" Grid.Column="1" MinWidth="0"
+                                          VerticalAlignment="Center" OffContent="" OnContent=""
+                                          Toggled="HoverBackgroundsSwitch_Toggled"
+                                          AutomationProperties.Name="Waifu backgrounds"
+                                          AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
+                        </Grid>
+                        <StackPanel Margin="0,0,0,16" Spacing="8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Taskbar icon" />
+                                <TextBlock x:Name="TaskbarIconNote" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <GridView x:Name="TaskbarIconPicker" SelectionMode="Single" SingleSelectionFollowsFocus="False" Margin="-4,0"
+                                      SelectionChanged="TaskbarIconPicker_SelectionChanged"
+                                      ScrollViewer.VerticalScrollMode="Disabled"
+                                      ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                      AutomationProperties.Name="Taskbar icon">
+                                <GridView.ItemContainerStyle>
+                                    <Style TargetType="GridViewItem" BasedOn="{StaticResource DefaultGridViewItemStyle}">
+                                        <Setter Property="Margin" Value="2" />
+                                        <Setter Property="Padding" Value="4" />
+                                        <Setter Property="MinWidth" Value="0" />
+                                        <Setter Property="MinHeight" Value="0" />
+                                    </Style>
+                                </GridView.ItemContainerStyle>
+                                <GridView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:TaskbarIconChoice">
+                                        <Image Source="{x:Bind Preview}" Width="36" Height="36"
+                                               ToolTipService.ToolTip="{x:Bind Name}"
+                                               AutomationProperties.Name="{x:Bind Name}" />
+                                    </DataTemplate>
+                                </GridView.ItemTemplate>
+                            </GridView>
+                            <InfoBar x:Name="TaskbarIconRestartBar" IsOpen="False" Severity="Informational" IsClosable="True"
+                                     Title="Restart File Explorer to see it"
+                                     Message="Windows shows the new icon after File Explorer restarts, or the next time you sign in. Restarting closes any open File Explorer windows.">
+                                <InfoBar.ActionButton>
+                                    <Button x:Name="TaskbarIconRestartButton" Content="Restart now" Click="TaskbarIconRestart_Click" />
+                                </InfoBar.ActionButton>
+                            </InfoBar>
+                        </StackPanel>
+                        <Grid Margin="0,0,0,16" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Close terminal when agent exits" />
+                                <TextBlock Text="Close Agent Dock's terminal tab when a command line agent finishes, instead of leaving a prompt."
+                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="CloseTerminalOnExitSwitch" Grid.Column="1" MinWidth="0" VerticalAlignment="Center" OffContent="" OnContent=""
+                                          Toggled="CloseTerminalOnExitSwitch_Toggled" AutomationProperties.Name="Close terminal when agent exits" />
+                        </Grid>
+                        <Grid Margin="0,0,0,16" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Hide unavailable agents" />
+                                <TextBlock x:Name="HideUnavailableNote" Text="Hide agents in your list that aren't installed any more, instead of showing them dimmed."
+                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="HideUnavailableSwitch" Grid.Column="1" MinWidth="0"
+                                          VerticalAlignment="Center" OffContent="" OnContent=""
+                                          Toggled="HideUnavailableSwitch_Toggled"
+                                          AutomationProperties.Name="Hide unavailable agents"
+                                          AutomationProperties.HelpText="Hide agents in your list that aren't installed any more, instead of showing them dimmed." />
+                        </Grid>
+                        <Grid Margin="0,0,0,16" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Usage overview" />
+                                <TextBlock Text="Show every agent's usage beside the list while the pointer isn't over one, to help pick an agent."
+                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="UsageSummarySwitch" Grid.Column="1" MinWidth="0"
+                                          VerticalAlignment="Center" OffContent="" OnContent=""
+                                          Toggled="UsageSummarySwitch_Toggled"
+                                          AutomationProperties.Name="Usage overview"
+                                          AutomationProperties.HelpText="Show every agent's usage beside the list while the pointer isn't over one, to help pick an agent." />
+                        </Grid>
+                        <Grid Margin="0,0,0,16" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Prefer plans over API keys" />
+                                <TextBlock Text="Suggest agents whose plan includes usage before ones that spend an API balance, until the plans run out."
+                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="PreferPlansSwitch" Grid.Column="1" MinWidth="0"
+                                          VerticalAlignment="Center" OffContent="" OnContent=""
+                                          Toggled="PreferPlansSwitch_Toggled"
+                                          AutomationProperties.Name="Prefer plans over API keys"
+                                          AutomationProperties.HelpText="Suggest agents whose plan includes usage before ones that spend an API balance, until the plans run out." />
+                        </Grid>
+                        <Grid Margin="0,0,0,16" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Remember recents" />
+                                <TextBlock Text="Remember the last five folders you opened each agent in. Right-click one in the drawer to remove it."
+                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="RecentFoldersSwitch" Grid.Column="1" MinWidth="0"
+                                          VerticalAlignment="Center" OffContent="" OnContent=""
+                                          Toggled="RecentFoldersSwitch_Toggled"
+                                          AutomationProperties.Name="Remember recents"
+                                          AutomationProperties.HelpText="Remember the last five folders you opened each agent in. Right-click one in the drawer to remove it." />
+                        </Grid>
+                        <Button x:Name="ClearRecentsButton" Content="Clear recents" Margin="0,-6,0,0"
+                                AutomationProperties.HelpText="Forget every recent folder.">
+                            <Button.Flyout>
+                                <Flyout x:Name="ClearRecentsFlyout">
+                                    <StackPanel Spacing="12" MaxWidth="260">
+                                        <TextBlock Text="Forget every recent folder?" TextWrapping="Wrap" />
+                                        <Button Content="Clear" Style="{StaticResource AccentButtonStyle}" Click="ClearRecents_Click" />
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- One API account (chosen in the left list). -->
+                    <StackPanel x:Name="ApiPage" Visibility="Collapsed" MaxWidth="640" HorizontalAlignment="Left">
+                        <TextBlock Margin="0,0,0,12" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="This key's balance shows in the usage overview and in the drawer of agents linked to it (on the agent's page). The percentage is of the balance after your last top-up, or of the amount you set." />
+                        <StackPanel x:Name="ApiAccountHost" Spacing="16" />
+                    </StackPanel>
+
+                    <!-- Add agents (scan and a command of your own). -->
+                    <StackPanel x:Name="AddAgentsPage" Visibility="Collapsed" MaxWidth="640" HorizontalAlignment="Left">
+                        <TextBlock x:Name="AgentListNote" Margin="0,0,0,12" TextWrapping="Wrap" Visibility="Collapsed"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="Found on this PC" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,8" />
+                        <TextBlock x:Name="FoundAgentsNote" Margin="0,0,0,8" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel x:Name="FoundAgentsList" Margin="0,0,0,4" Spacing="0" />
+                        <Expander x:Name="MissingAgentsExpander" Visibility="Collapsed" Margin="0,4,0,4"
+                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <Expander.Header>
+                                <StackPanel Padding="0,6">
+                                    <TextBlock x:Name="MissingAgentsTitle" Text="Not found on this PC" />
+                                    <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="Add one anyway if it's installed somewhere Agent Dock doesn't look, or you're about to install it." />
+                                </StackPanel>
+                            </Expander.Header>
+                            <StackPanel x:Name="MissingAgentsList" Spacing="0" />
+                        </Expander>
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,16">
+                            <Button x:Name="AddFoundButton" Content="Add selected"
+                                    Style="{StaticResource AccentButtonStyle}" Click="AddFound_Click" />
+                            <Button x:Name="ScanAgainButton" Click="ScanAgain_Click" AutomationProperties.Name="Scan again">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                    <TextBlock Text="Scan again" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <TextBlock Text="Your own command" Style="{StaticResource SectionHeaderStyle}" />
+                        <StackPanel Spacing="8">
+                            <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="Any command line tool, started in a terminal in the working folder." />
+                            <TextBox x:Name="CustomNameBox" Header="Name" PlaceholderText="My agent" />
+                            <TextBox x:Name="CustomCommandBox" Header="Command" PlaceholderText="my-agent" />
+                            <TextBox x:Name="CustomArgumentsBox" Header="Arguments (optional)" />
+                            <Button x:Name="AddCustomButton" Content="Add" Click="AddCustom_Click" />
+                            <TextBlock x:Name="CustomNote" Visibility="Collapsed" TextWrapping="Wrap"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- One agent's page (Agents sub-page). -->
+                    <StackPanel x:Name="AgentEditor" Visibility="Collapsed" MaxWidth="640" HorizontalAlignment="Left">
+                        <StackPanel Spacing="8">
+                            <TextBox x:Name="AgentNameBox" Header="Name" LostFocus="AgentNameBox_LostFocus" KeyDown="EditorBox_KeyDown" />
+                            <StackPanel x:Name="AiderSettings" Visibility="Collapsed">
+                                <TextBlock Text="Model" Style="{StaticResource SectionHeaderStyle}" />
+                                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Optional. Agent Dock adds --model when it starts Aider. Set API keys, providers and other Aider settings in Aider itself. Duplicate this entry to keep another model ready." />
+                                <TextBox x:Name="AiderModelBox" Margin="0,0,0,16" Header="Model name" PlaceholderText="anthropic/claude-sonnet-4"
+                                         AutomationProperties.Name="Aider model name" AutomationProperties.HelpText="Optional Aider model name. Agent Dock starts Aider with this model."
+                                         LostFocus="AiderModelBox_LostFocus" KeyDown="EditorBox_KeyDown" />
+                                <TextBlock Text="Find a model" Style="{StaticResource SectionHeaderStyle}" />
+                                <TextBlock Margin="0,0,0,8" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Searches this PC's Aider model catalogue. It can include models your provider account cannot use." />
+                                <Grid Margin="0,0,0,4" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="AiderModelQueryBox" PlaceholderText="Provider or model, such as openai/ or claude"
+                                             AutomationProperties.Name="Find an Aider model" KeyDown="AiderModelQueryBox_KeyDown" />
+                                    <Button x:Name="FindAiderModelsButton" Grid.Column="1" Content="Search" Click="FindAiderModels_Click" />
+                                </Grid>
+                                <ProgressRing x:Name="AiderModelProgress" Margin="0,4" Width="20" Height="20" HorizontalAlignment="Left" Visibility="Collapsed"
+                                              IsActive="False" AutomationProperties.Name="Searching Aider models" />
+                                <TextBlock x:Name="AiderModelSearchNote" Margin="0,4,0,4" TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ListView x:Name="AiderModelResults" Margin="-8,0,-8,16" MaxHeight="180" Visibility="Collapsed"
+                                          SelectionChanged="AiderModelResults_SelectionChanged" AutomationProperties.Name="Aider model search results" />
+                            </StackPanel>
+                            <TextBox x:Name="AgentArgumentsBox" Header="Arguments" LostFocus="AgentArgumentsBox_LostFocus" KeyDown="EditorBox_KeyDown" />
+                            <TextBlock x:Name="AgentCommandText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <StackPanel x:Name="AgentApiSection" Spacing="8" Margin="0,8,0,0" Visibility="Collapsed">
+                                <ComboBox x:Name="AgentApiBox" Header="API usage" HorizontalAlignment="Stretch"
+                                          SelectionChanged="AgentApiBox_SelectionChanged" AutomationProperties.Name="API usage" />
+                                <TextBlock x:Name="AgentApiNote" TextWrapping="Wrap" Visibility="Collapsed"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <InfoBar x:Name="AgentApiOffer" IsOpen="False" Severity="Informational" IsClosable="True">
+                                    <InfoBar.ActionButton>
+                                        <Button x:Name="AgentApiOfferButton" Content="Link" Click="AgentApiOffer_Click" />
+                                    </InfoBar.ActionButton>
+                                </InfoBar>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel x:Name="AgentEnvSection">
+                            <TextBlock Text="Environment variables" Style="{StaticResource SectionHeaderStyle}" />
+                            <TextBlock x:Name="AgentEnvNote" Margin="0,0,0,8" TextWrapping="Wrap"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <StackPanel x:Name="AgentEnvRows" Margin="0,0,0,4" Spacing="2" />
+                            <Grid Margin="0,4,0,16" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="EnvNameBox" PlaceholderText="Name" AutomationProperties.Name="Variable name"
+                                         KeyDown="EnvBox_KeyDown" />
+                                <TextBox x:Name="EnvValueBox" Grid.Column="1" PlaceholderText="Value" AutomationProperties.Name="Variable value"
+                                         KeyDown="EnvBox_KeyDown" />
+                                <Button Grid.Column="2" Width="36" Height="32" Padding="0" Click="AddEnv_Click"
+                                        ToolTipService.ToolTip="Add variable" AutomationProperties.Name="Add variable">
+                                    <FontIcon Glyph="&#xE710;" FontSize="14" />
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+
+                        <TextBlock Text="In your list" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Text="Drag agents in the left list to change their order."
+                                   TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel Spacing="2">
+                            <Button Padding="8,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="DuplicateAgent_Click"
+                                    AutomationProperties.HelpText="A second copy with its own name and variables, e.g. for another account.">
+                                <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE8C8;" FontSize="16" Width="24" /><TextBlock Text="Duplicate" /></StackPanel>
+                            </Button>
+                            <Button Padding="8,6" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
+                                <StackPanel Orientation="Horizontal" Spacing="12"><FontIcon Glyph="&#xE74D;" FontSize="16" Width="24" /><TextBlock Text="Remove" /></StackPanel>
+                                <Button.Flyout>
+                                    <Flyout x:Name="RemoveAgentFlyout">
+                                        <StackPanel Spacing="12" MaxWidth="260">
+                                            <TextBlock x:Name="RemoveAgentText" TextWrapping="Wrap" />
+                                            <Button Content="Remove" Style="{StaticResource AccentButtonStyle}" Click="RemoveAgent_Click" />
+                                        </StackPanel>
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel x:Name="GrokSettings" Visibility="Collapsed" MaxWidth="640" HorizontalAlignment="Left">
+                        <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Margin="0,0,0,16" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="Grok Build's usage comes from grok.com, using Grok Build's own sign-in. To switch accounts, sign in again in Grok Build. This is not a published xAI API, and it can stop working." />
+                    </StackPanel>
+                    <StackPanel x:Name="CursorSettings" Visibility="Collapsed" MaxWidth="640" HorizontalAlignment="Left">
+                        <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Margin="0,0,0,16" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="Cursor's usage comes from cursor.com, using Cursor CLI's sign-in, for both the CLI and the desktop app. To switch accounts, sign in again in Cursor CLI. This is not a published Cursor API, and it can stop working." />
+                    </StackPanel>
+                    <StackPanel x:Name="CopilotSettings" Visibility="Collapsed" MaxWidth="640" HorizontalAlignment="Left">
+                        <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Margin="0,0,0,16" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="GitHub Copilot's AI credits come from GitHub, using the GitHub CLI's sign-in (gh), for both Copilot CLI and the desktop app. To switch accounts, sign in again with gh auth login. This is not a published GitHub API, and it can stop working." />
+                        <StackPanel x:Name="CopilotFolderSection">
+                            <TextBlock Text="Working folder" Style="{StaticResource SectionHeaderStyle}" />
+                            <TextBlock x:Name="CopilotFolderNote" Margin="0,0,0,16" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel x:Name="ClaudeSettings" Visibility="Collapsed" MaxWidth="640" HorizontalAlignment="Left">
+                        <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock x:Name="ClaudeUsageIntro" Margin="0,0,0,4" TextWrapping="Wrap"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Text="How Agent Dock finds out how much of your plan's session and weekly limits you've used, for the drawer beside Claude Code." />
+                        <RadioButtons x:Name="ClaudeUsageSourceButtons" Margin="0,0,0,12"
+                                      SelectionChanged="ClaudeUsageSource_SelectionChanged"
+                                      AutomationProperties.Name="How to check Claude usage limits"
+                                      AutomationProperties.HelpText="How Agent Dock finds out how much of your plan's session and weekly limits you've used, for the drawer beside Claude Code.">
+                            <RadioButton AutomationProperties.Name="Read them from the status line"
+                                         AutomationProperties.HelpText="Claude Code reports your limits while a session is running.">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Read them from the status line" />
+                                    <TextBlock Text="Claude Code reports your limits while a session is running."
+                                               TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton AutomationProperties.Name="Ask Claude for them directly"
+                                         AutomationProperties.HelpText="Checks your limits when you open the flyout, using the Claude Code sign-in already on this PC. This is not a published Anthropic API, and it can stop working.">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Ask Claude for them directly" />
+                                    <TextBlock Text="Checks your limits when you open the flyout, using the Claude Code sign-in already on this PC. This is not a published Anthropic API, and it can stop working."
+                                               TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </RadioButton>
+                        </RadioButtons>
+                    </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>
