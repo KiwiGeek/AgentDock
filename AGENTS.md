@@ -154,10 +154,12 @@ just above the taskbar button, listing AI agents:
   drop-down or a folder picker.
 - The General setting **Close terminal when agent exits** uses a non-persistent shell, closing Agent
   Dock's tab when the CLI returns. With Waifu backgrounds on, Agent Dock supplies each CLI agent's
-  picture through a hidden, app-owned Windows Terminal profile imported from a temporary JSON file.
-  It adds/removes only its own import line in settings.json, never changes user profiles, prepares
-  profiles before launch, and waits for Terminal's configuration reload; until then it opens an
-  ordinary tab rather than risking a failed launch.
+  picture through hidden, app-owned Windows Terminal profiles in
+  `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDock` (Store Terminal reads that folder
+  too; a settings.json `"import"` key is not a real Terminal setting). It prepares profiles before
+  launch, touches settings.json so Terminal reloads, and waits briefly; until then it opens an
+  ordinary tab rather than risking a failed launch. Turning Waifus off removes the fragment folder
+  and any `source: AgentDock` stubs Terminal copied into settings.json.
 - **Desktop agents** launch directly.
 - **The user chooses the agents** (owner's decision, 2026-10-16). A fresh install has an empty list
   and a welcome offering **Find agents**, which scans for the agents in `Services/KnownAgents.cs`

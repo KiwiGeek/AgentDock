@@ -134,8 +134,9 @@ public sealed class PresetList
 }
 
 /// <summary>
-/// The small JSON document Windows Terminal reads from Agent Dock's fragment directory. Keeping it
-/// as a model gives Native AOT a source-generated serializer instead of the reflection serializer.
+/// The small JSON document Windows Terminal reads from
+/// <c>%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDock</c>. Keeping it as a model
+/// gives Native AOT a source-generated serializer instead of the reflection serializer.
 /// </summary>
 public sealed class TerminalProfileFragment
 {
@@ -145,6 +146,8 @@ public sealed class TerminalProfileFragment
 /// <summary>A temporary Windows Terminal profile used only to give one agent tab its waifu picture.</summary>
 public sealed class TerminalProfileDefinition
 {
+    /// <summary>Stable id so Terminal can match fragment updates to the stub it copies into settings.json.</summary>
+    public string Guid { get; set; } = "";
     public string Name { get; set; } = "";
     public bool Hidden { get; set; } = true;
     public string BackgroundImage { get; set; } = "";
