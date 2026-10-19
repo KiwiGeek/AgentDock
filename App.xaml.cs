@@ -67,6 +67,9 @@ public partial class App : Application
             case DockCommandKind.Launch when command.AgentId is not null:
                 LaunchById(command.AgentId);
                 break;
+            case DockCommandKind.LaunchOther when command.AgentId?.Split(' ', 2) is [var mode, var id]:
+                LaunchById(id, mode);
+                break;
             case DockCommandKind.LaunchPreset when command.AgentId is not null:
                 LaunchPreset(command.AgentId);
                 break;
@@ -112,8 +115,11 @@ public partial class App : Application
             _flyout?.RememberLaunch(item.Definition, preset.Agent, preset.Folder);
     }
 
-    /// <summary>Jump list entries launch directly, without showing the flyout unless something goes wrong.</summary>
-    private void LaunchById(string id)
+    /// <summary>
+    /// Jump list entries launch directly, without showing the flyout unless something goes wrong.
+    /// With <paramref name="mode"/>, a desktop agent opens one of its other ways, with no folder.
+    /// </summary>
+    private void LaunchById(string id, string? mode = null)
     {
         var (settings, _) = Store.LoadSettings();
         var state = Store.LoadState();
@@ -131,6 +137,18 @@ public partial class App : Application
         // Not cached yet: read the Start menu (the UI thread is STA, which the shell needs).
         if (!item.IsAvailable && !item.IsCli)
             item = AgentCatalog.Resolve(single, AgentCatalog.FromStartMenu(StartMenuApps.Load()))[0];
+
+        if (mode is not null)
+        {
+            var other = KnownAgents.OtherLaunches(definition)
+                .FirstOrDefault(o => o.Mode.Equals(mode, StringComparison.OrdinalIgnoreCase));
+            var otherError = other is null
+                ? $"{definition.Name} can't be opened as \"{mode}\"."
+                : Launcher.Launch(item, other);
+            if (otherError is not null)
+                _flyout?.ShowFlyout(otherError);
+            return;
+        }
 
         var folder = state.CurrentFolder ?? FlyoutWindow.DefaultFolder();
         if (Launcher.Launch(item, folder, settings, state.ShowHoverBackgrounds) is { } error)

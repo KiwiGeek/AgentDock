@@ -16,7 +16,7 @@ confirm the command (or Start menu name), keep or remove it, and look for a usag
 
 | Id | Name | Command / Start menu name | Hover background | Notes |
 | --- | --- | --- | --- | --- |
-| `antigravity` | Antigravity CLI | `agy` | no | Google's replacement for Gemini CLI (added 2026-10-16). Not installed on the owner's PC, so not verified to launch. Has an icon; needs a picture. Usage: its quota is shared with the Antigravity IDE; no source found yet |
+| `antigravity` | Antigravity CLI | `agy` | no | Google's replacement for Gemini CLI (added 2026-10-16). Not installed on the owner's PC, so not verified to launch. Has an icon and a picture. Usage: its quota is shared with the Antigravity IDE; no source found yet |
 | `opencode` | OpenCode | `opencode` | yes | Recent folders added 2026-10-17. No universal usage bars: it can use arbitrary providers. Still to verify launch and recents after installation. |
 | `aider` | Aider | `aider` | yes | Model setting, Aider-driven model search and recent folders added 2026-10-18. No usage bars: it can use arbitrary providers. Still to verify launch, model search and recents after installation. |
 | `qwen` | Qwen Code | `qwen` | yes | |

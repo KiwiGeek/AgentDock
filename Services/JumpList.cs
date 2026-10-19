@@ -44,6 +44,10 @@ internal static class JumpList
                     var icon = AgentIcons.JumpListIconFor(agent.IconSource) ?? self;
                     var description = agent.TakesFolder ? $"Open {agent.Name} in {folder}" : $"Open {agent.Name}";
                     items.AddObject(NewLink(self, $"--launch \"{agent.Definition.Id}\"", agent.Name, description, icon));
+                    foreach (var other in KnownAgents.OtherLaunches(agent.Definition))
+                        items.AddObject(NewLink(self, $"--launch \"{agent.Definition.Id}\" --mode {other.Mode}",
+                            $"{agent.Name}: {char.ToLowerInvariant(other.Text[0])}{other.Text[1..]}",
+                            $"{other.Text} in {agent.Name}", icon));
                 }
                 // Fails harmlessly if the user has turned off "recently opened items" in Settings.
                 list.AppendCategory(group.Key ? "Command line" : "Desktop apps", items);

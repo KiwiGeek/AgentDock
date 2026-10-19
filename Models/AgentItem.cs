@@ -106,6 +106,17 @@ public sealed partial class AgentItem : INotifyPropertyChanged
 
     public Visibility ShortcutVisibility => _shortcut is null ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>
+    /// The row's button: the first of the agent's other ways to open (Claude's new chat, ChatGPT
+    /// without a folder). Agent rows only; a preset is about its folder.
+    /// </summary>
+    public Services.OtherLaunch? QuickLaunch =>
+        Preset is null && IsAgentAvailable ? Services.KnownAgents.OtherLaunches(Definition).FirstOrDefault() : null;
+
+    public Visibility QuickLaunchVisibility => QuickLaunch is null ? Visibility.Collapsed : Visibility.Visible;
+    public string QuickLaunchText => QuickLaunch?.Text ?? "";
+    public string QuickLaunchGlyph => QuickLaunch?.Glyph ?? "";
+
     /// <summary>Screen readers announce list items by ToString().</summary>
     public override string ToString() => $"{Name}, {Subtitle}";
 

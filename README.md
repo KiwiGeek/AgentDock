@@ -48,7 +48,8 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Terminal button (footer) | Plain shell in the working folder, no agent |
 | Pencil button (footer) | Opens `agents.json` |
 | Gear button (footer) | Settings, including your agents (add, rename, duplicate, remove). Esc there goes back to the list |
-| Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (agents that open in a folder), **Settings**, or **Remove from list** |
+| Chat button on the Claude or ChatGPT row | Opens the app for a plain chat, without the working folder (see below) |
+| Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (agents that open in a folder), **Settings**, or **Remove from list**. Claude also has **New chat** and **New Cowork session**, ChatGPT **Open without a folder** |
 | Right-click a preset | Rename or remove it |
 | Drag the top edge (the bottom edge if your taskbar is at the top) | Makes the list taller or shorter. Double-click the edge to fit the list again |
 | Esc, click elsewhere, or click the taskbar icon again | Closes the flyout. In settings, Esc goes back one level first (an agent's page, then the list) |
@@ -285,7 +286,7 @@ under any id. An `icon` setting overrides that. Desktop apps without either use 
 menu shows. Anything else gets a plain terminal or app symbol.
 
 Hover pictures are built in the same way, as `Assets\Agents\<agent id>-background.png` (currently
-Aider, Amp, ChatGPT, Claude, Claude Code, Codex, Copilot, Copilot desktop, Crush, Cursor, Cursor CLI,
+Aider, Amp, Antigravity CLI, ChatGPT, Claude, Claude Code, Codex, Copilot, Copilot desktop, Crush, Cursor, Cursor CLI,
 DeepSeek, Factory Droid, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
 by agent id or command name. A `background` setting overrides one. Turn them off with **Waifu
 backgrounds** on the settings page (the gear in the footer), which also hides the hearts on the
@@ -317,6 +318,11 @@ cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's ic
   already open, Windows versions of Claude currently add the folder to the open window instead of
   opening a new one. Both can have presets and recent folders, and their drawers show the same
   plan usage as Claude Code and Codex (one line each in the usage overview).
+- **They can also open for work that isn't coding**, from the chat button on their row, their
+  right-click menu, or the jump list. Claude opens a new chat (`claude://claude.ai/new`) or a new
+  Cowork session (`claude://cowork/new`). ChatGPT has no documented link for a plain chat (all its
+  links are Codex's), so it just opens the app, showing whatever it showed last. None of these use
+  the working folder or add to recent folders.
 - **Cursor opens the working folder too**, as a workspace (Agent Dock runs `Cursor.exe` with the
   folder, as Cursor's own `cursor .` command does). If that folder is already open, Cursor switches
   to its window. Presets and recent folders work for it as well.

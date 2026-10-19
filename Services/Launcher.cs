@@ -45,13 +45,9 @@ public static class Launcher
                 start.ArgumentList.Add(folder);
                 Process.Start(start);
             }
-            else if (item.ExecutablePath is not null)
-            {
-                Process.Start(new ProcessStartInfo(item.ExecutablePath) { UseShellExecute = true });
-            }
             else
             {
-                Process.Start(new ProcessStartInfo($@"shell:AppsFolder\{item.AppId}") { UseShellExecute = true });
+                StartApp(item);
             }
             return null;
         }
@@ -60,6 +56,31 @@ public static class Launcher
             return $"{item.Name} didn't start: {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// Opens a desktop agent one of its other ways (<see cref="KnownAgents.OtherLaunches"/>), with no
+    /// folder. Returns null on success, or a message describing what went wrong.
+    /// </summary>
+    public static string? Launch(AgentItem item, OtherLaunch other)
+    {
+        if (!item.IsAgentAvailable)
+            return item.Subtitle;
+        try
+        {
+            if (other.Link is { } link)
+                Process.Start(new ProcessStartInfo(link) { UseShellExecute = true });
+            else
+                StartApp(item);
+            return null;
+        }
+        catch (Win32Exception ex)
+        {
+            return $"{item.Name} didn't start: {ex.Message}";
+        }
+    }
+
+    private static void StartApp(AgentItem item) =>
+        Process.Start(new ProcessStartInfo(item.ExecutablePath ?? $@"shell:AppsFolder\{item.AppId}") { UseShellExecute = true });
 
     /// <summary>
     /// Aider model names are provider/model identifiers, so they do not contain spaces. Keeping this

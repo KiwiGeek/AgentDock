@@ -18,6 +18,7 @@ internal static class ThemeColors
     {
         ["aider"] = Hex(0x1E6B5C),           // teal top
         ["amp"] = Hex(0xE0601E),             // orange top and neon
+        ["antigravity"] = Hex(0x6F8FE0),     // periwinkle top
         ["chatgpt-desktop"] = Hex(0x5BBF9A), // mint top
         ["claude"] = Hex(0xD97757),          // Claude's orange
         ["claude-desktop"] = Hex(0xB5532A),  // rust skirt

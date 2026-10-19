@@ -67,6 +67,27 @@ public static class KnownAgents
         definition.Kind == AgentKind.Desktop
         && string.Equals(definition.Catalog ?? definition.Id, "cursor", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Ways to open a desktop agent for work that isn't about a folder, for the row's button (the
+    /// first one), its right-click menu and the jump list. Claude and ChatGPT are general assistants
+    /// as well as coding ones, and a click opens them in the working folder. Claude documents links
+    /// for a plain chat and for Cowork (support.claude.com, "Open Claude Desktop with a link").
+    /// ChatGPT registers only <c>codex://</c>, whose links are all Codex's, so it just opens as it is
+    /// (<see cref="OtherLaunch.Link"/> null).
+    /// </summary>
+    public static IReadOnlyList<OtherLaunch> OtherLaunches(AgentDefinition definition) =>
+        definition.Kind != AgentKind.Desktop ? []
+        : (definition.Catalog ?? definition.Id).ToLowerInvariant() switch
+        {
+            "claude-desktop" =>
+            [
+                new("chat", "New chat", "", "claude://claude.ai/new"),
+                new("cowork", "New Cowork session", "", "claude://cowork/new")
+            ],
+            "chatgpt-desktop" => [new("app", "Open without a folder", "", null)],
+            _ => []
+        };
+
     /// <summary>A desktop agent that can start in a folder, by link or by its exe (presets, recents, the working folder).</summary>
     public static bool TakesFolder(AgentDefinition definition) => FolderLink(definition) is not null || OpensFolderInExe(definition);
 
@@ -126,3 +147,9 @@ public static class KnownAgents
     private static string? CommandName(string? command) =>
         string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"'));
 }
+
+/// <summary>One of <see cref="KnownAgents.OtherLaunches"/>.</summary>
+/// <param name="Mode">Names it on the command line (<c>--launch &lt;id&gt; --mode &lt;mode&gt;</c>, from the jump list).</param>
+/// <param name="Text">Menu and tooltip text.</param>
+/// <param name="Link">The app's link, or null to open the app the plain way.</param>
+public sealed record OtherLaunch(string Mode, string Text, string Glyph, string? Link);

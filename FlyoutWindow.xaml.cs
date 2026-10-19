@@ -981,6 +981,21 @@ public sealed partial class FlyoutWindow : Window
         }
     }
 
+    private void QuickLaunch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: AgentItem { QuickLaunch: { } other } item })
+            Launch(item, other);
+    }
+
+    /// <summary>A desktop agent opened without a folder, so there's no recent folder to remember.</summary>
+    private void Launch(AgentItem item, OtherLaunch other)
+    {
+        if (Launcher.Launch(item, other) is { } error)
+            SetStatus(error);
+        else
+            HideFlyout();
+    }
+
     /// <summary>Only for the agents in <see cref="RecentLaunches.Records"/>. A folder already in the list moves to the front.</summary>
     public void RememberLaunch(AgentDefinition agent, string agentId, string folder)
     {
@@ -1764,6 +1779,16 @@ public sealed partial class FlyoutWindow : Window
         }
         else
         {
+            var others = KnownAgents.OtherLaunches(item.Definition);
+            foreach (var other in others)
+            {
+                var entry = MenuItem(other.Text, other.Glyph, () => Launch(item, other));
+                entry.IsEnabled = item.IsAgentAvailable;
+                menu.Items.Add(entry);
+            }
+            if (others.Count > 0)
+                menu.Items.Add(new MenuFlyoutSeparator());
+
             // Most desktop apps don't open in a folder, so they can't be presets (Claude can).
             if (item.TakesFolder)
             {
@@ -3398,12 +3423,16 @@ public sealed partial class FlyoutWindow : Window
         var imageHeight = image.PixelHeight * scale;
 
         // Both ends in list coordinates (0 = the list's left edge, which never moves on screen).
-        // Closed: subject over the middle of the list (past the banner), as far as the picture still
-        // covers the list. Open on the right: right edge on the drawer's far edge. Open on the left:
-        // right edge on the list's right edge, so it reaches back over the drawer.
+        // Closed: subject over the middle of the list (past the banner). Open: subject over the middle
+        // of list and drawer together (the drawer is right of the list, or left at negative x). Each
+        // only as far as the picture still covers what's on screen. Pinning the open picture's edge to
+        // the window's instead left the subject well left of centre (owner's screenshot, 2026-10-19).
         var closed = Math.Clamp(BannerWidthDip + (ListWidthDip - BannerWidthDip) / 2 - width * BackdropSubjectX,
             ListWidthDip - width, 0);
-        var open = _drawerSide > 0 ? ListWidthDip + DrawerWidthDip - width : ListWidthDip - width;
+        var spanLeft = _drawerSide > 0 ? 0 : -DrawerWidthDip;
+        var spanRight = spanLeft + ListWidthDip + DrawerWidthDip;
+        var open = Math.Clamp((spanLeft + spanRight + BannerWidthDip) / 2 - width * BackdropSubjectX,
+            spanRight - width, spanLeft);
         var drawer = DrawerDip();
         var t = Math.Clamp(drawer / DrawerWidthDip, 0, 1);
         var leftInList = closed + (open - closed) * t;

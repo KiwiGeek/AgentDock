@@ -103,8 +103,8 @@ Details per agent are under Reference; what's still to review per agent is in `t
   the CLI's token, recents, overview.
 - [x] **GitHub Copilot CLI** (`copilot`): icon, picture, usage (AI credits) via
   `gh api copilot_internal/user`, recents, overview.
-- [ ] **Antigravity CLI** (`agy`): known agent and icon only. Not installed on the owner's PC; no
-  picture, no usage, not verified to launch.
+- [ ] **Antigravity CLI** (`agy`): known agent, icon and picture. Not installed on the owner's PC; no
+  usage, not verified to launch.
 - [ ] **OpenCode** (`opencode`): icon, picture and recent folders. No usage bars: its providers have
   separate billing and quota systems.
 - [ ] **Aider** (`aider`): icon, picture, model setting, Aider-driven model search and recent folders. No usage bars: it can use arbitrary providers.
@@ -125,11 +125,11 @@ Details per agent are under Reference; what's still to review per agent is in `t
 - [x] **Claude** (desktop): icon, picture, and it **opens a Claude Code session in the working
   folder** (`claude://code/new?folder=`, added 2026-10-16; the owner confirmed it works), with
   presets and recent folders. Usage is Claude Code's default account (shared drawer content, one
-  overview row).
+  overview row). A row button and its right-click menu also open a new chat or Cowork session, with no folder.
 - [ ] **ChatGPT** (desktop, the Codex app): icon, picture, and it **opens a new chat in the working
   folder** (`codex://threads/new?path=`, added 2026-10-16), with presets and recent folders. Usage is
   Codex's default account (assumes the app is signed in as the Codex CLI is). Not yet verified by an
-  actual launch.
+  actual launch. A row button and its right-click menu also open the app plainly, without a folder.
 - [ ] **Copilot** (desktop): icon, picture, launch. No usage.
 - [ ] **Perplexity** (desktop): icon, picture, launch. No usage.
 
@@ -169,7 +169,7 @@ just above the taskbar button, listing AI agents:
 - Gemini CLI stopped serving personal Google accounts on 2026-06-18 (API keys and Code Assist
   licences still work), so it was removed from the known agents, with its icon and picture (owner,
   2026-10-16). Google moved those users to **Antigravity CLI** (`agy`, id `antigravity`), added the
-  same day. It has a built-in icon but no picture yet.
+  same day. It has a built-in icon and picture (added 2026-10-19; banner colour: her periwinkle top).
 - There is no separate Codex desktop app: OpenAI merged it into the ChatGPT desktop app (July 2026).
   It's installed as `OpenAI.Codex_2p2nqsd0c76g0!App` but named "ChatGPT", so `chatgpt-desktop` finds it.
   A chatgpt.com site installed from Edge has the same Start menu name; `StartMenuApps.Load` prefers the
@@ -258,11 +258,12 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - Otherwise it becomes the resident instance: `RunResident` (marked `NoInlining` so WinUI assemblies
   load only on this path) starts the WinUI `Application`.
 - Pipe name: `AgentDock.{UserName}.{SessionId}`, `PipeOptions.CurrentUserOnly`.
-  Messages: `Show`, `Launch <agentId>`, `LaunchPreset <name>`, `Background`, `Quit` (see `DockCommand`
+  Messages: `Show`, `Launch <agentId>`, `LaunchOther <mode> <agentId>`, `LaunchPreset <name>`, `Background`, `Quit` (see `DockCommand`
   in `Services/Ipc.cs`; the name may contain spaces, since only the first space splits).
   The pipe is unbuffered, so a write blocks until the resident reads it. `Ipc.TrySend` gives up
   after 3 s so that a hung resident can't hang the sender too (it did before; found in testing).
-- Command-line: no args = Show; `--launch <id>` and `--preset "<name>"` (jump list);
+- Command-line: no args = Show; `--launch <id>` (with `--mode <mode>` for Claude's or ChatGPT's
+  other ways to open) and `--preset "<name>"` (jump list);
   `--background` (sign-in startup); `--quit`.
 - `--quit` (`Program.QuitResident`) sends `Quit`, then waits up to 3 s for the resident's mutex.
   A hung resident still accepts the connection, so a successful send proves nothing. If the
@@ -388,6 +389,19 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     Known Windows bug (anthropics/claude-code #92260): with the app already open, the folder is
     added to the open workspace instead of a new window. The app is packaged
     (`Claude_pzs8sxrjxfjjc`) and its manifest registers the `claude` protocol.
+  - **Without a folder** (owner's request, 2026-10-19): Claude and ChatGPT are general assistants
+    too, so `KnownAgents.OtherLaunches` lists other ways to open them, by catalog id. Claude:
+    "New chat" (`claude://claude.ai/new`) and "New Cowork session" (`claude://cowork/new`), both
+    on the same support.claude.com page (which also documents `q` to prefill, unused). ChatGPT:
+    "Open without a folder", the plain `shell:AppsFolder` launch (owner's choice). The app registers
+    only `codex`, and OpenAI's Commands reference has no link for a regular ChatGPT chat;
+    `codex://threads/new` without `path` would still be a Codex chat. The first one is a button
+    on the row (`AgentItem.QuickLaunch`, agent rows only, not presets; a Button inside the list
+    item, so it doesn't fire `ItemClick`). All of them are in the row's right-click menu, and in
+    the jump list as "Claude: new chat" etc. (`--launch <id> --mode <mode>`, `DockCommandKind.LaunchOther`,
+    payload "mode id"). `Launcher.Launch(item, OtherLaunch)` doesn't record a recent folder.
+    Verified 2026-10-19 through UI Automation: the "New chat" and "Open without a folder" buttons
+    are on the rows. **Not yet verified:** an actual launch from the button, the menu or the jump list.
   - **Cursor** has no such link, but is a VS Code fork, so it opens a folder given on its command
     line (`KnownAgents.OpensFolderInExe`; its documented `cursor .` shell command does the same).
     `FolderAppExe` finds Cursor.exe: the agent's `path`, else three folders up from the `cursor`
@@ -849,8 +863,8 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Hover image:** one picture per layer, always sized to cover the list plus an open drawer (so
   it never zooms). Its position depends only on how far the drawer is open, not on which agent it
   belongs to (owner's request, 2026-10-16): drawer closed, the subject is centred in the list;
-  fully open, the picture spans list and drawer (on the left side, its right edge stays on the
-  list's right edge); in between it slides with the drawer's width animation, in the same tick as
+  fully open, the subject is centred across list and drawer together (it used to pin the picture's
+  edge to the window's, which left her well left of centre; owner's screenshot, 2026-10-19); in between it slides with the drawer's width animation, in the same tick as
   the window resize (`OnDrawerWidthChanged`). So moving from a drawer agent to one without, her
   picture starts in the drawer layout and slides to the centre as the drawer closes, with no empty
   grey drawer; the reverse slides the other way. Hovering a drawer agent from nothing also slides
@@ -1027,8 +1041,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
     until the drawer closes.
   - Each layer's sizing is done by `LayoutBackdrop(layer)` (see Drawer). With the drawer closed,
     the picture is shifted so its subject is centred in the list. The built-in pictures put
-    the character about 72% of the way across (`BackdropSubjectX`); new pictures should keep that layout.
-  Images are cached per path; the fade is skipped when Windows animations are off; hiding the
+    the character about 72% of the way across (`BackdropSubjectX`); new pictures should keep that layout.  Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
 - **Not yet verified in-app:** loading from the embedded resources. The build embeds all 10, but
   nobody has hovered since.

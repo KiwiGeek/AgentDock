@@ -7,12 +7,17 @@ public enum DockCommandKind
 {
     Show,
     Launch,
+    /// <summary>A desktop agent one of its other ways (<see cref="KnownAgents.OtherLaunches"/>): "mode agentId".</summary>
+    LaunchOther,
     LaunchPreset,
     Background,
     Quit
 }
 
-/// <param name="AgentId">The agent id for <c>Launch</c>, or the preset name for <c>LaunchPreset</c>.</param>
+/// <param name="AgentId">
+/// The agent id for <c>Launch</c>, the preset name for <c>LaunchPreset</c>, or "mode agentId" for
+/// <c>LaunchOther</c> (the mode first: it has no spaces, and only the first space splits).
+/// </param>
 public readonly record struct DockCommand(DockCommandKind Kind, string? AgentId = null)
 {
     public static DockCommand FromArgs(string[] args)
@@ -21,7 +26,11 @@ public readonly record struct DockCommand(DockCommandKind Kind, string? AgentId 
         {
             switch (args[i].ToLowerInvariant())
             {
-                case "--launch" when i + 1 < args.Length: return new(DockCommandKind.Launch, args[i + 1]);
+                case "--launch" when i + 1 < args.Length:
+                    var mode = Array.FindIndex(args, a => a.Equals("--mode", StringComparison.OrdinalIgnoreCase));
+                    return mode >= 0 && mode + 1 < args.Length
+                        ? new(DockCommandKind.LaunchOther, $"{args[mode + 1]} {args[i + 1]}")
+                        : new(DockCommandKind.Launch, args[i + 1]);
                 case "--preset" when i + 1 < args.Length: return new(DockCommandKind.LaunchPreset, args[i + 1]);
                 case "--background": return new(DockCommandKind.Background);
                 case "--quit": return new(DockCommandKind.Quit);
