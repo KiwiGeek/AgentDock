@@ -659,7 +659,7 @@ there degrade to a missing icon or entry, never an error.
 | `Services/PathResolver.cs` | PATH/PATHEXT lookup |
 | `Services/Launcher.cs` | Starts agents and plain shells |
 | `Services/HostedAgents.cs` | CLI agents run with no Terminal window (DeepSeek Harness); Stop from the row; killed on quit; `--patch` + browser open for launch-folder workspace |
-| `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: host create + client open) |
+| `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: open the launch folder; `agentdock-waifu`: serve her PNG and soften theme fills when Waifu backgrounds is on) |
 | `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
 | `Services/Autostart.cs` | HKCU Run entry |
 | `Services/JumpList.cs` | Taskbar jump list |

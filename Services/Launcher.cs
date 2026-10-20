@@ -24,7 +24,7 @@ public static class Launcher
 
                 // DeepSeek Harness and similar: no Terminal window; Agent Dock owns the process.
                 if (HostedAgents.IsHosted(item.Definition))
-                    return HostedAgents.Start(item, folder, settings);
+                    return HostedAgents.Start(item, folder, settings, waifuBackgrounds);
 
                 var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments,
                         AiderModelArgument(item.Definition) }

@@ -1,0 +1,4 @@
+# Agent Dock: DeepSeek waifu background (only patched when Waifu backgrounds is on).
+- insert:
+    - id: agentdock-waifu
+      name: ./agentdock-waifu/index.js

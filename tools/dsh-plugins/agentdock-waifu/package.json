@@ -1,0 +1,17 @@
+{
+  "name": "@agentdock/dsh-waifu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DeepSeek Harness background: Agent Dock's DeepSeek waifu",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-theme"]
+    }
+  }
+}

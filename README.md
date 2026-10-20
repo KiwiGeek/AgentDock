@@ -81,6 +81,7 @@ CLI agents run inside a shell (`pwsh -NoExit -Command claude`, for example), so 
 shims work and you land back at a prompt in the folder when the agent exits. DeepSeek Harness
 is different: Agent Dock runs `dsh web` itself (no Terminal tab), opens the browser UI on the
 folder you chose (as a Harness workspace), and shows **Stop** on the row while it's running.
+With **Waifu backgrounds** on, her picture also becomes the Harness page background.
 
 ## Why it opens quickly
 

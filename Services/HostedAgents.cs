@@ -76,7 +76,7 @@ public static class HostedAgents
     /// <c>AGENTDOCK_WORKSPACE</c> and opened in the browser UI via the shipped dsh plugin
     /// (<c>tools/dsh-plugins</c>). Returns null on success, or a short message on failure.
     /// </summary>
-    public static string? Start(AgentItem item, string folder, DockSettings settings)
+    public static string? Start(AgentItem item, string folder, DockSettings settings, bool waifuBackgrounds = false)
     {
         if (!IsHosted(item.Definition))
             return null;
@@ -96,7 +96,7 @@ public static class HostedAgents
             // Prefer node + bin.js so the process we track is the real server (not a cmd.exe that
             // can exit while leaving node behind). Fall back to cmd for odd installs.
             var start = BuildStartInfo(exe, item.Definition.Arguments, folder);
-            ApplyDeepSeekLaunch(start, folder);
+            ApplyDeepSeekLaunch(start, folder, waifuBackgrounds);
             ApplyEnvironment(start, ApiUsage.EnvironmentFor(item.Definition, settings.ApiAccounts));
             // Capture the printed "dsh web: http://…/?token=…" line — without the token the
             // browser gets 401, and we need to add agentdock_workspace onto that same URL.
@@ -175,23 +175,32 @@ public static class HostedAgents
 
     /// <summary>
     /// Env + argv additions that make DeepSeek open the launch folder: workspace env for the
-    /// host plugin, <c>--no-open</c> so we control the browser URL (query param for the client
-    /// plugin), and <c>--patch</c> for the shipped overlay when present.
+    /// host plugin, <c>--no-open</c> so we control the browser URL (hash for the client
+    /// plugin), and <c>--patch</c> for the shipped overlays when present.
     /// <c>--patch</c> is a top-level dsh flag and must come <em>before</em> the profile; a bare
     /// <c>web</c> argument is rewritten to <c>--profile web</c> so that ordering stays valid.
     /// </summary>
-    private static void ApplyDeepSeekLaunch(ProcessStartInfo start, string folder)
+    private static void ApplyDeepSeekLaunch(ProcessStartInfo start, string folder, bool waifuBackgrounds)
     {
         start.Environment["AGENTDOCK_WORKSPACE"] = Path.GetFullPath(folder);
+        if (waifuBackgrounds && FindWaifuPng() is { } png)
+            start.Environment["AGENTDOCK_WAIFU_PATH"] = png;
 
         var args = start.ArgumentList;
         ExpandBareWebProfile(args);
 
-        if (FindWorkspacePatch() is { } patch && !HasFlag(args, "--patch"))
+        // Insert patches just after the script path, before --profile (repeatable --patch).
+        var at = PatchInsertIndex(args);
+        if (FindPluginPatch("agentdock-workspace.patch.yml") is { } workspace)
         {
-            var at = PatchInsertIndex(args);
             args.Insert(at, "--patch");
-            args.Insert(at + 1, patch);
+            args.Insert(at + 1, workspace);
+            at += 2;
+        }
+        if (waifuBackgrounds && FindPluginPatch("agentdock-waifu.patch.yml") is { } waifu)
+        {
+            args.Insert(at, "--patch");
+            args.Insert(at + 1, waifu);
         }
 
         // --no-open: we open the printed token URL ourselves, with agentdock_workspace on it.
@@ -230,10 +239,10 @@ public static class HostedAgents
         return 0;
     }
 
-    private static string? FindWorkspacePatch()
+    private static string? FindPluginPatch(string fileName)
     {
         // Published / Debug with CopyToOutputDirectory: next to the exe.
-        var besideExe = Path.Combine(AppContext.BaseDirectory, "dsh-plugins", "agentdock-workspace.patch.yml");
+        var besideExe = Path.Combine(AppContext.BaseDirectory, "dsh-plugins", fileName);
         if (File.Exists(besideExe))
             return besideExe;
 
@@ -241,8 +250,26 @@ public static class HostedAgents
         try
         {
             var fromRepo = Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "dsh-plugins", fileName));
+            if (File.Exists(fromRepo))
+                return fromRepo;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+        }
+        return null;
+    }
+
+    private static string? FindWaifuPng()
+    {
+        var besideExe = Path.Combine(AppContext.BaseDirectory, "dsh-plugins", "agentdock-waifu", "waifu.png");
+        if (File.Exists(besideExe))
+            return besideExe;
+        try
+        {
+            var fromRepo = Path.GetFullPath(Path.Combine(
                 AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "dsh-plugins",
-                "agentdock-workspace.patch.yml"));
+                "agentdock-waifu", "waifu.png"));
             if (File.Exists(fromRepo))
                 return fromRepo;
         }
