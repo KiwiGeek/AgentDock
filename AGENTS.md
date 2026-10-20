@@ -74,7 +74,7 @@ shows a usage overview of every agent with a suggestion of which to use.
 - The flyout window doesn't get `WS_EX_TOPMOST`, so without foreground rights it sits behind other
   windows. Screen captures of it then show whatever is on top; `PrintWindow` on a 200% monitor came
   out scaled wrong. **Check the UI through UI Automation instead** (rows and bars have automation
-  names, e.g. "Open Codex: 1% session · 0% week").
+  names, e.g. "Open Codex: 1% session · resets 16:08 · 0% week · resets Mon 1:58").
 - Opening the flyout from a script: run the exe with no arguments (it hands off to the resident
   copy over the pipe). A second run within 600 ms of a hide counts as a toggle.
 - `gh api` from Git Bash: no leading slash (MSYS rewrites it into a file path).
@@ -864,9 +864,11 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Usage overview** (owner's request, 2026-10-16; `ShowSummary`, `SummaryPanel`): while no agent with a
   drawer is hovered, the drawer shows every listed agent's usage in brief. One row per account
   (`SummaryEntries`: copies share a row, presets are left out, Cursor CLI and desktop share one),
-  each a button with the icon, name, a bar for the most-used limit, and "85% session · 49% week"
-  ("13% month" for Cursor, "79% of AI credits" for Copilot). Clicking launches the agent. Rows only
-  for agents with usage or a check running, so with none the drawer stays shut.
+  each a button with the icon, name, and a bar per reset window (session and week when both exist,
+  stacked a few DIP apart so they stay distinct) with a caption under each like "85% session ·
+  resets 16:08" ("13% month · resets 10 Nov" for Cursor, "79% of AI credits · resets 1 Nov" for
+  Copilot). Clicking launches the agent. Rows only for agents with usage or a check running, so
+  with none the drawer stays shut.
   - Opening the flyout starts every agent's check (`StartSummaryChecks`, through the same
     `Start…Check` helpers and intervals as hovering; Claude only when asked directly) and opens the
     overview once the window is placed. A finished check rebuilds it (`RunLiveCheckAsync`, Copilot's fetch).

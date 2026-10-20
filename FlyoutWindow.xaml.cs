@@ -2089,21 +2089,27 @@ public sealed partial class FlyoutWindow : Window
     }
 
     /// <summary>
-    /// A clickable line: the agent's icon and name, a bar for its most-used limit, and each limit in
-    /// brief ("48% session · 21% week"). Null when there's nothing to show (no usage, no check running).
+    /// One limit in an overview row: the bar's value (null = text only, e.g. "Checking…") and the
+    /// caption under it, which names the window and when it resets when known.
+    /// </summary>
+    private readonly record struct SummaryBar(double? Percent, string Caption, string? BarName = null);
+
+    /// <summary>
+    /// A clickable line: the agent's icon and name, a bar per reset window (session and week when
+    /// both exist), and a caption under each with the percent and reset time. Null when there's
+    /// nothing to show (no usage, no check running).
     /// </summary>
     private Button? SummaryRow(SummaryEntry entry, DateTimeOffset now)
     {
-        string text;
-        double? most;
+        var bars = new List<SummaryBar>();
         if (entry.Api is not null)
         {
             if (entry.Balance is { } balance)
-                (text, most) = (ApiUsage.Summary(balance), ApiUsage.HasPercent(balance) ? ApiUsage.UsedPercent(balance) : null);
+                bars.Add(new SummaryBar(ApiUsage.HasPercent(balance) ? ApiUsage.UsedPercent(balance) : null, ApiUsage.Summary(balance)));
             else if (entry.Checking)
-                (text, most) = ("Checking…", null);
+                bars.Add(new SummaryBar(null, "Checking…"));
             else if (entry.Problem is { } problem)
-                (text, most) = (problem, null);
+                bars.Add(new SummaryBar(null, problem));
             else
                 return null;
         }
@@ -2112,36 +2118,34 @@ public sealed partial class FlyoutWindow : Window
             if (copilot.Used is not { } used)
                 return null;
             var unit = copilot.Unit.Length > 0 ? copilot.Unit : "used";
+            var reset = copilot.ResetsAt ?? new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
+            var resets = $" · resets {ResetTime(reset)}";
             if (copilot.Unlimited)
-                (text, most) = ("Unlimited", null);
+                bars.Add(new SummaryBar(null, $"Unlimited{resets}"));
             else if (copilot.Entitlement is { } entitlement)
             {
                 var percent = Math.Clamp(used * 100 / entitlement, 0, 100);
-                (text, most) = ($"{Math.Round(percent)}% of {unit}", percent);
+                bars.Add(new SummaryBar(percent, $"{Math.Round(percent)}% of {unit}{resets}"));
             }
             else
-                (text, most) = ($"{used:N0} {unit}", null);
+                bars.Add(new SummaryBar(null, $"{used:N0} {unit}{resets}"));
         }
         else
         {
-            var parts = new List<(string Word, double Percent)>();
             void Add(UsageWindow? window, string word)
             {
                 if (window is null)
                     return;
-                var reset = window.ResetsAt > 0 && DateTimeOffset.FromUnixTimeSeconds(window.ResetsAt) <= now;
-                parts.Add((word, reset ? 0 : Math.Clamp(window.UsedPercentage, 0, 100)));
+                bars.Add(SummaryBarFor(window, word, now));
             }
             Add(entry.Usage?.FiveHour, "session");
             Add(entry.Usage?.SevenDay, entry.WeekWord);
-            if (parts.Count == 0)
+            if (bars.Count == 0)
             {
                 if (!entry.Checking)
                     return null;
-                (text, most) = ("Checking…", null);
+                bars.Add(new SummaryBar(null, "Checking…"));
             }
-            else
-                (text, most) = (string.Join(" · ", parts.Select(p => $"{Math.Round(p.Percent)}% {p.Word}")), parts.Max(p => p.Percent));
         }
 
         var item = entry.Item;
@@ -2150,21 +2154,38 @@ public sealed partial class FlyoutWindow : Window
         var icon = iconImage is { } image
             ? (UIElement)new Image { Source = image, Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center }
             : new FontIcon { Glyph = item?.Glyph ?? "", FontSize = 16, Width = 20, VerticalAlignment = VerticalAlignment.Center };
+        var captionStyle = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
+        var captionBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
         var lines = new StackPanel { Spacing = 2 };
         lines.Children.Add(new TextBlock { Text = entry.Title, TextTrimming = TextTrimming.CharacterEllipsis });
-        if (most is { } value)
+        // Two windows: stack their bars close together, with a little gap so they don't read as one.
+        for (var i = 0; i < bars.Count; i++)
         {
-            var bar = new ProgressBar { Maximum = 100, Value = value, ShowError = value >= 90, ShowPaused = value is >= 75 and < 90 };
-            AutomationProperties.SetName(bar, $"{entry.Title} usage");
-            lines.Children.Add(bar);
+            var part = bars[i];
+            var group = new StackPanel { Spacing = 2 };
+            if (i > 0)
+                group.Margin = new Thickness(0, 4, 0, 0);
+            if (part.Percent is { } value)
+            {
+                var bar = new ProgressBar
+                {
+                    Maximum = 100,
+                    Value = value,
+                    ShowError = value >= 90,
+                    ShowPaused = value is >= 75 and < 90
+                };
+                AutomationProperties.SetName(bar, part.BarName ?? $"{entry.Title} {part.Caption}");
+                group.Children.Add(bar);
+            }
+            group.Children.Add(new TextBlock
+            {
+                Text = part.Caption,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Style = captionStyle,
+                Foreground = captionBrush
+            });
+            lines.Children.Add(group);
         }
-        lines.Children.Add(new TextBlock
-        {
-            Text = text,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-        });
         var content = new Grid { ColumnSpacing = 10 };
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -2172,6 +2193,7 @@ public sealed partial class FlyoutWindow : Window
         Grid.SetColumn(lines, 1);
         content.Children.Add(lines);
 
+        var summary = string.Join(" · ", bars.Select(b => b.Caption));
         var button = new Button
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -2183,15 +2205,30 @@ public sealed partial class FlyoutWindow : Window
         if (item is null)
         {
             // A key no agent is linked to: settings, where an agent can be linked to it.
-            AutomationProperties.SetName(button, $"{entry.Title}: {text}");
+            AutomationProperties.SetName(button, $"{entry.Title}: {summary}");
             ToolTipService.SetToolTip(button, "Link it to an agent in settings");
             button.Click += (_, _) => OpenSettings(section: "api");
             return button;
         }
-        AutomationProperties.SetName(button, $"Open {item.Definition.Name}: {text}");
+        AutomationProperties.SetName(button, $"Open {item.Definition.Name}: {summary}");
         ToolTipService.SetToolTip(button, entry.Api is null ? $"Open {item.Definition.Name}" : $"Open {item.Definition.Name} ({entry.Title})");
         button.Click += (_, _) => Launch(item);
         return button;
+    }
+
+    /// <summary>Percent and a caption like "48% session · resets 16:08", matching the drawer's wording.</summary>
+    private static SummaryBar SummaryBarFor(UsageWindow window, string word, DateTimeOffset now)
+    {
+        if (window.ResetsAt > 0)
+        {
+            var resetsAt = DateTimeOffset.FromUnixTimeSeconds(window.ResetsAt);
+            if (resetsAt <= now)
+                return new SummaryBar(0, $"0% {word} · reset", $"{word} usage");
+            var used = Math.Clamp(window.UsedPercentage, 0, 100);
+            return new SummaryBar(used, $"{Math.Round(used)}% {word} · resets {ResetTime(resetsAt)}", $"{word} usage");
+        }
+        var percent = Math.Clamp(window.UsedPercentage, 0, 100);
+        return new SummaryBar(percent, $"{Math.Round(percent)}% {word}", $"{word} usage");
     }
 
     private void ShowCursorCheck()

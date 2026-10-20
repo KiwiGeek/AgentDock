@@ -229,8 +229,9 @@ On the settings page, **Remember recents** turns the list off, and **Clear recen
 folder (it asks first). Those choices, the usage source, and the folders are saved in `state.json`.
 
 While the pointer isn't over an agent with usage, the drawer shows a **usage overview**: every
-agent in your list that has usage to show, one line each, with a bar for its most-used limit and
-each limit in brief ("85% session · 49% week"), so you can pick one with room left. Under the rows,
+agent in your list that has usage to show, one line each, with a bar for each reset window
+(session and week when both apply) and when that window resets ("85% session · resets 16:08"),
+so you can pick one with room left without hovering the agent first. Under the rows,
 it suggests the agent whose tightest active limit is least used - balancing its session and its
 weekly or monthly allowance instead of ignoring either. When another agent is materially better for
 a quick task, sustained work, or after a limit reset within three hours, the overview names that
