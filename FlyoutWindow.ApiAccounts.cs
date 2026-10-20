@@ -23,8 +23,15 @@ public sealed partial class FlyoutWindow
 
     // Over the network, so kept across shows, like the other live checks.
     private readonly Dictionary<string, ApiCheck> _apiChecks = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// The account whose balance this agent's drawer shows. A key Agent Dock can't read a balance for
+    /// (OpenAI, OpenRouter…) is only handed to the agent, so the drawer shows the agent's own usage.
+    /// </summary>
     private ApiAccount? ApiAccountFor(AgentDefinition definition) =>
-        definition.ApiAccount is { } id ? _settings.ApiAccounts.FirstOrDefault(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) : null;
+        ApiUsage.AccountFor(definition, _settings.ApiAccounts) is { } account && ApiUsage.ChecksBalance(account.Provider) ? account : null;
+
+    /// <summary>Accounts with a balance to show and check.</summary>
+    private IEnumerable<ApiAccount> CheckedApiAccounts => _settings.ApiAccounts.Where(a => ApiUsage.ChecksBalance(a.Provider));
 
     private ApiBalanceState? BalanceOf(ApiAccount account) => _state.ApiBalances.GetValueOrDefault(account.Id);
 
@@ -59,7 +66,8 @@ public sealed partial class FlyoutWindow
         var now = DateTimeOffset.UtcNow;
         check.At = now;
         check.Problem = result.Problem;
-        if (result.Balance is not null)
+        // Anthropic reports spend, not a balance; both are saved.
+        if (result.Balance is not null || result.Spent is not null)
         {
             if (!_state.ApiBalances.TryGetValue(account.Id, out var state))
                 _state.ApiBalances[account.Id] = state = new ApiBalanceState();

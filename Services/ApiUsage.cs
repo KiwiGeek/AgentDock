@@ -11,6 +11,9 @@ namespace AgentDock.Services;
 /// </summary>
 public sealed record ApiBalanceFetch(double? Balance, string Currency, bool Exhausted, string? Problem, double? Spent = null);
 
+/// <summary>A service an API key can be for: its id in agents.json, its name, the variable tools read its key from.</summary>
+public sealed record ApiProvider(string Id, string Name, string Variable, bool ChecksBalance);
+
 /// <summary>
 /// The balance on an API key (owner's request, 2026-10-19), for the usage overview and the drawer
 /// of agents linked to it. A prepaid balance has no limit, so its percentage is measured against
@@ -25,12 +28,31 @@ public static class ApiUsage
     public const string NotUnderstood = "The service's reply wasn't understood.";
     public const string Checking = "Checking the balance…";
     public const string ShowingSaved = "Showing the last saved balance.";
+    public const string NoBalanceCheck = "Agent Dock can't read this service's balance.";
 
     public const string NeedsAdminKey =
         "Anthropic reports spending only to an Admin API key (sk-ant-admin…), which an organization's Console settings can create.";
 
-    /// <summary>The services Agent Dock can read a balance (or spend) from: id and name.</summary>
-    public static readonly (string Id, string Name)[] Providers = [("deepseek", "DeepSeek"), ("anthropic", "Anthropic")];
+    /// <summary>
+    /// The services an API key can be for (Settings → Accounts; owner's request, 2026-10-20: one key,
+    /// handed to every agent that can use it). The first is a new key's default. Only DeepSeek and
+    /// Anthropic have a balance (or spend) Agent Dock can read; the rest are keys only.
+    /// </summary>
+    public static readonly ApiProvider[] Providers =
+    [
+        new("deepseek", "DeepSeek", "DEEPSEEK_API_KEY", ChecksBalance: true),
+        new("anthropic", "Anthropic", "ANTHROPIC_API_KEY", ChecksBalance: true),
+        new("openai", "OpenAI", "OPENAI_API_KEY", ChecksBalance: false),
+        new("openrouter", "OpenRouter", "OPENROUTER_API_KEY", ChecksBalance: false),
+        new("gemini", "Google Gemini", "GEMINI_API_KEY", ChecksBalance: false),
+        new("xai", "xAI", "XAI_API_KEY", ChecksBalance: false)
+    ];
+
+    public static ApiProvider? ProviderFor(string provider) =>
+        Providers.FirstOrDefault(p => p.Id.Equals(provider, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Whether Agent Dock can read this service's balance or spend, so it has a bar, an overview row and checks.</summary>
+    public static bool ChecksBalance(string provider) => ProviderFor(provider)?.ChecksBalance == true;
 
     /// <summary>
     /// The service reports spending, not a balance (Anthropic), so 100% is only known once the user
@@ -43,8 +65,7 @@ public static class ApiUsage
 
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(15) };
 
-    public static string ProviderName(string provider) =>
-        Providers.FirstOrDefault(p => p.Id.Equals(provider, StringComparison.OrdinalIgnoreCase)).Name ?? provider;
+    public static string ProviderName(string provider) => ProviderFor(provider)?.Name ?? provider;
 
     /// <summary>
     /// The key that reads usage: the Admin key for Anthropic, the API key otherwise; as written, or
@@ -62,25 +83,64 @@ public static class ApiUsage
         return expanded.StartsWith('%') && expanded.EndsWith('%') ? null : expanded;
     }
 
-    /// <summary>The variable Aider (and most tools) read the service's key from.</summary>
-    public static string KeyVariable(string provider) => provider.ToLowerInvariant() switch
-    {
-        "anthropic" => "ANTHROPIC_API_KEY",
-        _ => "DEEPSEEK_API_KEY"
-    };
+    /// <summary>The variable most tools read the service's key from.</summary>
+    public static string KeyVariable(string provider) => ProviderFor(provider)?.Variable ?? "DEEPSEEK_API_KEY";
 
     /// <summary>
-    /// Aider bound to an account gets its key without typing variables (owner's request, 2026-10-19):
-    /// the provider's variable, set to the account's API key as written (so <c>%NAME%</c> stays a
-    /// reference), unless the agent's own variables set it already. Aider only: for others, the link
-    /// just shows usage (Claude Code given ANTHROPIC_API_KEY would leave its plan for API billing).
+    /// The variable <paramref name="agent"/> reads <paramref name="provider"/>'s key from, or null when
+    /// Agent Dock doesn't hand it that key (owner's request, 2026-10-20: a key is added once and linked
+    /// to every agent that can use it). From each tool's documentation; desktop apps never (agents.json
+    /// variables don't reach them), nor agents that sign in to a plan of their own (Codex, Grok Build,
+    /// Cursor CLI, Copilot CLI). Claude Code takes an Anthropic key, which moves it off its plan, so
+    /// settings warns before linking it. A command of the user's own gets the usual variable.
+    /// </summary>
+    public static string? KeyVariableFor(AgentDefinition agent, string provider)
+    {
+        if (agent.Kind != AgentKind.Cli || ProviderFor(provider) is not { } service)
+            return null;
+        var command = Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"') ?? "").ToLowerInvariant();
+        var known = (agent.Catalog ?? KnownAgents.All().FirstOrDefault(k =>
+            string.Equals(k.Command, command, StringComparison.OrdinalIgnoreCase))?.Id)?.ToLowerInvariant();
+        return (known ?? command) switch
+        {
+            // Aider goes through LiteLLM, which reads every one of these.
+            "aider" => service.Variable,
+            // OpenCode's providers come from models.dev, where Google's key has its own name.
+            "opencode" => service.Id == "gemini" ? "GOOGLE_GENERATIVE_AI_API_KEY" : service.Variable,
+            "crush" => service.Id is "anthropic" or "openai" or "openrouter" or "gemini" or "xai" ? service.Variable : null,
+            "goose" => service.Id switch
+            {
+                "anthropic" or "openai" or "openrouter" => service.Variable,
+                "gemini" => "GOOGLE_API_KEY",
+                _ => null
+            },
+            "claude" => service.Id == "anthropic" ? service.Variable : null,
+            "qwen" => service.Id == "openai" ? service.Variable : null,
+            _ when known is null => service.Variable, // the user's own command
+            _ => null
+        };
+    }
+
+    /// <summary>Linking <paramref name="agent"/> to an Anthropic key moves it from its Claude plan to API billing.</summary>
+    public static bool LeavesPlan(AgentDefinition agent, string provider) =>
+        provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase)
+        && Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"') ?? "").Equals("claude", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The account <paramref name="agent"/> is linked to, if it still exists.</summary>
+    public static ApiAccount? AccountFor(AgentDefinition agent, IEnumerable<ApiAccount> accounts) =>
+        agent.ApiAccount is { } id ? accounts.FirstOrDefault(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) : null;
+
+    /// <summary>
+    /// An agent linked to an account gets its key without typing variables (owner's requests,
+    /// 2026-10-19 for Aider, 2026-10-20 for every agent that can take it): the variable from
+    /// <see cref="KeyVariableFor"/>, set to the account's API key as written (so <c>%NAME%</c> stays a
+    /// reference), unless the agent's own variables set it already.
     /// </summary>
     public static IReadOnlyDictionary<string, string>? EnvironmentFor(AgentDefinition agent, IEnumerable<ApiAccount> accounts)
     {
-        if (!IsAider(agent) || agent.ApiAccount is not { } id
-            || accounts.FirstOrDefault(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) is not { ApiKey: { Length: > 0 } key } account)
+        if (AccountFor(agent, accounts) is not { ApiKey: { Length: > 0 } key } account
+            || KeyVariableFor(agent, account.Provider) is not { } variable)
             return agent.Env;
-        var variable = KeyVariable(account.Provider);
         var env = new Dictionary<string, string>(agent.Env ?? [], StringComparer.OrdinalIgnoreCase);
         if (!env.ContainsKey(variable))
             env[variable] = key.Trim();
@@ -102,6 +162,8 @@ public static class ApiUsage
     {
         try
         {
+            if (!ChecksBalance(account.Provider))
+                return new ApiBalanceFetch(null, "", false, NoBalanceCheck);
             if (KeyFor(account) is not { } key)
                 return new ApiBalanceFetch(null, "", false, ReportsSpend(account.Provider) ? NoAdminKey : NoKey);
             if (account.Provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase))

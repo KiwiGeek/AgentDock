@@ -332,31 +332,63 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   (`agentId`), the welcome's Find agents and the offer's Choose (`addAgents: true`), and the
   overview's unlinked API row (`section: "api"`) go to `App.OpenSettings`, which **hides the flyout
   first** and shows the window.
-  - **The window:** Mica, a normal title bar, a taskbar button and Alt+Tab entry, resizable (minimum
-    560×400 DIP), 720×720 DIP at first, then wherever the user leaves it. One instance owned by `App`;
+  - **The window:** Mica (`BaseAlt`, the stronger tint), with the content extended into a tall title
+    bar (`ExtendsContentIntoTitleBar`, `AppTitleBar` with icon and title, transparent caption buttons,
+    title dimmed while inactive; owner's request, 2026-10-20). The left list has no fill, so it sits
+    on the Mica; the page sits on `LayerFillColorDefaultBrush` with a rounded top-left corner, as in
+    Windows' Settings. Verified by a screen capture 2026-10-20. A normal title bar's behaviour stays: a taskbar button and Alt+Tab entry, resizable (minimum
+    560×400 DIP), 880×720 DIP at first (wider since 2026-10-20, for the Accounts rows), then wherever the user leaves it. One instance owned by `App`;
     closing only hides it; `Quit` closes it. Esc hides the window (ignored while a pop-up is open).
-  - **Master list** (left `NavigationView`, rebuilt by `RebuildNavMenu`): **General**; an **Agents**
-    header, then each agent (icon + name) and **Add agents**; an **API usage** header, then each API
-    account and **Add an API key**. Selecting an item shows only that item's details on the right
-    (max 640 DIP). Choosing Add an API key creates an account and opens its editor.
-  - **General**: Waifu backgrounds, Taskbar icon (see "Taskbar icon"), Close terminal when agent
-    exits, Hide unavailable agents, Usage overview (see Drawer), Prefer plans over API keys,
-    Remember recents and **Clear recents**. Remember recents is general on purpose (several agents
-    record them, including OpenCode and Aider).
-  - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. Duplicate, Remove. Drag agents
+  - **Master list** (hand-built `ListView`s, rebuilt by `RebuildNavMenu`): **General** and
+    **Accounts**; an **Agents** header, then each agent (icon + name) and **Add agents**. Selecting an
+    item shows only that item's details on the right, filling the pane up to 1000 DIP and left-aligned (a star column with a MaxWidth; owner's choice, 2026-10-20, after Windows' own Settings). Add agents' custom-command form stays at most 560 DIP. Until 2026-10-20 API
+    keys had their own section in this list; the owner found settings scattered and keys hard to share
+    between agents, so they moved into Accounts (design: the "Agent Dock settings redesign" canvas).
+  - **General**, in groups (`SectionHeaderStyle`): **Flyout** (Usage overview, Hide unavailable
+    agents, Waifu backgrounds), **Taskbar icon** (see "Taskbar icon"), **Launching** (Terminal and
+    Shell, agents.json's `terminal` / `shell`, which had no UI before; Close terminal when agent exits;
+    Start with Windows, which also calls `Autostart.Apply` at once), **Recent folders** (Remember
+    recents and **Clear recents**). Remember recents is general on purpose (several agents record
+    them, including OpenCode and Aider). agents.json settings are disabled while it can't be read.
+    Turning **Waifu backgrounds** on asks a second time (`SettingsWindow.Waifu.cs`, owner's request,
+    2026-10-20): a `ContentDialog` with one of 62 jokes picked at random (`WaifuPrompts`: title,
+    line, a yes like "Just do it, I'm not proud", a no like "I have some dignity left"; no is the
+    default button). Backing out puts the switch back; turning them off never asks. Verified
+    2026-10-20 through UI Automation: the prompt opened, backing out left state.json and Terminal's
+    fragments untouched.
+  - **Accounts** (`ShowAccounts`, `SettingsWindow.ApiAccounts.cs`): **Plans**, the user's agents
+    grouped by the sign-in their usage comes from (`PlanGroups`: Claude and Codex per `UsageAccount`,
+    one each for Cursor, GitHub and Grok; agents on another provider or on an Anthropic key are left
+    out), each row opening its first agent's page, where the usage settings are. No bars there (the
+    flyout has them). **API keys**, one row per account (service, the key shortened, who uses it, the
+    balance line), **Add a key**, and **Suggest plans before API keys** (`PreferPlansOverApi`, moved
+    here from General). The flyout's unlinked-key row (`section: "api"`) opens this page.
+  - **An API key's page** (`ShowApiAccount`, Accounts › name in the title, `AccountsCrumb`): Key (name,
+    service, key, Anthropic's Admin key), **Agents that use this key** (`FillApiAgentRows`: every
+    agent in the list that can take that service's key, plus any linked to it that can't, each with a
+    switch that sets its `apiAccount`; one account per agent, so switching on moves it from another
+    key, and the row says so; Claude Code's row says it leaves its plan), Balance (services with one),
+    and Remove account.
+  - **An agent's page** (`ShowAgentSettings`): see "Agent list" below. **Account** comes first, right
+    under the name (`UpdateAgentApiSection`: radio buttons, None plus the keys it can take, for agents
+    that take keys or are linked), then Aider's model, arguments, and **Environment variables** in an
+    `Expander`, open only when it has some. Duplicate, Remove. Drag agents
     in the left list to reorder (`AgentNavList`, same as the flyout). With waifus on, her hover
     picture sits behind the page (`SyncAgentBackdrop`, same opacity as the flyout). Agent-specific
     panels: Claude's usage source, Grok / Cursor / Copilot notes, Aider model + search
     (`AgentSettingsPanelFor` / `UpdateAgentPanel`).
   - **Add agents** (`ShowAddAgents`): the scan and a custom command; see "Agent list". Adding from
     the welcome or the offer hides the window when done.
-  - **An API account's page** (`ShowApiAccount`): that key's editor only (name, service, key, balance).
   - **Data:** loads agents.json and state.json on every `Show`; own `ShellIcons`. Changes save at once;
     `SettingsChange` → `FlyoutWindow.NotifySettingsChanged`. State via `UpdateState` so the two windows
     don't overwrite each other's keys. **Known gap:** a flyout-side agents.json edit while the window
     is open isn't seen until it's shown again.
-  - Verified 2026-10-19: master-detail build compiles. **Not yet verified by eye:** selecting agents
-    and API keys in the left list, drag to reorder, Add an API key, deep links.
+  - Verified 2026-10-19: master-detail build compiles. Verified 2026-10-20 through UI Automation:
+    General's groups and Launching controls, Accounts with the owner's five plans and DeepSeek key
+    (with its real balance), Add a key opening the key's page with OpenCode and Aider listed, Remove
+    account, Aider's Account choice and note. **Not yet verified by eye:** the look of the Accounts
+    rows and the key page, switching an agent on or off there, drag to reorder, deep links, an
+    agent actually starting with a key it gets from an account (other than Aider).
 - Open animation: 250 ms slide + fade, skipped when Windows animations are off.
 - **Banner** (owner's request, after the Windows 98 Start menu): a 32 DIP strip on the list's left
   edge, a gradient with "**Agent**Dock" (no space; bold, then semi-light) reading bottom to top. The fill is 70% opaque
@@ -604,8 +636,8 @@ there degrade to a missing icon or entry, never an error.
 | `Program.cs` | Entry point: hand-off or become resident |
 | `App.xaml(.cs)` | Resident instance; dispatches `DockCommand`s; jump-list launches |
 | `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard (settings are not here; see `SettingsWindow`) |
-| `SettingsWindow.xaml(.cs)` | The settings window: master-detail (General, each agent with drag reorder, each API key), Add agents, taskbar icon; saves at once and notifies the flyout |
-| `SettingsWindow.ApiAccounts.cs` | The settings window's API usage section, the agent page's link and its own balance checks |
+| `SettingsWindow.xaml(.cs)` | The settings window: master-detail (General, Accounts, each agent with drag reorder), Add agents, taskbar icon; saves at once and notifies the flyout |
+| `SettingsWindow.ApiAccounts.cs` | The settings window's Accounts page, each API key's page, the agent page's Account choice, and its own balance checks |
 | `Models/SettingsChange.cs` | Flags saying what a settings change touched, so the flyout refreshes only that |
 | `ResizeGrip.cs` | The strip that drags the flyout's height (shows the up-down cursor) |
 | `PinPromptWindow.xaml(.cs)` | Startup prompt asking the user to pin Agent Dock; waits for the pin |
@@ -1113,7 +1145,10 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 #### API usage (owner's request, 2026-10-19; `Services/ApiUsage.cs`, `FlyoutWindow.ApiAccounts.cs`)
 
 - **Accounts:** `DockSettings.ApiAccounts` in agents.json: id (`ApiUsage.NewId`: the provider, then
-  "-2"…), name, provider (only `deepseek` so far, `ApiUsage.Providers`), and `apiKey`, stored as typed
+  "-2"…), name, provider (`ApiUsage.Providers`, an `ApiProvider` each: DeepSeek and Anthropic, which
+  have a balance or spend, and since 2026-10-20 OpenAI, OpenRouter, Google Gemini and xAI, keys only:
+  `ChecksBalance` false, so no checks, no drawer bar, no overview row, and `FetchAsync` says
+  `NoBalanceCheck`; the flyout's `ApiAccountFor` ignores them, so a linked agent's drawer stays its own), and `apiKey`, stored as typed
   (owner: keys are not hidden from the user; settings shows them in a plain text box), or `%NAME%`
   read from the environment (`ApiUsage.KeyFor`). An agent links to one with `AgentDefinition.ApiAccount`.
 - **DeepSeek:** `GET https://api.deepseek.com/user/balance` with the key as a bearer token
@@ -1133,8 +1168,8 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   linked; clicking launches the first linked agent, or opens settings. In the suggestion a balance is a
   long window ("balance"); an unlinked key isn't suggested, and a key two or more listed agents are
   linked to is named itself, with them ("Suggested: DeepSeek (Aider, OpenCode)", `SuggestedName`;
-  owner, 2026-10-19), since any of them uses the same balance. Settings → General → **Prefer plans
-  over API keys** (`DockState.PreferPlansOverApi`, on by default, missing = on; owner's request): while
+  owner, 2026-10-19), since any of them uses the same balance. Settings → Accounts → **Suggest plans
+  before API keys** (`DockState.PreferPlansOverApi`, on by default, missing = on; owner's request): while
   any plan agent is usable, the suggestion and its alternatives come only from plan agents, so
   included usage goes first; API keys are suggested once no plan has room. The two-candidate rule
   counts before that narrowing. A linked agent's drawer shows one bar,
@@ -1148,13 +1183,23 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   (`Full`, `Since` = then; spending from that day, so its earlier spend counts). No top-up
   detection. Without it: "$12.40 spent since 1 Oct", no bar, not in the suggestion. Logo: Claude's.
   The Spend Limits API is Claude Enterprise members' limits, not a Console balance.
-- **Aider bound to a key** (owner's request, 2026-10-19): `ApiUsage.EnvironmentFor` adds
-  `DEEPSEEK_API_KEY` or `ANTHROPIC_API_KEY` = the account's `ApiKey` as written (`%NAME%` stays a
-  reference) to Aider's env at launch (`Launcher`, all launch paths), unless Aider's own env sets it.
-  Aider only: linking Claude Code would otherwise move it from its plan to API billing. The agent
-  page says which variable it gets (`AgentApiNote`).
-- **Linking offer** (owner's choice B): the agent page's **API usage** box (command line agents, when
-  accounts exist) and an InfoBar when `ApiUsage.AgentUses`: Aider's model starts with `deepseek/` or
+- **Agents on a key** (owner's requests: Aider 2026-10-19; every agent that can take it 2026-10-20,
+  with the Accounts redesign): `ApiUsage.EnvironmentFor` adds the variable from
+  `ApiUsage.KeyVariableFor(agent, provider)` = the account's `ApiKey` as written (`%NAME%` stays a
+  reference) to the agent's env at launch (`Launcher`, all launch paths), unless its own env sets it.
+  `KeyVariableFor`, from each tool's documentation and **not yet verified by a launch** except Aider:
+  Aider and OpenCode any service (OpenCode's Gemini variable is `GOOGLE_GENERATIVE_AI_API_KEY`), Crush
+  all but DeepSeek, Goose Anthropic / OpenAI / OpenRouter / Gemini (`GOOGLE_API_KEY`), Qwen Code
+  OpenAI, Claude Code Anthropic, a command of the user's own (no catalog id, command not a known
+  agent's) any; desktop apps and plan agents (Codex, Grok Build, Cursor CLI, Copilot CLI, and the
+  rest) never. Claude Code was Aider-only's reason (a key moves it from its plan to API billing); it's
+  now offered with that said on the key page and the agent page (`LeavesPlan`), its Claude usage
+  panel hides while linked, and Accounts leaves it out of Plans. The agent page says which variable
+  it gets (`AgentApiNote`).
+- **Saving spend** (fixed 2026-10-20): both windows saved a check only when it had a `Balance`, so
+  Anthropic's `Spent` never reached state.json; they save either now.
+- **Linking offer** (owner's choice B): the agent page's **Account** choice (agents that take keys,
+  or are linked) and an InfoBar ("Use … 's key?") when `ApiUsage.AgentUses`: Aider's model starts with `deepseek/` or
   `deepseek-`, or OpenCode's `~\.local\share\opencode\auth.json` has a `deepseek` entry (only the names
   are read). For Anthropic also Claude Code with `ANTHROPIC_API_KEY` in its env, and Aider on a `claude…` model.
 - **Verified 2026-10-19:** parser cases and the 100% logic in a throwaway project (deleted); a real

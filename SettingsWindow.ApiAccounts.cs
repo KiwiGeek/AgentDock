@@ -4,13 +4,15 @@ using AgentDock.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace AgentDock;
 
 /// <summary>
-/// API keys' balances, on the settings side (owner's request, 2026-10-19): the API usage section, the
-/// link on an agent's page, and the checks that fill in their status lines. The flyout has its own
-/// checks for the drawer and the overview (FlyoutWindow.ApiAccounts.cs); both save the same balances.
+/// Settings → Accounts (owner's decision, 2026-10-20, replacing a left-list section of API keys):
+/// every plan sign-in and API key in one page, each key's own page with the agents it's handed to,
+/// and the Account choice on an agent's page. The flyout has its own balance checks for the drawer
+/// and the overview (FlyoutWindow.ApiAccounts.cs); both save the same balances.
 /// </summary>
 public sealed partial class SettingsWindow
 {
@@ -22,21 +24,57 @@ public sealed partial class SettingsWindow
     }
 
     private readonly Dictionary<string, ApiCheck> _apiChecks = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>The status line under the key on its own page.</summary>
     private readonly Dictionary<string, TextBlock> _apiStatusTexts = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>The status line of each key's row on the Accounts page.</summary>
+    private readonly Dictionary<string, TextBlock> _apiRowStatusTexts = new(StringComparer.OrdinalIgnoreCase);
     private TextBox? _newApiKeyBox;
-    /// <summary>False while the agent page's API choice is being filled, so that isn't a change.</summary>
+    /// <summary>The agents list on the key page that's showing, rebuilt when a switch changes.</summary>
+    private StackPanel? _apiAgentsHost;
+    /// <summary>False while the agent page's account choice is being filled, so that isn't a change.</summary>
     private bool _agentApiReady;
+    /// <summary>The accounts behind the agent page's choices, after "None".</summary>
+    private List<ApiAccount> _agentApiChoices = [];
 
-    private ApiAccount? ApiAccountFor(AgentDefinition definition) =>
-        definition.ApiAccount is { } id ? _settings.ApiAccounts.FirstOrDefault(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase)) : null;
+    private ApiAccount? ApiAccountFor(AgentDefinition definition) => ApiUsage.AccountFor(definition, _settings.ApiAccounts);
 
     private ApiBalanceState? BalanceOf(ApiAccount account) => _state.ApiBalances.GetValueOrDefault(account.Id);
+
+    private static Brush ThemeBrush(string key) => (Brush)Application.Current.Resources[key];
+
+    private static TextBlock Note(string text = "") => new()
+    {
+        Text = text,
+        TextWrapping = TextWrapping.Wrap,
+        Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+        Foreground = ThemeBrush("TextFillColorSecondaryBrush")
+    };
+
+    private static TextBlock SectionHeader(string text, double top = 16) => new()
+    {
+        Text = text,
+        Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        Foreground = ThemeBrush("TextFillColorSecondaryBrush"),
+        Margin = new Thickness(0, top, 0, 8)
+    };
+
+    /// <summary>The agent's icon (compiled in or from the cache), or its glyph.</summary>
+    private UIElement AgentIcon(AgentDefinition definition, double size)
+    {
+        var resolved = _agents.FirstOrDefault(a => a.Preset is null && ReferenceEquals(a.Definition, definition));
+        return resolved?.Icon is { } image
+            ? new Image { Source = image, Width = size, Height = size, VerticalAlignment = VerticalAlignment.Center }
+            : new FontIcon { Glyph = resolved?.Glyph ?? "", FontSize = size, Width = size, VerticalAlignment = VerticalAlignment.Center };
+    }
 
     // ---------- Checks ----------
 
     /// <summary>Checks the balance unless a check is running or the last is fresh (<paramref name="force"/>: Check now).</summary>
     private void StartApiCheck(ApiAccount account, bool force = false)
     {
+        if (!ApiUsage.ChecksBalance(account.Provider))
+            return;
         if (!_apiChecks.TryGetValue(account.Id, out var check))
             _apiChecks[account.Id] = check = new ApiCheck();
         if (check.Running || (!force && check.At != default && DateTimeOffset.UtcNow - check.At <= ApiUsage.MinInterval))
@@ -56,7 +94,7 @@ public sealed partial class SettingsWindow
         var now = DateTimeOffset.UtcNow;
         check.At = now;
         check.Problem = result.Problem;
-        if (result.Balance is not null)
+        if (result.Balance is not null || result.Spent is not null)
             UpdateState(state =>
             {
                 if (!state.ApiBalances.TryGetValue(account.Id, out var balance))
@@ -65,15 +103,176 @@ public sealed partial class SettingsWindow
             });
         UpdateApiAccountStatus(account);
     }
-    // ---------- One API account's details (chosen in the left list) ----------
 
-    /// <summary>Shows this account's editor in the right pane.</summary>
+    // ---------- The Accounts page ----------
+
+    /// <summary>A sign-in some of the user's agents share (Claude Code and Claude desktop, say), for the Plans list.</summary>
+    private sealed record PlanGroup(string Key, string Title, string Detail, List<AgentDefinition> Agents);
+
+    private void AccountsCrumb_Click(object sender, RoutedEventArgs e)
+    {
+        CommitEditors();
+        SelectTag(TagAccounts);
+    }
+
+    private void AddApiKey_Click(object sender, RoutedEventArgs e) => AddApiAccount();
+
+    /// <summary>Plans (the sign-ins Agent Dock reads usage through) and API keys, each with the agents that use it.</summary>
+    private void ShowAccounts()
+    {
+        _editingAgent = null;
+        _editingApi = null;
+        _selectedTag = TagAccounts;
+        HideAllPanes();
+        AccountsPage.Visibility = Visibility.Visible;
+        SettingsTitle.Text = "Accounts";
+        AddApiKeyButton.IsEnabled = _settingsError is null;
+        FillPlanRows();
+        FillApiKeyRows();
+        foreach (var account in _settings.ApiAccounts)
+            StartApiCheck(account);
+        SyncAgentBackdrop();
+        SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
+    }
+
+    /// <summary>
+    /// The user's agents grouped by the sign-in their usage comes from, the way the flyout's drawers
+    /// find it: Claude and Codex per config folder (<see cref="UsageAccount"/>), and one each for
+    /// Grok Build, Cursor and GitHub. Agents on an API key or another endpoint have no plan here.
+    /// </summary>
+    private List<PlanGroup> PlanGroups()
+    {
+        var groups = new List<PlanGroup>();
+        PlanGroup Group(string key, string title, string detail)
+        {
+            var group = groups.FirstOrDefault(g => g.Key == key);
+            if (group is null)
+                groups.Add(group = new PlanGroup(key, title, detail, []));
+            return group;
+        }
+
+        foreach (var definition in _settings.Agents)
+        {
+            if (ApiAccountFor(definition) is { } key && ApiUsage.KeyVariableFor(definition, key.Provider) is not null
+                && ApiUsage.LeavesPlan(definition, key.Provider))
+                continue; // Claude Code on an Anthropic key
+            PlanGroup? group = null;
+            if (IsCursor(definition))
+                group = Group("cursor", "Cursor", "Cursor CLI's sign-in, for both the CLI and the desktop app");
+            else if (IsGitHubCopilot(definition))
+                group = Group("copilot", "GitHub", "GitHub CLI's sign-in (gh), for Copilot CLI and the desktop app");
+            else if (UsageAccount.For(definition) is { } account)
+            {
+                if (account.UsesOtherProvider)
+                    continue;
+                var folder = Path.GetFileName(account.ConfigDir);
+                group = account.Agent == "claude"
+                    ? Group(account.Key, account.IsDefault ? "Claude" : $"Claude · {folder}",
+                        (account.IsDefault ? "Claude Code's sign-in" : $"Signed in under {account.ConfigDir}")
+                        + (SourceFor(account) == ClaudeUsageSource.Api ? " · usage asked of Claude directly" : " · usage from the status line"))
+                    : Group(account.Key, account.IsDefault ? "ChatGPT" : $"ChatGPT · {folder}",
+                        account.IsDefault ? "Codex's sign-in" : $"Signed in under {account.ConfigDir}");
+            }
+            else if (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "grok")
+                group = Group("grok", "Grok", "Grok Build's sign-in");
+            group?.Agents.Add(definition);
+        }
+        return groups;
+    }
+
+    private void FillPlanRows()
+    {
+        PlansHost.Children.Clear();
+        var groups = PlanGroups();
+        PlansNote.Text = groups.Count > 0
+            ? "Usage comes from each agent's own sign-in, so nothing is stored here. Choose one for its usage settings."
+            : "None of your agents has a plan whose usage Agent Dock reads (Claude Code, Codex, Grok Build, Cursor or GitHub Copilot).";
+        foreach (var group in groups)
+        {
+            var first = group.Agents[0];
+            var row = AccountRow(AgentIcon(first, 24), group.Title, group.Detail,
+                "Used by " + string.Join(", ", group.Agents.Select(a => a.Name)), null);
+            AutomationProperties.SetName(row, $"{group.Title}, used by {string.Join(", ", group.Agents.Select(a => a.Name))}");
+            ToolTipService.SetToolTip(row, $"Open {first.Name}'s settings");
+            row.Click += (_, _) => SelectTag(TagAgentPrefix + first.Id);
+            PlansHost.Children.Add(row);
+        }
+    }
+
+    private void FillApiKeyRows()
+    {
+        ApiKeysHost.Children.Clear();
+        _apiRowStatusTexts.Clear();
+        ApiKeysNote.Visibility = _settings.ApiAccounts.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var account in _settings.ApiAccounts)
+        {
+            var users = _settings.Agents.Where(a => string.Equals(a.ApiAccount, account.Id, StringComparison.OrdinalIgnoreCase)).ToList();
+            var status = Note();
+            _apiRowStatusTexts[account.Id] = status;
+            var icon = new FontIcon { Glyph = "", FontSize = 20, Width = 24, VerticalAlignment = VerticalAlignment.Center };
+            var row = AccountRow(icon, account.Name, $"{ApiUsage.ProviderName(account.Provider)} · {KeySummary(account)}",
+                users.Count > 0 ? "Used by " + string.Join(", ", users.Select(a => a.Name)) : "Not linked to an agent yet", status);
+            AutomationProperties.SetName(row, $"{account.Name}, {ApiUsage.ProviderName(account.Provider)} API key");
+            row.Click += (_, _) => SelectTag(TagApiPrefix + account.Id);
+            ApiKeysHost.Children.Add(row);
+            UpdateApiAccountStatus(account);
+        }
+    }
+
+    /// <summary>"sk-ant-…7Qx", or where it's read from, or that there's none yet. Shown short in the list only.</summary>
+    private static string KeySummary(ApiAccount account)
+    {
+        if (account.ApiKey?.Trim() is not { Length: > 0 } key)
+            return "no key yet";
+        if (key.StartsWith('%') && key.EndsWith('%'))
+            return $"read from {key}";
+        return key.Length > 12 ? $"{key[..Math.Min(7, key.Length - 4)]}…{key[^3..]}" : key;
+    }
+
+    /// <summary>A card-like row: icon, title, detail, who uses it, a status line, and a chevron.</summary>
+    private static Button AccountRow(UIElement icon, string title, string detail, string usedBy, TextBlock? status)
+    {
+        var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+        text.Children.Add(Note(detail));
+        text.Children.Add(Note(usedBy));
+        if (status is not null)
+            text.Children.Add(status);
+        var chevron = new FontIcon { Glyph = "", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Foreground = ThemeBrush("TextFillColorSecondaryBrush") };
+        Grid.SetColumn(text, 1);
+        Grid.SetColumn(chevron, 2);
+        return new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(16, 12, 16, 12),
+            Background = ThemeBrush("CardBackgroundFillColorDefaultBrush"),
+            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
+            BorderThickness = new Thickness(1),
+            Content = new Grid
+            {
+                ColumnSpacing = 16,
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(24) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = GridLength.Auto }
+                },
+                Children = { icon, text, chevron }
+            }
+        };
+    }
+
+    // ---------- One API key's page (opened from Accounts) ----------
+
+    /// <summary>Shows this account's page in the right pane, with Accounts in front of its title.</summary>
     private void ShowApiAccount(ApiAccount account)
     {
         _editingApi = account;
         _selectedTag = TagApiPrefix + account.Id;
         HideAllPanes();
         ApiPage.Visibility = Visibility.Visible;
+        AccountsCrumb.Visibility = AccountsCrumbChevron.Visibility = Visibility.Visible;
         SettingsTitle.Text = account.Name;
         ApiAccountHost.Children.Clear();
         _apiStatusTexts.Clear();
@@ -84,7 +283,7 @@ public sealed partial class SettingsWindow
         SettingsScroller.ChangeView(null, 0, null, disableAnimation: true);
     }
 
-    /// <summary>Adds an account, puts it in the left list, and opens its editor.</summary>
+    /// <summary>Adds an account and opens its page with the key box focused.</summary>
     private void AddApiAccount()
     {
         if (_settingsError is not null)
@@ -92,8 +291,8 @@ public sealed partial class SettingsWindow
             SelectTag(TagGeneral);
             return;
         }
-        var (provider, name) = ApiUsage.Providers[0];
-        var account = new ApiAccount { Id = ApiUsage.NewId(provider, _settings.ApiAccounts), Name = name, Provider = provider };
+        var provider = ApiUsage.Providers[0];
+        var account = new ApiAccount { Id = ApiUsage.NewId(provider.Id, _settings.ApiAccounts), Name = provider.Name, Provider = provider.Id };
         _settings.ApiAccounts.Add(account);
         if (!SaveAgentList(SettingsChange.ApiAccounts))
             return;
@@ -101,11 +300,17 @@ public sealed partial class SettingsWindow
         DispatcherQueue.TryEnqueue(() => _newApiKeyBox?.Focus(FocusState.Programmatic));
     }
 
-    /// <summary>One account: name and service, the key (shown as it is), its balance, and the 100% amount.</summary>
+    /// <summary>
+    /// One account: the key (name, service, the key shown as it is, Anthropic's Admin key), the
+    /// agents it's handed to, its balance when the service has one, and Remove.
+    /// </summary>
     private StackPanel ApiAccountEditor(ApiAccount account)
     {
         var panel = new StackPanel { Spacing = 8 };
+        var spend = ApiUsage.ReportsSpend(account.Provider);
+        var variable = ApiUsage.KeyVariable(account.Provider);
 
+        panel.Children.Add(SectionHeader("Key", 0));
         var top = new Grid { ColumnSpacing = 8 };
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -124,7 +329,7 @@ public sealed partial class SettingsWindow
         };
         var service = new ComboBox
         {
-            Header = "Service", MinWidth = 120,
+            Header = "Service", MinWidth = 160,
             ItemsSource = ApiUsage.Providers.Select(p => p.Name).ToList(),
             SelectedIndex = Math.Max(0, Array.FindIndex(ApiUsage.Providers, p => p.Id.Equals(account.Provider, StringComparison.OrdinalIgnoreCase)))
         };
@@ -137,7 +342,7 @@ public sealed partial class SettingsWindow
             account.Provider = provider;
             ForgetBalance(account); // another service's balance has nothing to do with this one's
             SaveAgentList(SettingsChange.ApiAccounts);
-            // Its labels and hints differ by service; rebuilt after this event, not inside it.
+            // Its labels, agents and balance differ by service; rebuilt after this event, not inside it.
             DispatcherQueue.TryEnqueue(() => ShowApiAccount(account));
         };
         top.Children.Add(name);
@@ -145,17 +350,18 @@ public sealed partial class SettingsWindow
         top.Children.Add(service);
         panel.Children.Add(top);
 
-        var spend = ApiUsage.ReportsSpend(account.Provider);
         // The key agents use; for DeepSeek it also reads the balance.
-        var key = KeyBox("API key", $"{account.Name} API key",
-            spend ? "sk-ant-api…, the key Aider uses" : "sk-…, or %DEEPSEEK_API_KEY% for an environment variable",
+        var key = KeyBox("API key", $"{account.Name} API key", $"Or %{variable}% to read it from Windows",
             () => account.ApiKey, value => account.ApiKey = value, rechecks: !spend);
         _newApiKeyBox = key;
         panel.Children.Add(key);
         // Anthropic reads spending only with an Admin key, which can't run models: a second key.
         if (spend)
-            panel.Children.Add(KeyBox("Admin API key", $"{account.Name} Admin API key", "sk-ant-admin…, which reads spending",
+        {
+            panel.Children.Add(KeyBox("Admin API key (optional)", $"{account.Name} Admin API key", "sk-ant-admin…",
                 () => account.AdminKey, value => account.AdminKey = value, rechecks: true));
+            panel.Children.Add(Note("Reads this month's spending. Only an organization's Console can create one, and it can't run models."));
+        }
 
         TextBox KeyBox(string header, string automationName, string placeholder, Func<string?> get, Action<string?> set, bool rechecks)
         {
@@ -168,6 +374,7 @@ public sealed partial class SettingsWindow
                     return;
                 set(text);
                 SaveAgentList(SettingsChange.ApiAccounts);
+                FillApiAgentRows(account); // "add a key" notes there change
                 if (!rechecks)
                     return;
                 _apiChecks.Remove(account.Id);
@@ -176,21 +383,62 @@ public sealed partial class SettingsWindow
             return box;
         }
 
-        var status = new TextBlock
-        {
-            TextWrapping = TextWrapping.Wrap,
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"]
-        };
-        _apiStatusTexts[account.Id] = status;
-        panel.Children.Add(status);
+        panel.Children.Add(SectionHeader("Agents that use this key"));
+        panel.Children.Add(Note("Each agent switched on here starts with this key in the variable it reads. A variable set on the agent's own page wins."));
+        _apiAgentsHost = new StackPanel { Spacing = 2, Margin = new Thickness(0, 4, 0, 0) };
+        panel.Children.Add(_apiAgentsHost);
+        FillApiAgentRows(account);
 
-        // "I paid $20": the amount that counts as 100%, until the next top-up adds to it.
+        if (ApiUsage.ChecksBalance(account.Provider))
+        {
+            panel.Children.Add(SectionHeader("Balance"));
+            var status = Note();
+            _apiStatusTexts[account.Id] = status;
+            panel.Children.Add(status);
+            panel.Children.Add(BalanceRow(account, spend));
+            var check = new Button { Content = "Check now" };
+            check.Click += (_, _) => StartApiCheck(account, force: true);
+            panel.Children.Add(check);
+        }
+        else
+        {
+            var keyOnly = Note($"Agent Dock can't read {ApiUsage.ProviderName(account.Provider)}'s balance, so this key is only handed to the agents above.");
+            keyOnly.Margin = new Thickness(0, 12, 0, 0);
+            panel.Children.Add(keyOnly);
+        }
+
+        var remove = new Button { Content = "Remove account", Margin = new Thickness(0, 16, 0, 0) };
+        var confirm = new Button { Content = "Remove", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var removeFlyout = new Flyout
+        {
+            Content = new StackPanel
+            {
+                Spacing = 12, MaxWidth = 260,
+                Children = { new TextBlock { Text = $"Remove {account.Name}? Agents using it start without its key.", TextWrapping = TextWrapping.Wrap }, confirm }
+            }
+        };
+        confirm.Click += (_, _) =>
+        {
+            removeFlyout.Hide();
+            RemoveApiAccount(account);
+        };
+        remove.Flyout = removeFlyout;
+        panel.Children.Add(remove);
+
+        UpdateApiAccountStatus(account);
+        return panel;
+    }
+
+    /// <summary>
+    /// "I paid $20": the amount that counts as 100%, until the next top-up adds to it. A balance
+    /// service needs this only to correct it; a spend service (Anthropic) needs it for a percentage at
+    /// all: the Console's balance now, with spending counted from today.
+    /// </summary>
+    private Grid BalanceRow(ApiAccount account, bool spend)
+    {
         var amountRow = new Grid { ColumnSpacing = 8 };
         amountRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         amountRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        // A balance service needs this only to correct it; a spend service (Anthropic) needs it for a
-        // percentage at all: the Console's balance now, with spending counted from today.
         var amount = new TextBox
         {
             Header = spend ? "Your balance now, from the Console" : "Balance after your last top-up",
@@ -237,66 +485,116 @@ public sealed partial class SettingsWindow
         amountRow.Children.Add(amount);
         Grid.SetColumn(set, 1);
         amountRow.Children.Add(set);
-        panel.Children.Add(amountRow);
-
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var check = new Button { Content = "Check now" };
-        check.Click += (_, _) => StartApiCheck(account, force: true);
-        var remove = new Button { Content = "Remove" };
-        var confirm = new Button { Content = "Remove", Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
-        var removeFlyout = new Flyout
-        {
-            Content = new StackPanel
-            {
-                Spacing = 12, MaxWidth = 260,
-                Children = { new TextBlock { Text = $"Remove {account.Name}? Agents linked to it stop showing its balance.", TextWrapping = TextWrapping.Wrap }, confirm }
-            }
-        };
-        confirm.Click += (_, _) =>
-        {
-            removeFlyout.Hide();
-            RemoveApiAccount(account);
-        };
-        remove.Flyout = removeFlyout;
-        actions.Children.Add(check);
-        actions.Children.Add(remove);
-        panel.Children.Add(actions);
-
-        UpdateApiAccountStatus(account);
-        return panel;
+        return amountRow;
     }
 
-    /// <summary>The line under an account's key: its balance and when it was checked, or what's wrong.</summary>
+    /// <summary>
+    /// Every agent in the list that can take this service's key, plus any linked to it that can't
+    /// (an older link, which shows the balance only), each with a switch. One account per agent, so
+    /// switching one on here moves it from another key.
+    /// </summary>
+    private void FillApiAgentRows(ApiAccount account)
+    {
+        if (_apiAgentsHost is not { } host || _editingApi != account)
+            return;
+        host.Children.Clear();
+        var agents = _settings.Agents
+            .Where(a => ApiUsage.KeyVariableFor(a, account.Provider) is not null
+                        || string.Equals(a.ApiAccount, account.Id, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (agents.Count == 0)
+        {
+            host.Children.Add(Note($"None of your agents can take a {ApiUsage.ProviderName(account.Provider)} key. Aider, OpenCode and commands of your own can take most."));
+            return;
+        }
+
+        foreach (var agent in agents)
+        {
+            var linked = string.Equals(agent.ApiAccount, account.Id, StringComparison.OrdinalIgnoreCase);
+            var variable = ApiUsage.KeyVariableFor(agent, account.Provider);
+            var notes = new List<string>
+            {
+                variable is null ? "Can't take this key; its drawer shows the balance only."
+                : agent.Env?.ContainsKey(variable) == true ? $"Its own {variable} variable is used instead."
+                : $"Starts with {variable}."
+            };
+            if (variable is not null && ApiUsage.LeavesPlan(agent, account.Provider))
+                notes.Add("This replaces its Claude plan sign-in: its usage is billed to this key.");
+            if (!linked && ApiAccountFor(agent) is { } other)
+                notes.Add($"Uses {other.Name} now; switching this on moves it here.");
+
+            var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock { Text = agent.Name, TextTrimming = TextTrimming.CharacterEllipsis });
+            text.Children.Add(Note(string.Join(" ", notes)));
+            var toggle = new ToggleSwitch { IsOn = linked, MinWidth = 0, OnContent = "", OffContent = "", VerticalAlignment = VerticalAlignment.Center };
+            AutomationProperties.SetName(toggle, $"Use {account.Name} for {agent.Name}");
+            toggle.Toggled += (_, _) =>
+            {
+                var id = toggle.IsOn ? account.Id : null;
+                if (string.Equals(agent.ApiAccount, id, StringComparison.OrdinalIgnoreCase))
+                    return;
+                var before = agent.ApiAccount;
+                agent.ApiAccount = id;
+                if (!SaveAgentList(SettingsChange.ApiAccounts))
+                    agent.ApiAccount = before;
+                // Rebuilt after this event, not inside it.
+                DispatcherQueue.TryEnqueue(() => FillApiAgentRows(account));
+            };
+            var icon = AgentIcon(agent, 20);
+            Grid.SetColumn(text, 1);
+            Grid.SetColumn(toggle, 2);
+            host.Children.Add(new Grid
+            {
+                ColumnSpacing = 12,
+                Padding = new Thickness(0, 6, 0, 6),
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(24) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = GridLength.Auto }
+                },
+                Children = { icon, text, toggle }
+            });
+        }
+    }
+
+    /// <summary>The key page's balance line and the key's row on Accounts: its balance and when, or what's wrong.</summary>
     private void UpdateApiAccountStatus(ApiAccount account)
     {
-        if (!_apiStatusTexts.TryGetValue(account.Id, out var text))
-            return;
         var state = BalanceOf(account);
         var check = _apiChecks.GetValueOrDefault(account.Id);
-        var parts = new List<string>();
-        if (check?.Running == true)
-            parts.Add(ApiUsage.Checking);
-        else if (check?.Problem is { } problem)
-            parts.Add(problem);
-        if (state is { UpdatedAt: > 0 })
-            parts.Add((ApiUsage.HasPercent(state)
-                          ? $"{ApiUsage.Summary(state)} of {ApiUsage.Money(state.Full, state.Currency)}. "
-                          : $"{ApiUsage.Summary(state)}. Set your balance below to see a percentage. ")
-                      + FlyoutWindow.UpdatedAgo(DateTimeOffset.FromUnixTimeSeconds(state.UpdatedAt), DateTimeOffset.UtcNow));
-        text.Text = parts.Count > 0 ? string.Join(" ", parts) : "Not checked yet.";
+        var hasData = state is { UpdatedAt: > 0 };
+
+        if (_apiStatusTexts.TryGetValue(account.Id, out var text))
+        {
+            var parts = new List<string>();
+            if (check?.Running == true)
+                parts.Add(ApiUsage.Checking);
+            else if (check?.Problem is { } problem)
+                parts.Add(problem);
+            if (hasData)
+                parts.Add((ApiUsage.HasPercent(state!)
+                              ? $"{ApiUsage.Summary(state!)} of {ApiUsage.Money(state!.Full, state.Currency)}. "
+                              : $"{ApiUsage.Summary(state!)}. Set your balance below to see a percentage. ")
+                          + FlyoutWindow.UpdatedAgo(DateTimeOffset.FromUnixTimeSeconds(state!.UpdatedAt), DateTimeOffset.UtcNow));
+            text.Text = parts.Count > 0 ? string.Join(" ", parts) : "Not checked yet.";
+        }
+
+        if (_apiRowStatusTexts.TryGetValue(account.Id, out var row))
+            row.Text = !ApiUsage.ChecksBalance(account.Provider) ? "No balance check for this service"
+                : hasData ? ApiUsage.Summary(state!)
+                : check?.Running == true ? ApiUsage.Checking
+                : check?.Problem ?? "Not checked yet";
     }
 
     private void RemoveApiAccount(ApiAccount account)
     {
-        var index = _settings.ApiAccounts.IndexOf(account);
         _settings.ApiAccounts.Remove(account);
         foreach (var agent in _settings.Agents.Where(a => string.Equals(a.ApiAccount, account.Id, StringComparison.OrdinalIgnoreCase)))
             agent.ApiAccount = null;
         ForgetBalance(account);
         SaveAgentList(SettingsChange.ApiAccounts);
-        var next = index >= 0 && index < _settings.ApiAccounts.Count ? _settings.ApiAccounts[index]
-            : index > 0 ? _settings.ApiAccounts[index - 1] : null;
-        SelectTag(next is null ? TagAddApi : TagApiPrefix + next.Id);
+        SelectTag(TagAccounts);
     }
 
     private void ForgetBalance(ApiAccount account)
@@ -306,69 +604,100 @@ public sealed partial class SettingsWindow
             UpdateState(state => state.ApiBalances.Remove(account.Id));
     }
 
-    // ---------- An agent's page: which account's balance its drawer shows ----------
+    // ---------- An agent's page: which account it runs on ----------
 
     /// <summary>
-    /// The choice, for command line agents while there are accounts, and an offer to link one the
-    /// agent seems to use (Aider's model, OpenCode's providers).
+    /// The Account choice, for agents that can take a key (or are linked to one), listing the keys it
+    /// can use, and an offer to use one it seems to use already (Aider's model, OpenCode's providers).
     /// </summary>
     private void UpdateAgentApiSection(AgentDefinition definition)
     {
-        var accounts = _settings.ApiAccounts;
-        var show = definition.Kind == AgentKind.Cli && accounts.Count > 0;
-        AgentApiSection.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        var linked = ApiAccountFor(definition);
+        var takesKeys = ApiUsage.Providers.Any(p => ApiUsage.KeyVariableFor(definition, p.Id) is not null);
+        // Claude Code has a plan: a key is an option once there is one, never a nudge to add one.
+        var hasPlan = ApiUsage.Providers.Any(p => ApiUsage.LeavesPlan(definition, p.Id));
+        _agentApiChoices = _settings.ApiAccounts
+            .Where(a => a == linked || ApiUsage.KeyVariableFor(definition, a.Provider) is not null)
+            .ToList();
+        AgentApiSection.Visibility = _agentApiChoices.Count > 0 || (takesKeys && !hasPlan) ? Visibility.Visible : Visibility.Collapsed;
         AgentApiOffer.IsOpen = false;
-        if (!show)
+        if (AgentApiSection.Visibility != Visibility.Visible)
             return;
 
         _agentApiReady = false;
-        AgentApiBox.ItemsSource = new List<string> { "None" }.Concat(accounts.Select(a => a.Name)).ToList();
-        AgentApiBox.SelectedIndex = accounts.FindIndex(a => string.Equals(a.Id, definition.ApiAccount, StringComparison.OrdinalIgnoreCase)) + 1;
+        AgentApiChoices.Items.Clear();
+        AgentApiChoices.Items.Add(hasPlan
+            ? ChoiceContent("Its plan", "Its own sign-in, with your plan's usage.")
+            : ChoiceContent("None", "No key from Agent Dock; it uses its own configuration."));
+        foreach (var account in _agentApiChoices)
+            AgentApiChoices.Items.Add(ChoiceContent(account.Name,
+                ApiUsage.KeyVariableFor(definition, account.Provider) is { } variable
+                    ? $"{ApiUsage.ProviderName(account.Provider)} API key · sets {variable}"
+                    : $"{ApiUsage.ProviderName(account.Provider)} · shows its balance only"));
+        AgentApiChoices.SelectedIndex = linked is null ? 0 : _agentApiChoices.IndexOf(linked) + 1;
         _agentApiReady = true;
         UpdateAgentApiNote(definition);
 
-        if (ApiAccountFor(definition) is null
-            && accounts.FirstOrDefault(a => ApiUsage.AgentUses(definition, a.Provider)) is { } likely)
+        if (linked is null
+            && _agentApiChoices.FirstOrDefault(a => ApiUsage.AgentUses(definition, a.Provider)) is { } likely)
         {
-            AgentApiOffer.Message = $"{definition.Name} uses {ApiUsage.ProviderName(likely.Provider)}. Show {likely.Name}'s balance in its drawer?";
+            AgentApiOffer.Message = $"{definition.Name} uses {ApiUsage.ProviderName(likely.Provider)}. Use {likely.Name}'s key?";
             AgentApiOfferButton.Tag = likely;
             AgentApiOffer.IsOpen = true;
         }
+
+        static RadioButton ChoiceContent(string title, string detail)
+        {
+            var content = new StackPanel { Spacing = 2 };
+            content.Children.Add(new TextBlock { Text = title });
+            content.Children.Add(Note(detail));
+            var choice = new RadioButton { Content = content };
+            AutomationProperties.SetName(choice, title);
+            AutomationProperties.SetHelpText(choice, detail);
+            return choice;
+        }
     }
 
-    /// <summary>
-    /// For Aider, the link also hands it the key (<see cref="ApiUsage.EnvironmentFor"/>), so say so:
-    /// which variable, or that its own variable wins, or that the account has no key for it yet.
-    /// </summary>
+    /// <summary>What the choice does: which variable it starts with, or why not, or that there are no keys yet.</summary>
     private void UpdateAgentApiNote(AgentDefinition definition)
     {
         var account = ApiAccountFor(definition);
-        if (account is null || !ApiUsage.IsAider(definition))
-        {
-            AgentApiNote.Visibility = Visibility.Collapsed;
-            return;
-        }
-        var variable = ApiUsage.KeyVariable(account.Provider);
-        AgentApiNote.Text = definition.Env?.ContainsKey(variable) == true
-            ? $"Aider's own {variable} variable below is used, not {account.Name}'s key."
-            : string.IsNullOrWhiteSpace(account.ApiKey)
-                ? $"Add {account.Name}'s API key in settings, and Agent Dock gives it to Aider as {variable}."
-                : $"Agent Dock gives Aider {account.Name}'s key as {variable} when it starts it, so it needs no variable of its own.";
-        AgentApiNote.Visibility = Visibility.Visible;
+        string? note;
+        if (account is null)
+            note = _agentApiChoices.Count == 0 ? $"No API keys {definition.Name} can use yet. Add one under Accounts." : null;
+        else if (ApiUsage.KeyVariableFor(definition, account.Provider) is not { } variable)
+            note = $"{definition.Name} can't take {account.Name}'s key, so its drawer only shows the balance.";
+        else if (definition.Env?.ContainsKey(variable) == true)
+            note = $"{definition.Name}'s own {variable} variable below is used, not {account.Name}'s key.";
+        else if (string.IsNullOrWhiteSpace(account.ApiKey))
+            note = $"Add {account.Name}'s API key under Accounts, and Agent Dock gives it to {definition.Name} as {variable}.";
+        else
+            note = $"{definition.Name} starts with {account.Name}'s key as {variable}."
+                   + (ApiUsage.LeavesPlan(definition, account.Provider) ? " Its usage is billed to this key, not your Claude plan." : "")
+                   + (ApiUsage.ChecksBalance(account.Provider) ? " Its drawer shows the key's balance." : "");
+        AgentApiNote.Text = note ?? "";
+        AgentApiNote.Visibility = note is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void AgentApiBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void AgentApiChoices_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_agentApiReady || _editingAgent is null || AgentApiBox.SelectedIndex < 0)
+        if (!_agentApiReady || _editingAgent is null || AgentApiChoices.SelectedIndex < 0)
             return;
-        var index = AgentApiBox.SelectedIndex;
-        var id = index == 0 ? null : _settings.ApiAccounts[index - 1].Id;
+        var index = AgentApiChoices.SelectedIndex;
+        var id = index == 0 ? null : _agentApiChoices[index - 1].Id;
         if (string.Equals(id, _editingAgent.ApiAccount, StringComparison.OrdinalIgnoreCase))
             return;
         _editingAgent.ApiAccount = id;
         SaveAgentList(SettingsChange.ApiAccounts);
         AgentApiOffer.IsOpen = false;
         UpdateAgentApiNote(_editingAgent);
+        // Claude Code on a key has no plan usage to choose a source for.
+        var editing = _editingAgent;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (ReferenceEquals(_editingAgent, editing))
+                UpdateAgentPanel(editing);
+        });
     }
 
     private void AgentApiOffer_Click(object sender, RoutedEventArgs e)
@@ -377,6 +706,6 @@ public sealed partial class SettingsWindow
             return;
         _editingAgent.ApiAccount = account.Id;
         SaveAgentList(SettingsChange.ApiAccounts);
-        UpdateAgentApiSection(_editingAgent);
+        UpdateAgentPanel(_editingAgent);
     }
 }

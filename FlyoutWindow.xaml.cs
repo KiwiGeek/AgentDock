@@ -1777,7 +1777,7 @@ public sealed partial class FlyoutWindow : Window
         foreach (var item in _cli.Concat(_desktop).Where(i => i.IsAgentAvailable))
             if (SummaryEntryFor(item) is { } entry && keys.Add(entry.Key))
                 entries.Add(entry);
-        foreach (var account in _settings.ApiAccounts)
+        foreach (var account in CheckedApiAccounts)
             if (ApiSummaryEntry(account, null) is var entry && keys.Add(entry.Key))
                 entries.Add(entry);
         return entries;
@@ -1842,7 +1842,7 @@ public sealed partial class FlyoutWindow : Window
     {
         if (!_state.ShowUsageSummary)
             return;
-        foreach (var account in _settings.ApiAccounts)
+        foreach (var account in CheckedApiAccounts)
         {
             StartApiCheck(account);
             if (ApiProviderIcon(account) is { } source)
