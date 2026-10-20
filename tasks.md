@@ -79,6 +79,10 @@ Things to decide:
 - More services: OpenRouter (`GET /api/v1/key` gives a real limit and usage, so no top-up guessing),
   Moonshot/Kimi. OpenAI's billing needs an organisation admin key, like Anthropic's.
 - Not yet verified by eye: the settings section, the agent page's choice and offer, the drawer, the overview row.
+- Accounts redesign (2026-10-20): verify by a real launch that each agent `ApiUsage.KeyVariableFor`
+  names actually picks the key up (OpenCode, Crush, Goose, Qwen Code, Claude Code), and by eye the
+  Accounts rows and the key page's switches. Plan rows could show usage bars (the flyout's saved
+  numbers). A "Find a setting" box in the left list was in the design and isn't built.
 
 ## Maybe later: custom groups
 

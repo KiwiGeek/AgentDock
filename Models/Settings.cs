@@ -132,12 +132,12 @@ public sealed class ApiAccount
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
-    /// <summary>Which service: "deepseek" or "anthropic" (<see cref="Services.ApiUsage.Providers"/>).</summary>
+    /// <summary>Which service: "deepseek", "anthropic", "openai"… (<see cref="Services.ApiUsage.Providers"/>).</summary>
     public string Provider { get; set; } = "deepseek";
     /// <summary>
-    /// The key agents use (Aider bound to this account gets it as <c>DEEPSEEK_API_KEY</c> or
-    /// <c>ANTHROPIC_API_KEY</c>), or <c>%NAME%</c> to read it from Windows' environment. For DeepSeek it
-    /// also reads the balance.
+    /// The key agents use (every agent linked to this account gets it, as the variable
+    /// <see cref="Services.ApiUsage.KeyVariableFor"/> names), or <c>%NAME%</c> to read it from Windows'
+    /// environment. For DeepSeek it also reads the balance.
     /// </summary>
     public string? ApiKey { get; set; }
 

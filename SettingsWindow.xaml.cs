@@ -16,19 +16,20 @@ namespace AgentDock;
 
 /// <summary>
 /// Agent Dock's settings: a master-detail window (owner's decision, 2026-10-19). The left list is
-/// General, each agent (drag to reorder), Add agents, each API account, and Add an API key; the
+/// General, Accounts, each agent (drag to reorder), and Add agents (owner's decision, 2026-10-20:
+/// every sign-in and API key in one Accounts page, instead of a list of keys of their own); the
 /// right pane shows only that item's details. One instance, owned by <see cref="App"/>: closing
 /// only hides it. Every change is saved at once, and <c>onChanged</c> tells the flyout what moved.
 /// </summary>
 public sealed partial class SettingsWindow : Window
 {
-    private const double DefaultWidthDip = 720;
+    private const double DefaultWidthDip = 880;
     private const double DefaultHeightDip = 720;
     private const double MinWidthDip = 560;
     private const double MinHeightDip = 400;
     private const string TagGeneral = "general";
     private const string TagAddAgents = "add-agents";
-    private const string TagAddApi = "add-api";
+    private const string TagAccounts = "accounts";
     private const string TagAgentPrefix = "agent:";
     private const string TagApiPrefix = "api:";
 
@@ -38,7 +39,6 @@ public sealed partial class SettingsWindow : Window
     private readonly ShellIcons _icons = new();
     private readonly ObservableCollection<string> _aiderModels = [];
     private readonly ObservableCollection<AgentListRow> _agentRows = [];
-    private readonly ObservableCollection<ApiAccount> _apiRows = [];
     private readonly nint _hwnd;
 
     private DockSettings _settings = new();
@@ -66,7 +66,20 @@ public sealed partial class SettingsWindow : Window
 
         var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "AgentDock.ico");
         AppWindow.SetIcon(icon);
-        AppWindow.Title = "Agent Dock settings";
+        AppWindow.Title = "Agent Dock settings"; // the taskbar and Alt+Tab still use it
+
+        // The content runs up under the title bar (owner's request, 2026-10-20), so the Mica is one
+        // surface from top to bottom: a tall caption area, with transparent caption buttons over it.
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
+        AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        try { AppTitleIcon.Source = new BitmapImage(new Uri(icon)); }
+        catch (Exception ex) when (ex is UriFormatException or ArgumentException) { }
+        // Dimmed while another window is active, as a system title bar's text is.
+        Activated += (_, e) => AppTitleText.Foreground = (Brush)Application.Current.Resources[
+            e.WindowActivationState == WindowActivationState.Deactivated ? "TextFillColorTertiaryBrush" : "TextFillColorPrimaryBrush"];
 
         // An ordinary window: a title bar, in the taskbar and Alt+Tab, resizable.
         var presenter = OverlappedPresenter.Create();
@@ -86,7 +99,7 @@ public sealed partial class SettingsWindow : Window
 
         AiderModelResults.ItemsSource = _aiderModels;
         AgentNavList.ItemsSource = _agentRows;
-        ApiNavList.ItemsSource = _apiRows;
+        FillLaunchChoices();
     }
 
     // ---------- Show / hide ----------
@@ -134,8 +147,7 @@ public sealed partial class SettingsWindow : Window
         {
             "agents" when _settings.Agents.Count > 0 => TagAgentPrefix + _settings.Agents[0].Id,
             "agents" => TagAddAgents,
-            "api" when _settings.ApiAccounts.Count > 0 => TagApiPrefix + _settings.ApiAccounts[0].Id,
-            "api" => TagAddApi,
+            "api" or "accounts" => TagAccounts,
             _ => TagGeneral
         };
 
@@ -265,7 +277,7 @@ public sealed partial class SettingsWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>General, Add agents, or Add an API key was chosen in the left list.</summary>
+    /// <summary>General, Accounts, or Add agents was chosen in the left list.</summary>
     private void StaticNav_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_navReady || sender is not ListView list || list.SelectedItem is not ListViewItem { Tag: string tag })
@@ -281,17 +293,6 @@ public sealed partial class SettingsWindow : Window
         if (!_navReady || AgentNavList.SelectedItem is not AgentListRow row)
             return;
         var tag = TagAgentPrefix + row.Definition.Id;
-        if (tag == _selectedTag)
-            return;
-        CommitEditors();
-        ShowTag(tag);
-    }
-
-    private void ApiNav_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_navReady || ApiNavList.SelectedItem is not ApiAccount account)
-            return;
-        var tag = TagApiPrefix + account.Id;
         if (tag == _selectedTag)
             return;
         CommitEditors();
@@ -323,7 +324,7 @@ public sealed partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// Rebuilds the left agent and API lists. Keeps <paramref name="selectTag"/> selected when
+    /// Rebuilds the left agent list. Keeps <paramref name="selectTag"/> selected when
     /// still present. Drag reorder is off while agents.json couldn't be read.
     /// </summary>
     private void RebuildNavMenu(string? selectTag = null)
@@ -333,7 +334,6 @@ public sealed partial class SettingsWindow : Window
         var editable = _settingsError is null;
         AgentNavList.CanReorderItems = AgentNavList.CanDragItems = AgentNavList.AllowDrop = editable;
         AddAgentsNavItem.IsEnabled = editable;
-        AddApiNavItem.IsEnabled = editable;
 
         _agentRows.Clear();
         foreach (var definition in _settings.Agents)
@@ -342,10 +342,6 @@ public sealed partial class SettingsWindow : Window
             _agentRows.Add(new AgentListRow(definition, resolved?.Icon, resolved?.IsAvailable ?? false));
         }
 
-        _apiRows.Clear();
-        foreach (var account in _settings.ApiAccounts)
-            _apiRows.Add(account);
-
         SyncNavSelection(selectTag);
         _navReady = true;
     }
@@ -353,9 +349,11 @@ public sealed partial class SettingsWindow : Window
     /// <summary>Highlights the left-list row for <paramref name="tag"/> and clears the others.</summary>
     private void SyncNavSelection(string tag)
     {
-        GeneralNav.SelectedItem = tag == TagGeneral ? GeneralNavItem : null;
+        // An API key's page belongs to Accounts, so Accounts stays highlighted.
+        GeneralNav.SelectedItem = tag == TagGeneral ? GeneralNavItem
+            : tag == TagAccounts || tag.StartsWith(TagApiPrefix, StringComparison.Ordinal) ? AccountsNavItem
+            : null;
         AddAgentsNav.SelectedItem = tag == TagAddAgents ? AddAgentsNavItem : null;
-        AddApiNav.SelectedItem = tag == TagAddApi ? AddApiNavItem : null;
 
         if (tag.StartsWith(TagAgentPrefix, StringComparison.Ordinal))
         {
@@ -365,15 +363,6 @@ public sealed partial class SettingsWindow : Window
         }
         else
             AgentNavList.SelectedItem = null;
-
-        if (tag.StartsWith(TagApiPrefix, StringComparison.Ordinal))
-        {
-            var id = tag[TagApiPrefix.Length..];
-            ApiNavList.SelectedItem = _apiRows.FirstOrDefault(a =>
-                a.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-        }
-        else
-            ApiNavList.SelectedItem = null;
     }
 
     /// <summary>Shows the right-pane details for a left-list tag.</summary>
@@ -399,9 +388,9 @@ public sealed partial class SettingsWindow : Window
             ShowAddAgents();
             return; // sets title, pane and backdrop itself
         }
-        else if (tag == TagAddApi)
+        else if (tag == TagAccounts)
         {
-            AddApiAccount();
+            ShowAccounts();
             return;
         }
         else if (tag.StartsWith(TagAgentPrefix, StringComparison.Ordinal)
@@ -437,7 +426,9 @@ public sealed partial class SettingsWindow : Window
     {
         foreach (var panel in AgentSettingsPanels)
             panel.Visibility = Visibility.Collapsed;
-        GeneralPage.Visibility = AgentEditor.Visibility = AddAgentsPage.Visibility = ApiPage.Visibility = Visibility.Collapsed;
+        GeneralPage.Visibility = AgentEditor.Visibility = AddAgentsPage.Visibility = ApiPage.Visibility = AccountsPage.Visibility = Visibility.Collapsed;
+        // Only an API key's page has Accounts in front of its title.
+        AccountsCrumb.Visibility = AccountsCrumbChevron.Visibility = Visibility.Collapsed;
     }
 
     // ---------- Agent page background (waifu picture) ----------
@@ -561,6 +552,8 @@ public sealed partial class SettingsWindow : Window
             _ => "Set when this agent starts. Write %NAME% to use a value from Windows, so keys stay out of agents.json."
         };
         FillEnvRows();
+        // Folded away unless it has something in it: the account above covers API keys now.
+        AgentEnvSection.IsExpanded = definition.Env is { Count: > 0 };
         EnvNameBox.Text = EnvValueBox.Text = "";
         RemoveAgentText.Text = $"Remove {definition.Name} from your agents? Presets for it stay until you remove them.";
 
@@ -575,6 +568,13 @@ public sealed partial class SettingsWindow : Window
     private void FillEnvRows()
     {
         AgentEnvRows.Children.Clear();
+        var count = _editingAgent?.Env?.Count ?? 0;
+        AgentEnvSummary.Text = count switch
+        {
+            0 => "None set. For anything the account doesn't cover, such as a second config folder.",
+            1 => "1 variable",
+            _ => $"{count} variables"
+        };
         foreach (var (name, value) in (_editingAgent?.Env ?? []).OrderBy(v => v.Key, StringComparer.OrdinalIgnoreCase))
         {
             var label = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center };
@@ -929,9 +929,12 @@ public sealed partial class SettingsWindow : Window
     {
         // Claude desktop is Claude Code's default account (UsageAccount.For), so it gets Claude's choice too.
         var account = UsageAccount.For(definition);
+        // Linked to an Anthropic key, Claude Code runs on that key, not its plan.
+        var onKey = ApiUsage.AccountFor(definition, _settings.ApiAccounts) is { } key
+                    && ApiUsage.KeyVariableFor(definition, key.Provider) is not null && ApiUsage.LeavesPlan(definition, key.Provider);
         var panel = IsCursor(definition) ? CursorSettings
             : IsGitHubCopilot(definition) ? CopilotSettings
-            : account is { UsesOtherProvider: true } ? null
+            : account is { UsesOtherProvider: true } || onKey ? null
             : account is { Agent: "claude" } ? ClaudeSettings
             : definition.Kind == AgentKind.Cli ? AgentSettingsPanelFor(definition)
             : null;
@@ -965,7 +968,7 @@ public sealed partial class SettingsWindow : Window
             }
         }
 
-        _settingsAccount = account is { Agent: "claude", UsesOtherProvider: false } ? account : null;
+        _settingsAccount = account is { Agent: "claude", UsesOtherProvider: false } && !onKey ? account : null;
         if (_settingsAccount is null)
             return;
         _settingsToggleReady = false;
@@ -1071,8 +1074,12 @@ public sealed partial class SettingsWindow : Window
         UsageSummarySwitch.IsOn = _state.ShowUsageSummary;
         PreferPlansSwitch.IsOn = _state.PreferPlansOverApi;
         HideUnavailableSwitch.IsOn = _settings.HideUnavailable;
-        // Lives in agents.json, which isn't written while it can't be read.
-        HideUnavailableSwitch.IsEnabled = _settingsError is null;
+        StartWithWindowsSwitch.IsOn = _settings.StartWithWindows;
+        TerminalBox.SelectedIndex = Math.Max(0, Array.FindIndex(TerminalChoices, c => c.Id.Equals(_settings.Terminal, StringComparison.OrdinalIgnoreCase)));
+        ShellBox.SelectedIndex = Math.Max(0, Array.FindIndex(ShellChoices, c => c.Id.Equals(_settings.Shell, StringComparison.OrdinalIgnoreCase)));
+        // These live in agents.json, which isn't written while it can't be read.
+        HideUnavailableSwitch.IsEnabled = StartWithWindowsSwitch.IsEnabled = CloseTerminalOnExitSwitch.IsEnabled
+            = TerminalBox.IsEnabled = ShellBox.IsEnabled = _settingsError is null;
         HideUnavailableNote.Text = _settingsError is null
             ? "Hide agents in your list that aren't installed any more, instead of showing them dimmed."
             : "Fix agents.json to change this here.";
@@ -1085,11 +1092,19 @@ public sealed partial class SettingsWindow : Window
         _settingsToggleReady = true;
     }
 
-    private void HoverBackgroundsSwitch_Toggled(object sender, RoutedEventArgs e)
+    private async void HoverBackgroundsSwitch_Toggled(object sender, RoutedEventArgs e)
     {
-        if (!_settingsToggleReady || _state.ShowHoverBackgrounds == HoverBackgroundsSwitch.IsOn)
+        if (!_settingsToggleReady || _waifuPromptOpen || _state.ShowHoverBackgrounds == HoverBackgroundsSwitch.IsOn)
             return;
         var on = HoverBackgroundsSwitch.IsOn;
+        // Turning them on asks a second time (SettingsWindow.Waifu.cs); backing out puts the switch back.
+        if (on && !await ConfirmWaifusAsync())
+        {
+            _settingsToggleReady = false;
+            HoverBackgroundsSwitch.IsOn = false;
+            _settingsToggleReady = true;
+            return;
+        }
         UpdateState(state => state.ShowHoverBackgrounds = on, SettingsChange.State | SettingsChange.Waifu);
         // Terminal's pictures follow now; the flyout's banner heart and hover pictures, when it opens.
         if (on)
@@ -1110,6 +1125,54 @@ public sealed partial class SettingsWindow : Window
         _settings.CloseTerminalWhenAgentExits = !CloseTerminalOnExitSwitch.IsOn;
         _settingsToggleReady = false;
         CloseTerminalOnExitSwitch.IsOn = _settings.CloseTerminalWhenAgentExits;
+        _settingsToggleReady = true;
+    }
+
+    // ---------- Launching (agents.json's terminal, shell and startWithWindows) ----------
+
+    private static readonly (string Id, string Name)[] TerminalChoices =
+        [("auto", "Windows Terminal if installed"), ("wt", "Windows Terminal"), ("console", "Console window")];
+
+    private static readonly (string Id, string Name)[] ShellChoices =
+        [("auto", "PowerShell 7 if installed"), ("pwsh", "PowerShell 7"), ("powershell", "Windows PowerShell"), ("cmd", "Command Prompt")];
+
+    private void FillLaunchChoices()
+    {
+        TerminalBox.ItemsSource = TerminalChoices.Select(c => c.Name).ToList();
+        ShellBox.ItemsSource = ShellChoices.Select(c => c.Name).ToList();
+    }
+
+    private void TerminalBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsToggleReady || TerminalBox.SelectedIndex < 0
+            || TerminalChoices[TerminalBox.SelectedIndex].Id.Equals(_settings.Terminal, StringComparison.OrdinalIgnoreCase))
+            return;
+        _settings.Terminal = TerminalChoices[TerminalBox.SelectedIndex].Id;
+        SaveAgentList();
+    }
+
+    private void ShellBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsToggleReady || ShellBox.SelectedIndex < 0
+            || ShellChoices[ShellBox.SelectedIndex].Id.Equals(_settings.Shell, StringComparison.OrdinalIgnoreCase))
+            return;
+        _settings.Shell = ShellChoices[ShellBox.SelectedIndex].Id;
+        SaveAgentList();
+    }
+
+    private void StartWithWindowsSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsToggleReady || _settings.StartWithWindows == StartWithWindowsSwitch.IsOn)
+            return;
+        _settings.StartWithWindows = StartWithWindowsSwitch.IsOn;
+        if (SaveAgentList())
+        {
+            Autostart.Apply(_settings.StartWithWindows); // the flyout does too when it opens; now, in case it doesn't
+            return;
+        }
+        _settings.StartWithWindows = !StartWithWindowsSwitch.IsOn;
+        _settingsToggleReady = false;
+        StartWithWindowsSwitch.IsOn = _settings.StartWithWindows;
         _settingsToggleReady = true;
     }
 

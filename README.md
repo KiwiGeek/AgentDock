@@ -47,7 +47,7 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Folder drop-down / folder button | Pick a recent folder or browse for a new one |
 | Terminal button (footer) | Plain shell in the working folder, no agent |
 | Pencil button (footer) | Opens `agents.json` |
-| Gear button (footer) | Opens the settings window (closing the flyout): left list of General, each agent, and each API key; the right pane shows that item's details. Esc closes the window |
+| Gear button (footer) | Opens the settings window (closing the flyout): left list of General, Accounts, each agent, and Add agents; the right pane shows that item's details. Esc closes the window |
 | Chat button on the Claude, ChatGPT or GitHub Copilot row | Opens the app for a plain chat, without the working folder (see below) |
 | Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (agents that open in a folder), **Settings**, or **Remove from list**. Claude also has **New chat** and **New Cowork session**, ChatGPT and GitHub Copilot **Open without a folder** |
 | Right-click a preset | Rename or remove it |
@@ -113,16 +113,21 @@ After that, manage them in the settings window (the gear in the footer), under *
   couldn't find are under **Not found on this PC**: tick one to add it anyway, for example before
   you install it. It shows as not installed until Agent Dock can find it, and it's looked for
   again every time the flyout opens.
-- Click an agent for its page: rename it, change its arguments, set **environment variables**,
-  **duplicate** it, or remove it. Drag agents in the list (here or in the flyout
+- Click an agent for its page: rename it, choose the **account** (API key) it runs on, change its
+  arguments, set **environment variables** (folded away; an account covers keys), **duplicate** it,
+  or remove it. Drag agents in the list (here or in the flyout
   itself) to put them in the order you want.
 - An Aider entry also has an optional **Model name**. Agent Dock starts it with
-  `--model provider/model`; put API keys, provider choices and other Aider configuration in Aider
-  itself. Its **Find a model** search runs Aider's local `--list-models` catalogue query and lets
+  `--model provider/model`; choose its key under **Account**, and put other Aider configuration in
+  Aider itself. Its **Find a model** search runs Aider's local `--list-models` catalogue query and lets
   you select the returned identifier; it is not a check of which models your account can use.
   Duplicate the entry when you want a second ready-to-use model.
-- **Close terminal when agent exits** is a global option that closes Agent Dock's tab after a CLI
-  agent finishes instead of leaving a prompt.
+- **General** is in groups: **Flyout** (usage overview, hiding unavailable agents, waifu
+  backgrounds), **Taskbar icon**, **Launching** (terminal, shell, **Close terminal when agent
+  exits**, which closes Agent Dock's tab after a CLI agent finishes instead of leaving a prompt, and
+  **Start with Windows**) and **Recent folders**.
+- Turning **Waifu backgrounds** on asks you to confirm, a little differently each time. Turning
+  them off doesn't.
 - With **Waifu backgrounds** on, Agent Dock also gives supported Windows Terminal tabs the selected
   agent's picture. It writes hidden, app-owned profiles into Terminal's Fragments folder (and
   removes them when Waifus are off). Your other profiles are left alone. If Terminal has not loaded
@@ -283,12 +288,20 @@ GitHub CLI (`gh`) with gh's own sign-in. Sign in to gh once (`gh auth login`); n
 is needed. This isn't a published GitHub API, so it can stop working. Results are cached for five
 minutes. (The `monthlyAllowance` setting of earlier versions is no longer used.)
 
-### API usage (DeepSeek, Anthropic)
+### Accounts and API keys
 
-Agents that run on an API key rather than a plan, like Aider or OpenCode, can show that key's
-balance. Add the key in settings under **API usage** (**Add an API key**): a name, the service, and
-the key itself, or `%DEEPSEEK_API_KEY%` to read it from an environment variable. It's kept in
-`agents.json` as you type it:
+Settings → **Accounts** lists everything your agents run on, in one place:
+
+- **Plans**: the sign-ins Agent Dock reads usage through (Claude, ChatGPT, GitHub, Cursor, Grok),
+  each with the agents that share it. Nothing is stored for these; choose one to open its agent's
+  usage settings.
+- **API keys**: a key is added once (**Add a key**: a name, the service, and the key itself, or
+  `%DEEPSEEK_API_KEY%` to read it from an environment variable) and then handed to every agent you
+  switch on for it, on the key's own page under **Agents that use this key**, or from the agent's
+  page under **Account**. Services: DeepSeek, Anthropic, OpenAI, OpenRouter, Google Gemini and xAI.
+  Only DeepSeek and Anthropic have a balance Agent Dock can read; the others are keys only.
+
+Keys are kept in `agents.json` as you type them:
 
 ```json
 "apiAccounts": [
@@ -297,9 +310,14 @@ the key itself, or `%DEEPSEEK_API_KEY%` to read it from an environment variable.
 ]
 ```
 
-**Aider bound to a key needs no variables.** Link Aider to an account on its page, and Agent Dock
-starts it with `DEEPSEEK_API_KEY` or `ANTHROPIC_API_KEY` set to that account's key. A variable of
-the same name on Aider's own page wins. (Only Aider: linking another agent just shows the usage.)
+**An agent on a key needs no variables.** Agent Dock starts it with the variable that agent reads,
+set to the account's key: `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`,
+`OPENROUTER_API_KEY`, `GEMINI_API_KEY` or `XAI_API_KEY` (OpenCode reads Gemini's as
+`GOOGLE_GENERATIVE_AI_API_KEY`, Goose as `GOOGLE_API_KEY`). Agents that can take a key: Aider and
+OpenCode (any service), Crush (all but DeepSeek), Goose (Anthropic, OpenAI, OpenRouter, Gemini),
+Qwen Code (OpenAI), commands of your own (any), and Claude Code (Anthropic: this moves it off your
+Claude plan to API billing, and settings says so). A variable of the same name on the agent's own
+page wins.
 
 **Anthropic has no balance API**, only spending, through the Admin API's cost report, which needs an
 **Admin API key** (`sk-ant-admin…`, from an organization's Console settings; individual accounts
@@ -309,18 +327,18 @@ type your **balance now, from the Console** and choose **Set**, it shows what wa
 after that, the balance left and a percentage, with spending counted from that day (the report is
 by day, so that day's earlier spending counts too). Set it again after a top-up.
 
-Each key gets a line in the usage overview, like "42% used · $5.80 left". To show it in an agent's
-drawer as well, choose it under **API usage** on that agent's page (or add `"apiAccount": "deepseek"`
-to the agent). When Aider's model is a `deepseek/` one, or OpenCode has a DeepSeek key, the page
-offers to link it.
+Each key with a balance gets a line in the usage overview, like "42% used · $5.80 left", and the
+drawer of every agent using it shows it too (`"apiAccount": "deepseek"` on the agent in agents.json).
+When Aider's model is a `deepseek/` one, or OpenCode has a DeepSeek key, the agent's page offers to
+use it.
 
 A prepaid balance has no limit to measure against, so the percentage is of the balance after your
 last top-up: the first balance Agent Dock sees counts as 100%, and a later rise is taken as a top-up
 and added to it. If that's off (you paid $20 but it first saw $19.57), type the real amount under
 **Balance after your last top-up** and choose **Set**.
 
-The overview's suggestion uses your plans' included usage first: with **Prefer plans over API
-keys** on (the default, in General settings), it suggests an agent on an API key only once no agent
+The overview's suggestion uses your plans' included usage first: with **Suggest plans before API
+keys** on (the default, on the Accounts page), it suggests an agent on an API key only once no agent
 on a plan has room left. The balance comes from DeepSeek's documented
 `GET /user/balance`, at most every five minutes while the flyout is open.
 
@@ -390,7 +408,7 @@ cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's ic
 | `Program.cs` | Entry point: forwards to the running instance, or becomes it |
 | `App.xaml(.cs)` | The background instance; handles show / launch / quit requests |
 | `FlyoutWindow.xaml(.cs)` | The flyout |
-| `SettingsWindow.xaml(.cs)` | The settings window (left list: General, each agent, each API key), opened from the gear |
+| `SettingsWindow.xaml(.cs)` | The settings window (left list: General, Accounts, each agent), opened from the gear |
 | `Models` | Config/state classes, JSON context, and the `AgentItem` view model |
 | `Services` | Settings I/O, PATH lookup, launching, agent resolution, IPC, autostart, jump list |
 | `Interop` | Win32 and shell COM declarations, icon extraction, Start menu enumeration |
