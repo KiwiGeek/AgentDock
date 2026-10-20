@@ -739,6 +739,8 @@ public sealed partial class SettingsWindow : Window
             return;
         var index = _settings.Agents.IndexOf(removed);
         _settings.Agents.Remove(removed);
+        if (HostedAgents.IsHosted(removed))
+            HostedAgents.Stop(removed.Id);
         SaveAgentList();
         // Prefer the neighbour that took its place, else Add agents.
         var next = index >= 0 && index < _settings.Agents.Count ? _settings.Agents[index]

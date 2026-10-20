@@ -111,6 +111,9 @@ public sealed partial class FlyoutWindow : Window
         CliList.ItemsSource = _cli;
         DesktopList.ItemsSource = _desktop;
         FolderBox.ItemsSource = _folders;
+
+        // Hosted agents (DeepSeek Harness) start and stop off the UI thread.
+        HostedAgents.Changed += () => DispatcherQueue.TryEnqueue(RefreshHostedRows);
     }
 
     public static string DefaultFolder()
@@ -1065,6 +1068,21 @@ public sealed partial class FlyoutWindow : Window
             Launch(item, other);
     }
 
+    /// <summary>Stop button on a hosted agent (DeepSeek Harness): kills its background process.</summary>
+    private void StopHosted_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: AgentItem item })
+            return;
+        // Keep the flyout open so the user sees the subtitle clear (launch hides it; stop doesn't).
+        HostedAgents.Stop(item.Preset?.Agent ?? item.Definition.Id);
+    }
+
+    private void RefreshHostedRows()
+    {
+        foreach (var item in AllItems)
+            item.RefreshHostedState();
+    }
+
     /// <summary>A desktop agent opened without a folder, so there's no recent folder to remember.</summary>
     private void Launch(AgentItem item, OtherLaunch other)
     {
@@ -1264,6 +1282,13 @@ public sealed partial class FlyoutWindow : Window
             if (others.Count > 0)
                 menu.Items.Add(new MenuFlyoutSeparator());
 
+            if (item.IsHostedRunning)
+            {
+                menu.Items.Add(MenuItem("Stop", "\uE71A", () =>
+                    HostedAgents.Stop(item.Preset?.Agent ?? item.Definition.Id)));
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
             // Most desktop apps don't open in a folder, so they can't be presets (Claude can).
             if (item.TakesFolder)
             {
@@ -1310,6 +1335,9 @@ public sealed partial class FlyoutWindow : Window
             flyout.Hide();
             if (!_settings.Agents.Remove(item.Definition))
                 return;
+            // Don't leave a hosted server running after its row is gone.
+            if (HostedAgents.IsHosted(item.Definition))
+                HostedAgents.Stop(item.Definition.Id);
             SaveAgentList();
             if (AppWindow.IsVisible)
                 PlaceWindow();
@@ -1509,7 +1537,7 @@ public sealed partial class FlyoutWindow : Window
         RecentSection.Visibility = Visibility.Collapsed;
         if (!item.IsAgentAvailable)
             return false;
-        // Linked to an API key (Aider or OpenCode on DeepSeek, say): that balance, whatever the agent.
+        // Linked to an API key (Aider, OpenCode or DeepSeek Harness, say): that balance, whatever the agent.
         if (ApiAccountFor(item.Definition) is { } api)
         {
             _drawerItem = item;

@@ -22,6 +22,10 @@ public static class Launcher
                 if (IsAider(item.Definition) && item.Definition.Model?.Any(char.IsWhiteSpace) == true)
                     return "An Aider model name cannot contain spaces.";
 
+                // DeepSeek Harness and similar: no Terminal window; Agent Dock owns the process.
+                if (HostedAgents.IsHosted(item.Definition))
+                    return HostedAgents.Start(item, folder, settings);
+
                 var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments,
                         AiderModelArgument(item.Definition) }
                     .Where(s => !string.IsNullOrWhiteSpace(s)));

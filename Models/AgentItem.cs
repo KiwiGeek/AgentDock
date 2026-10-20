@@ -60,8 +60,29 @@ public sealed partial class AgentItem : INotifyPropertyChanged
         : !IsAvailable
         ? (IsCli ? $"{Definition.Command} not found on PATH" : "Not installed")
         : IsCli
-            ? string.Join(' ', new[] { Definition.Command, Definition.Arguments }.Where(s => !string.IsNullOrWhiteSpace(s)))
+            ? CliSubtitle
             : "Desktop app";
+
+    /// <summary>
+    /// Known CLI agents can name what they do (DeepSeek Harness opens in the browser); otherwise the
+    /// command line. A hosted agent that's running says so, so the Stop button isn't the only clue.
+    /// </summary>
+    private string CliSubtitle
+    {
+        get
+        {
+            var label = Services.KnownAgents.CliSubtitle(Definition)
+                ?? string.Join(' ', new[] { Definition.Command, Definition.Arguments }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            return IsHostedRunning ? $"Running · {label.ToLowerInvariant()}" : label;
+        }
+    }
+
+    /// <summary>Whether Agent Dock is hosting this agent's process (no Terminal window).</summary>
+    public bool IsHostedRunning =>
+        Services.HostedAgents.IsHosted(Definition)
+        && Services.HostedAgents.IsRunning(Preset?.Agent ?? Definition.Id);
+
+    public Visibility StopVisibility => IsHostedRunning ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>
     /// Where the icon comes from: an image file, a compiled-in icon, or a shell parsing name to
@@ -113,9 +134,19 @@ public sealed partial class AgentItem : INotifyPropertyChanged
     public Services.OtherLaunch? QuickLaunch =>
         Preset is null && IsAgentAvailable ? Services.KnownAgents.OtherLaunches(Definition).FirstOrDefault() : null;
 
-    public Visibility QuickLaunchVisibility => QuickLaunch is null ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility QuickLaunchVisibility =>
+        QuickLaunch is null || IsHostedRunning ? Visibility.Collapsed : Visibility.Visible;
     public string QuickLaunchText => QuickLaunch?.Text ?? "";
     public string QuickLaunchGlyph => QuickLaunch?.Glyph ?? "";
+
+    /// <summary>Call when a hosted process starts or stops, so the subtitle and Stop button refresh.</summary>
+    public void RefreshHostedState()
+    {
+        OnPropertyChanged(nameof(Subtitle));
+        OnPropertyChanged(nameof(IsHostedRunning));
+        OnPropertyChanged(nameof(StopVisibility));
+        OnPropertyChanged(nameof(QuickLaunchVisibility));
+    }
 
     /// <summary>Screen readers announce list items by ToString().</summary>
     public override string ToString() => $"{Name}, {Subtitle}";

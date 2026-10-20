@@ -116,6 +116,8 @@ public static class ApiUsage
             },
             "claude" => service.Id == "anthropic" ? service.Variable : null,
             "qwen" => service.Id == "openai" ? service.Variable : null,
+            // DeepSeek Harness (`dsh`): its LLM and web plugins default to DEEPSEEK_API_KEY.
+            "deepseek" or "dsh" => service.Id == "deepseek" ? service.Variable : null,
             _ when known is null => service.Variable, // the user's own command
             _ => null
         };
@@ -384,6 +386,9 @@ public static class ApiUsage
                        || (anthropic && model.StartsWith("claude", StringComparison.OrdinalIgnoreCase)));
         if (catalog == "opencode" || command == "opencode")
             return OpenCodeProviders().Contains(provider, StringComparer.OrdinalIgnoreCase);
+        // DeepSeek Harness is DeepSeek's own agent; it always wants that key.
+        if (catalog == "deepseek" || command == "dsh")
+            return provider.Equals("deepseek", StringComparison.OrdinalIgnoreCase);
         return false;
     }
 

@@ -101,6 +101,8 @@ public partial class App : Application
     {
         IsExiting = true;
         _shutdown.Cancel();
+        // Hosted agents (DeepSeek Harness) would otherwise keep serving after we exit.
+        HostedAgents.StopAll();
         _settings?.Close();
         _flyout?.Close();
         Exit();

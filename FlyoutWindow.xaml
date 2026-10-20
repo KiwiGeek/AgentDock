@@ -42,15 +42,24 @@
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{x:Bind Subtitle}" Style="{StaticResource CaptionTextBlockStyle}"
+                        <TextBlock Text="{x:Bind Subtitle, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
+                    <!-- Hosted agents (DeepSeek Harness): stop the background process. -->
+                    <Button Grid.Column="2" Width="32" Height="28" Padding="0" VerticalAlignment="Center"
+                            Background="Transparent" BorderThickness="0" Click="StopHosted_Click"
+                            Visibility="{x:Bind StopVisibility, Mode=OneWay}"
+                            ToolTipService.ToolTip="Stop"
+                            AutomationProperties.Name="Stop">
+                        <FontIcon Glyph="&#xE71A;" FontSize="14" />
+                    </Button>
+
                     <!-- Claude and ChatGPT without a folder: a new chat (KnownAgents.OtherLaunches). -->
                     <Button Grid.Column="2" Width="32" Height="28" Padding="0" VerticalAlignment="Center"
                             Background="Transparent" BorderThickness="0" Click="QuickLaunch_Click"
-                            Visibility="{x:Bind QuickLaunchVisibility}"
+                            Visibility="{x:Bind QuickLaunchVisibility, Mode=OneWay}"
                             ToolTipService.ToolTip="{x:Bind QuickLaunchText}"
                             AutomationProperties.Name="{x:Bind QuickLaunchText}">
                         <FontIcon Glyph="{x:Bind QuickLaunchGlyph}" FontSize="14" />

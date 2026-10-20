@@ -25,7 +25,7 @@ confirm the command (or Start menu name), keep or remove it, and look for a usag
 | `goose` | Goose | `goose` | yes | Block |
 | `crush` | Crush | `crush` | yes | Charm |
 | `droid` | Factory Droid | `droid` | yes | |
-| `deepseek` | DeepSeek Harness | `dsh web` | yes | DeepSeek's own agent (github.com/deepseek-ai/deepseek-harness, first released 2026-08-13, developer preview). `web` serves a UI at 127.0.0.1:3080 and opens the browser; the terminal keeps the server running. Install with `npm i -g @deepseek-ai/dsh`. Check: does it use the launch folder as its workspace? Where does the API key go? |
+| `deepseek` | DeepSeek Harness | `dsh web` | yes | DeepSeek's own agent (github.com/deepseek-ai/deepseek-harness). Hosted in the background (`HostedAgents`, no Terminal; Stop on the row). Subtitle "Opens in the browser". API key (`DEEPSEEK_API_KEY`) and recents wired 2026-10-20. Launch folder opened as a Harness workspace via `tools/dsh-plugins` (2026-10-20). Still to verify: launch, Stop, and the folder in the UI. |
 | `hermes` | Hermes Agent | `hermes` | yes | Nous Research. A general agent, not just coding. Installed natively on the owner's PC. Bring-your-own API key, so a candidate host for DeepSeek |
 | `grok` | Grok Build | `grok` | yes | Done (usage, recents). Still to check: is there a Grok desktop app? |
 | `claude-desktop` | Claude | Start menu "Claude" | yes | Done: opens a Claude Code session in the working folder (`claude://code/new?folder=`), presets, recents, and Claude Code's usage |

@@ -2,7 +2,8 @@
 
 A Windows 11 taskbar flyout for launching AI agents, built with WinUI 3. Click the pinned icon
 and an acrylic flyout opens above it; pick an agent and it starts. CLI agents open in Windows
-Terminal in the working folder you've chosen. Desktop agents just launch.
+Terminal in the working folder you've chosen (DeepSeek Harness is hosted in the background
+instead, with a Stop button on its row). Desktop agents just launch.
 
 Right-clicking the taskbar icon gives the same list as a jump list, which launches straight into
 the last folder you used without opening the flyout.
@@ -77,7 +78,9 @@ rename or remove a preset, so comments there aren't kept, but you can edit it by
 arguments. A preset whose folder has gone shows dimmed so you can remove it.
 
 CLI agents run inside a shell (`pwsh -NoExit -Command claude`, for example), so npm `.cmd`
-shims work and you land back at a prompt in the folder when the agent exits.
+shims work and you land back at a prompt in the folder when the agent exits. DeepSeek Harness
+is different: Agent Dock runs `dsh web` itself (no Terminal tab), opens the browser UI on the
+folder you chose (as a Harness workspace), and shows **Stop** on the row while it's running.
 
 ## Why it opens quickly
 
@@ -226,7 +229,7 @@ earlier keeps working alongside it. Asking directly also shows any per-model wee
 Sonnet's) as extra bars, and your extra usage when it's turned on. Under the title, the drawer names
 the model your last session used, when the status line has reported it.
 
-The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, OpenCode's, Aider's, Qwen Code's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
+The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, OpenCode's, Aider's, Qwen Code's, DeepSeek Harness's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
 to open the agent there again. Opening a folder that's already in the list moves it to the top
 and shifts the others down. At most five are kept, and only as many as fit in the drawer.
 Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.
@@ -314,10 +317,10 @@ Keys are kept in `agents.json` as you type them:
 set to the account's key: `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`,
 `OPENROUTER_API_KEY`, `GEMINI_API_KEY` or `XAI_API_KEY` (OpenCode reads Gemini's as
 `GOOGLE_GENERATIVE_AI_API_KEY`, Goose as `GOOGLE_API_KEY`). Agents that can take a key: Aider and
-OpenCode (any service), Crush (all but DeepSeek), Goose (Anthropic, OpenAI, OpenRouter, Gemini),
-Qwen Code (OpenAI), commands of your own (any), and Claude Code (Anthropic: this moves it off your
-Claude plan to API billing, and settings says so). A variable of the same name on the agent's own
-page wins.
+OpenCode (any service), DeepSeek Harness (DeepSeek), Crush (all but DeepSeek), Goose (Anthropic,
+OpenAI, OpenRouter, Gemini), Qwen Code (OpenAI), commands of your own (any), and Claude Code
+(Anthropic: this moves it off your Claude plan to API billing, and settings says so). A variable of
+the same name on the agent's own page wins.
 
 **Anthropic has no balance API**, only spending, through the Admin API's cost report, which needs an
 **Admin API key** (`sk-ant-admin…`, from an organization's Console settings; individual accounts
@@ -329,8 +332,8 @@ by day, so that day's earlier spending counts too). Set it again after a top-up.
 
 Each key with a balance gets a line in the usage overview, like "42% used · $5.80 left", and the
 drawer of every agent using it shows it too (`"apiAccount": "deepseek"` on the agent in agents.json).
-When Aider's model is a `deepseek/` one, or OpenCode has a DeepSeek key, the agent's page offers to
-use it.
+When Aider's model is a `deepseek/` one, OpenCode has a DeepSeek key, or the agent is DeepSeek
+Harness, the agent's page offers to use it.
 
 A prepaid balance has no limit to measure against, so the percentage is of the balance after your
 last top-up: the first balance Agent Dock sees counts as 100%, and a later rise is taken as a top-up

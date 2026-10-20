@@ -1,0 +1,17 @@
+{
+  "name": "@agentdock/dsh-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Opens Agent Dock's launch folder as a DeepSeek Harness workspace",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-workspace"]
+    }
+  }
+}

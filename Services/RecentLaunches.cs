@@ -54,15 +54,16 @@ public static class RecentLaunches
     public static void Clear(DockState state) => state.RecentLaunches.Clear();
 
     /// <summary>
-    /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Cursor CLI,
-    /// GitHub Copilot CLI, and the desktop apps that open in a folder (Claude, ChatGPT, Cursor). Cursor CLI's
-    /// command can also be plain "agent", so its catalog id counts too.
+    /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code,
+    /// DeepSeek Harness, Cursor CLI, GitHub Copilot CLI, and the desktop apps that open in a folder (Claude,
+    /// ChatGPT, Cursor). Cursor CLI's command can also be plain "agent", so its catalog id counts too;
+    /// DeepSeek Harness's command is <c>dsh</c>, so its catalog id counts too.
     /// </summary>
     public static bool Records(AgentDefinition agent) =>
         agent.Kind == AgentKind.Cli
             ? Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"'))?.ToLowerInvariant()
-                  is "claude" or "codex" or "grok" or "opencode" or "aider" or "qwen" or "cursor-agent" or "copilot"
-              || (agent.Catalog ?? agent.Id).ToLowerInvariant() is "aider" or "qwen" or "cursor-cli"
+                  is "claude" or "codex" or "grok" or "opencode" or "aider" or "qwen" or "dsh" or "cursor-agent" or "copilot"
+              || (agent.Catalog ?? agent.Id).ToLowerInvariant() is "aider" or "qwen" or "deepseek" or "cursor-cli"
             // Desktop apps that open in a folder (Claude, ChatGPT, Cursor).
             : KnownAgents.TakesFolder(agent);
 

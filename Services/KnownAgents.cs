@@ -28,7 +28,7 @@ public static class KnownAgents
         new() { Id = "droid",      Name = "Factory Droid",      Command = "droid" },
         new() { Id = "grok",       Name = "Grok Build",         Command = "grok" },
         new() { Id = "hermes",     Name = "Hermes Agent",       Command = "hermes" },
-        // Serves a web UI and opens it in the browser; the terminal keeps the server running.
+        // Serves a web UI and opens it in the browser; Agent Dock hosts the process (HostedAgents).
         new() { Id = "deepseek",   Name = "DeepSeek Harness",   Command = "dsh", Arguments = "web" },
 
         new() { Id = "claude-desktop",  Name = "Claude",     Kind = AgentKind.Desktop, StartMenuNames = ["Claude"] },
@@ -40,6 +40,20 @@ public static class KnownAgents
         new() { Id = "perplexity",      Name = "Perplexity", Kind = AgentKind.Desktop, StartMenuNames = ["Perplexity"] },
         new() { Id = "cursor",          Name = "Cursor",     Kind = AgentKind.Desktop, StartMenuNames = ["Cursor"] },
     ];
+
+    /// <summary>
+    /// A clearer row subtitle than the raw command, for known CLIs whose command line is opaque
+    /// (DeepSeek Harness's <c>dsh web</c>). Null keeps the command. Matched by catalog id or command.
+    /// </summary>
+    public static string? CliSubtitle(AgentDefinition definition)
+    {
+        if (definition.Kind != AgentKind.Cli)
+            return null;
+        var catalog = (definition.Catalog ?? definition.Id).ToLowerInvariant();
+        var command = Path.GetFileNameWithoutExtension(definition.Command?.Trim().Trim('"') ?? "")
+            .ToLowerInvariant();
+        return catalog is "deepseek" || command is "dsh" ? "Opens in the browser" : null;
+    }
 
     /// <summary>
     /// For a desktop agent that can start work in a folder, the link that does it, with

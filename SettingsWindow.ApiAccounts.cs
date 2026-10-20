@@ -504,7 +504,7 @@ public sealed partial class SettingsWindow
             .ToList();
         if (agents.Count == 0)
         {
-            host.Children.Add(Note($"None of your agents can take a {ApiUsage.ProviderName(account.Provider)} key. Aider, OpenCode and commands of your own can take most."));
+            host.Children.Add(Note($"None of your agents can take a {ApiUsage.ProviderName(account.Provider)} key. Aider, OpenCode, DeepSeek Harness and commands of your own can take most."));
             return;
         }
 

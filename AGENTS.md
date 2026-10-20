@@ -122,7 +122,12 @@ Details per agent are under Reference; what's still to review per agent is in `t
 - [ ] **Crush** (`crush`): icon and picture only.
 - [ ] **Factory Droid** (`droid`): icon and picture only.
 - [ ] **Hermes Agent** (`hermes`): icon and picture only.
-- [ ] **DeepSeek Harness** (`dsh web`): icon and picture only.
+- [ ] **DeepSeek Harness** (`dsh web`): icon, picture, DeepSeek API key (`DEEPSEEK_API_KEY`),
+  recent folders, hosted in the background (no Terminal window; Stop on the row). Subtitle
+  "Opens in the browser". Launch folder becomes a Harness workspace via
+  `tools/dsh-plugins` (`--patch` + `AGENTDOCK_WORKSPACE` + browser
+  `?agentdock_workspace=`). No usage bars of its own (linked key shows the balance). Still to
+  verify: launch, Stop, and the folder opening in the UI.
 
 ### Desktop
 
@@ -170,7 +175,10 @@ A Windows 11 taskbar app. The user pins `AgentDock.exe`; clicking it opens a Flu
 just above the taskbar button, listing AI agents:
 
 - **CLI agents** launch in Windows Terminal, in a working folder chosen from a recent-folders
-  drop-down or a folder picker.
+  drop-down or a folder picker. **Hosted CLIs** (DeepSeek Harness: `HostedAgents`) run with no
+  Terminal window; the flyout shows Stop while they're running, and quitting Agent Dock stops them.
+  DeepSeek gets the launch folder as a Harness workspace through `tools/dsh-plugins` (`--patch`,
+  `AGENTDOCK_WORKSPACE`, and a browser URL with `?agentdock_workspace=`).
 - The General setting **Close terminal when agent exits** uses a non-persistent shell, closing Agent
   Dock's tab when the CLI returns. With Waifu backgrounds on, Agent Dock supplies each CLI agent's
   picture through hidden, app-owned Windows Terminal profiles in
@@ -650,6 +658,8 @@ there degrade to a missing icon or entry, never an error.
 | `Models/AgentListRow.cs` | A row in the settings page's draggable agent list |
 | `Services/PathResolver.cs` | PATH/PATHEXT lookup |
 | `Services/Launcher.cs` | Starts agents and plain shells |
+| `Services/HostedAgents.cs` | CLI agents run with no Terminal window (DeepSeek Harness); Stop from the row; killed on quit; `--patch` + browser open for launch-folder workspace |
+| `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: host create + client open) |
 | `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
 | `Services/Autostart.cs` | HKCU Run entry |
 | `Services/JumpList.cs` | Taskbar jump list |
@@ -925,14 +935,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Cursor CLI or Copilot CLI (each copy separately) was launched
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, DeepSeek Harness, Cursor CLI or Copilot CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI also by catalog id, since its command can be plain `agent`), the CLI agents with a drawer; Codex, Grok, OpenCode, Aider, Qwen Code, Cursor CLI and Copilot CLI added at the owner's request. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, DeepSeek Harness, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness also by catalog id, since Cursor's command can be plain `agent` and DeepSeek's is `dsh`), the CLI agents with a drawer; Codex, Grok, OpenCode, Aider, Qwen Code, DeepSeek Harness, Cursor CLI and Copilot CLI added at the owner's request. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
@@ -1188,7 +1198,8 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   `ApiUsage.KeyVariableFor(agent, provider)` = the account's `ApiKey` as written (`%NAME%` stays a
   reference) to the agent's env at launch (`Launcher`, all launch paths), unless its own env sets it.
   `KeyVariableFor`, from each tool's documentation and **not yet verified by a launch** except Aider:
-  Aider and OpenCode any service (OpenCode's Gemini variable is `GOOGLE_GENERATIVE_AI_API_KEY`), Crush
+  Aider and OpenCode any service (OpenCode's Gemini variable is `GOOGLE_GENERATIVE_AI_API_KEY`),
+  DeepSeek Harness DeepSeek only (`DEEPSEEK_API_KEY`, what its LLM and web plugins default to), Crush
   all but DeepSeek, Goose Anthropic / OpenAI / OpenRouter / Gemini (`GOOGLE_API_KEY`), Qwen Code
   OpenAI, Claude Code Anthropic, a command of the user's own (no catalog id, command not a known
   agent's) any; desktop apps and plan agents (Codex, Grok Build, Cursor CLI, Copilot CLI, and the
@@ -1200,8 +1211,9 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   Anthropic's `Spent` never reached state.json; they save either now.
 - **Linking offer** (owner's choice B): the agent page's **Account** choice (agents that take keys,
   or are linked) and an InfoBar ("Use … 's key?") when `ApiUsage.AgentUses`: Aider's model starts with `deepseek/` or
-  `deepseek-`, or OpenCode's `~\.local\share\opencode\auth.json` has a `deepseek` entry (only the names
-  are read). For Anthropic also Claude Code with `ANTHROPIC_API_KEY` in its env, and Aider on a `claude…` model.
+  `deepseek-`, OpenCode's `~\.local\share\opencode\auth.json` has a `deepseek` entry (only the names
+  are read), or the agent is DeepSeek Harness. For Anthropic also Claude Code with `ANTHROPIC_API_KEY`
+  in its env, and Aider on a `claude…` model.
 - **Verified 2026-10-19:** parser cases and the 100% logic in a throwaway project (deleted); a real
   call gets DeepSeek's 401 for a bad key; through UI Automation, adding an account, the key saved, the
   "not accepted" status, **Set** saving 20, and the overview row. **Not yet:** a real balance (the

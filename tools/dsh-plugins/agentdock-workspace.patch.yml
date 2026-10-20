@@ -1,0 +1,6 @@
+# Agent Dock: open the launch folder as a DeepSeek Harness workspace.
+# Applied with `dsh --patch <this file> --profile web …`. The name is resolved
+# relative to this file; point at index.js (Node ESM rejects bare directory URLs).
+- insert:
+    - id: agentdock-workspace
+      name: ./agentdock-workspace/index.js
