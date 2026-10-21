@@ -21,10 +21,10 @@ confirm the command (or Start menu name), keep or remove it, and look for a usag
 | `aider` | Aider | `aider` | yes | Model setting, Aider-driven model search and recent folders added 2026-10-18. No usage bars: it can use arbitrary providers. Still to verify launch, model search and recents after installation. |
 | `qwen` | Qwen Code | `qwen` | yes | Recent folders added 2026-10-19. No usage source yet. Still to verify launch and recents after installation. |
 | `amp` | Amp | `amp` | yes | Sourcegraph |
-| `kiro` | Kiro CLI | `kiro-cli` | yes | Formerly Amazon Q Developer CLI (`q`). Decide whether `q` needs its own entry |
+| `kiro` | Kiro CLI | `kiro-cli` | yes | Recents and monthly credit usage via `kiro-cli chat /usage` (2026-10-21). Still to verify by eye. Formerly Amazon Q Developer CLI (`q`); decide whether `q` needs its own entry |
 | `goose` | Goose | `goose` | yes | Block |
-| `crush` | Crush | `crush` | yes | Charm |
-| `droid` | Factory Droid | `droid` | yes | |
+| `crush` | Crush | `crush` | yes | Charm. Recents and optional native Hyper balance added 2026-10-21. Verify the colourful TUI from the flyout, recents, Hyper balance, and local Ollama tool use. No universal usage bars: Crush supports local and many paid providers. |
+| `droid` | Factory Droid | `droid` | yes | Recent folders and orange brand mark added 2026-10-21. No usage source yet. Still to verify launch and recents. |
 | `deepseek` | DeepSeek Harness | `dsh web` | yes | DeepSeek's own agent (github.com/deepseek-ai/deepseek-harness). Hosted in the background (`HostedAgents`, no Terminal; Stop on the row). Subtitle "Opens in the browser". API key (`DEEPSEEK_API_KEY`) and recents wired 2026-10-20. Launch folder opened as a Harness workspace via `tools/dsh-plugins` (2026-10-20). Still to verify: launch, Stop, and the folder in the UI. |
 | `hermes` | Hermes Agent | `hermes` | yes | Nous Research. A general agent, not just coding. Installed natively on the owner's PC. Bring-your-own API key, so a candidate host for DeepSeek |
 | `grok` | Grok Build | `grok` | yes | Done (usage, recents). Still to check: is there a Grok desktop app? |

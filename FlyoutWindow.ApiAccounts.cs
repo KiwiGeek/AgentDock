@@ -35,13 +35,8 @@ public sealed partial class FlyoutWindow
 
     private ApiBalanceState? BalanceOf(ApiAccount account) => _state.ApiBalances.GetValueOrDefault(account.Id);
 
-    /// <summary>The service's compiled-in logo (DeepSeek Harness's for DeepSeek, Claude's for Anthropic), for the overview row.</summary>
-    private static string? ApiProviderIcon(ApiAccount account) =>
-        AgentIcons.Find(new AgentDefinition
-        {
-            Id = account.Provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase) ? "claude" : account.Provider,
-            Kind = AgentKind.Desktop
-        });
+    /// <summary>The service's compiled-in logo, for the overview row.</summary>
+    private static string? ApiProviderIcon(ApiAccount account) => ApiUsage.ProviderIcon(account.Provider);
 
     // ---------- Checks ----------
 

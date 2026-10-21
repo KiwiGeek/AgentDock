@@ -192,16 +192,30 @@ public static class Launcher
             .Where(v => IsVariableName(v.Key))
             .ToList();
 
+        // A GUI launcher can inherit automation's NO_COLOR and TERM=dumb. Clear those hints for
+        // every agent inside its shell; wt.exe may delegate the tab to another Terminal process.
+        // An agent's explicitly configured environment still wins.
+        var clearNoColor = command is not null && variables.All(v => !v.Key.Equals("NO_COLOR", StringComparison.OrdinalIgnoreCase));
+        var correctTerm = command is not null && variables.All(v => !v.Key.Equals("TERM", StringComparison.OrdinalIgnoreCase));
+
         if (shell == "cmd")
         {
             // cmd expands %NAME% itself. "set "N=v"" keeps trailing spaces and & out of trouble.
             var prefix = string.Concat(variables.Select(v => $"set \"{v.Key}={v.Value.Replace("\"", "")}\" && "));
+            if (clearNoColor)
+                prefix += "set \"NO_COLOR=\" && ";
+            if (correctTerm)
+                prefix += "set \"TERM=xterm-256color\" && ";
             return ("cmd.exe", command is null ? [] : [closeWhenDone ? "/c" : "/k", prefix + command]);
         }
 
         var exe = shell == "pwsh" ? (PathResolver.Find("pwsh.exe") ?? "pwsh.exe") : "powershell.exe";
         var assignments = string.Concat(variables.Select(v => $"${{env:{v.Key}}} = {PowerShellString(v.Value)}; "));
-        if (command is not null && variables.Count > 0)
+        if (clearNoColor)
+            assignments += "Remove-Item Env:NO_COLOR -ErrorAction SilentlyContinue; ";
+        if (correctTerm)
+            assignments += "if ($env:TERM -eq 'dumb') { $env:TERM = 'xterm-256color' }; ";
+        if (command is not null && (variables.Count > 0 || clearNoColor || correctTerm))
         {
             // Windows Terminal uses semicolons as its own command separators, even inside the
             // PowerShell -Command argument. Passing a UTF-16LE encoded script leaves it one opaque

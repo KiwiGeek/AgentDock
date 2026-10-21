@@ -68,6 +68,15 @@ public sealed partial class SettingsWindow
             : new FontIcon { Glyph = resolved?.Glyph ?? "", FontSize = size, Width = size, VerticalAlignment = VerticalAlignment.Center };
     }
 
+    /// <summary>Show a provider's mark where available; use a key glyph for others.</summary>
+    private UIElement ApiIcon(ApiAccount account)
+    {
+        var image = _icons.Get(ApiUsage.ProviderIcon(account.Provider));
+        return image is not null
+            ? new Image { Source = image, Width = 24, Height = 24, VerticalAlignment = VerticalAlignment.Center }
+            : new FontIcon { Glyph = "\uE8D7", FontSize = 20, Width = 24, VerticalAlignment = VerticalAlignment.Center };
+    }
+
     // ---------- Checks ----------
 
     /// <summary>Checks the balance unless a check is running or the last is fresh (<paramref name="force"/>: Check now).</summary>
@@ -129,6 +138,7 @@ public sealed partial class SettingsWindow
         AddApiKeyButton.IsEnabled = _settingsError is null;
         FillPlanRows();
         FillApiKeyRows();
+        _ = LoadAgentIconsAsync();
         foreach (var account in _settings.ApiAccounts)
             StartApiCheck(account);
         SyncAgentBackdrop();
@@ -138,7 +148,7 @@ public sealed partial class SettingsWindow
     /// <summary>
     /// The user's agents grouped by the sign-in their usage comes from, the way the flyout's drawers
     /// find it: Claude and Codex per config folder (<see cref="UsageAccount"/>), and one each for
-    /// Grok Build, Cursor and GitHub. Agents on an API key or another endpoint have no plan here.
+    /// Grok Build, Cursor, Kiro and GitHub. Agents on an API key or another endpoint have no plan here.
     /// </summary>
     private List<PlanGroup> PlanGroups()
     {
@@ -159,6 +169,8 @@ public sealed partial class SettingsWindow
             PlanGroup? group = null;
             if (IsCursor(definition))
                 group = Group("cursor", "Cursor", "Cursor CLI's sign-in, for both the CLI and the desktop app");
+            else if (IsKiro(definition))
+                group = Group("kiro", "Kiro", "Kiro CLI's sign-in (kiro-cli login)");
             else if (IsGitHubCopilot(definition))
                 group = Group("copilot", "GitHub", "GitHub CLI's sign-in (gh), for Copilot CLI and the desktop app");
             else if (UsageAccount.For(definition) is { } account)
@@ -186,7 +198,7 @@ public sealed partial class SettingsWindow
         var groups = PlanGroups();
         PlansNote.Text = groups.Count > 0
             ? "Usage comes from each agent's own sign-in, so nothing is stored here. Choose one for its usage settings."
-            : "None of your agents has a plan whose usage Agent Dock reads (Claude Code, Codex, Grok Build, Cursor or GitHub Copilot).";
+            : "None of your agents has a plan whose usage Agent Dock reads (Claude Code, Codex, Grok Build, Cursor, Kiro or GitHub Copilot).";
         foreach (var group in groups)
         {
             var first = group.Agents[0];
@@ -209,7 +221,7 @@ public sealed partial class SettingsWindow
             var users = _settings.Agents.Where(a => string.Equals(a.ApiAccount, account.Id, StringComparison.OrdinalIgnoreCase)).ToList();
             var status = Note();
             _apiRowStatusTexts[account.Id] = status;
-            var icon = new FontIcon { Glyph = "", FontSize = 20, Width = 24, VerticalAlignment = VerticalAlignment.Center };
+            var icon = ApiIcon(account);
             var row = AccountRow(icon, account.Name, $"{ApiUsage.ProviderName(account.Provider)} · {KeySummary(account)}",
                 users.Count > 0 ? "Used by " + string.Join(", ", users.Select(a => a.Name)) : "Not linked to an agent yet", status);
             AutomationProperties.SetName(row, $"{account.Name}, {ApiUsage.ProviderName(account.Provider)} API key");
@@ -223,7 +235,7 @@ public sealed partial class SettingsWindow
     private static string KeySummary(ApiAccount account)
     {
         if (account.ApiKey?.Trim() is not { Length: > 0 } key)
-            return "no key yet";
+            return account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase) ? "Crush sign-in" : "no key yet";
         if (key.StartsWith('%') && key.EndsWith('%'))
             return $"read from {key}";
         return key.Length > 12 ? $"{key[..Math.Min(7, key.Length - 4)]}…{key[^3..]}" : key;
@@ -339,6 +351,8 @@ public sealed partial class SettingsWindow
             var provider = ApiUsage.Providers[Math.Max(0, service.SelectedIndex)].Id;
             if (provider.Equals(account.Provider, StringComparison.OrdinalIgnoreCase))
                 return;
+            if (account.Name.Equals(ApiUsage.ProviderName(account.Provider), StringComparison.Ordinal))
+                account.Name = ApiUsage.ProviderName(provider);
             account.Provider = provider;
             ForgetBalance(account); // another service's balance has nothing to do with this one's
             SaveAgentList(SettingsChange.ApiAccounts);
@@ -355,6 +369,8 @@ public sealed partial class SettingsWindow
             () => account.ApiKey, value => account.ApiKey = value, rechecks: !spend);
         _newApiKeyBox = key;
         panel.Children.Add(key);
+        if (account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase))
+            panel.Children.Add(Note("Leave the key blank to read Crush's current Hyper sign-in for balance checks. Agent Dock never refreshes or saves its token. An expired sign-in needs Crush to renew it."));
         // Anthropic reads spending only with an Admin key, which can't run models: a second key.
         if (spend)
         {
@@ -384,7 +400,9 @@ public sealed partial class SettingsWindow
         }
 
         panel.Children.Add(SectionHeader("Agents that use this key"));
-        panel.Children.Add(Note("Each agent switched on here starts with this key in the variable it reads. A variable set on the agent's own page wins."));
+        panel.Children.Add(Note(account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase)
+            ? "With a key, linked agents receive HYPER_API_KEY. With no key, Crush keeps its own sign-in and this account shows its Hyper balance."
+            : "Each agent switched on here starts with this key in the variable it reads. A variable set on the agent's own page wins."));
         _apiAgentsHost = new StackPanel { Spacing = 2, Margin = new Thickness(0, 4, 0, 0) };
         panel.Children.Add(_apiAgentsHost);
         FillApiAgentRows(account);
@@ -395,7 +413,8 @@ public sealed partial class SettingsWindow
             var status = Note();
             _apiStatusTexts[account.Id] = status;
             panel.Children.Add(status);
-            panel.Children.Add(BalanceRow(account, spend));
+            if (!account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase))
+                panel.Children.Add(BalanceRow(account, spend));
             var check = new Button { Content = "Check now" };
             check.Click += (_, _) => StartApiCheck(account, force: true);
             panel.Children.Add(check);
@@ -573,7 +592,9 @@ public sealed partial class SettingsWindow
             else if (check?.Problem is { } problem)
                 parts.Add(problem);
             if (hasData)
-                parts.Add((ApiUsage.HasPercent(state!)
+                parts.Add((state!.Currency.Equals("HYPER", StringComparison.OrdinalIgnoreCase)
+                              ? $"{ApiUsage.Summary(state)}. "
+                              : ApiUsage.HasPercent(state)
                               ? $"{ApiUsage.Summary(state!)} of {ApiUsage.Money(state!.Full, state.Currency)}. "
                               : $"{ApiUsage.Summary(state!)}. Set your balance below to see a percentage. ")
                           + FlyoutWindow.UpdatedAgo(DateTimeOffset.FromUnixTimeSeconds(state!.UpdatedAt), DateTimeOffset.UtcNow));
@@ -631,7 +652,9 @@ public sealed partial class SettingsWindow
             : ChoiceContent("None", "No key from Agent Dock; it uses its own configuration."));
         foreach (var account in _agentApiChoices)
             AgentApiChoices.Items.Add(ChoiceContent(account.Name,
-                ApiUsage.KeyVariableFor(definition, account.Provider) is { } variable
+                account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(account.ApiKey)
+                    ? "Hyper · reads Crush's sign-in for balance only"
+                    : ApiUsage.KeyVariableFor(definition, account.Provider) is { } variable
                     ? $"{ApiUsage.ProviderName(account.Provider)} API key · sets {variable}"
                     : $"{ApiUsage.ProviderName(account.Provider)} · shows its balance only"));
         AgentApiChoices.SelectedIndex = linked is null ? 0 : _agentApiChoices.IndexOf(linked) + 1;
@@ -669,6 +692,8 @@ public sealed partial class SettingsWindow
             note = $"{definition.Name} can't take {account.Name}'s key, so its drawer only shows the balance.";
         else if (definition.Env?.ContainsKey(variable) == true)
             note = $"{definition.Name}'s own {variable} variable below is used, not {account.Name}'s key.";
+        else if (account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(account.ApiKey))
+            note = "Crush keeps its own Hyper sign-in. Agent Dock reads its current token only to show the Hypercredit balance.";
         else if (string.IsNullOrWhiteSpace(account.ApiKey))
             note = $"Add {account.Name}'s API key under Accounts, and Agent Dock gives it to {definition.Name} as {variable}.";
         else

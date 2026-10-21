@@ -82,6 +82,11 @@ shims work and you land back at a prompt in the folder when the agent exits. Dee
 is different: Agent Dock runs `dsh web` itself (no Terminal tab), opens the browser UI on the
 folder you chose (as a Harness workspace), and shows **Stop** on the row while it's running.
 With **Waifu backgrounds** on, her picture also becomes the Harness page background.
+For every CLI agent, Agent Dock clears an inherited `NO_COLOR` setting and corrects `TERM=dumb`
+inside its Terminal tab, so the agent can render its normal colours. Environment variables set
+explicitly on an agent's page still take precedence. Crush can use local Ollama models: add an
+Ollama provider in Crush's own `crushrc` and select a model from Crush's model picker. Agent Dock
+does not configure or charge for the model.
 
 ## Why it opens quickly
 
@@ -230,7 +235,7 @@ earlier keeps working alongside it. Asking directly also shows any per-model wee
 Sonnet's) as extra bars, and your extra usage when it's turned on. Under the title, the drawer names
 the model your last session used, when the status line has reported it.
 
-The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, OpenCode's, Aider's, Qwen Code's, DeepSeek Harness's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
+The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, OpenCode's, Aider's, Qwen Code's, Crush's, Factory Droid's, Kiro CLI's, DeepSeek Harness's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
 to open the agent there again. Opening a folder that's already in the list moves it to the top
 and shifts the others down. At most five are kept, and only as many as fit in the drawer.
 Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.
@@ -283,6 +288,13 @@ cursor.com signed in as Cursor CLI is: it reads the CLI's sign-in from `%APPDATA
 (read only), so sign in to Cursor CLI once (`cursor-agent login`). It checks at most every five
 minutes, only while you're hovering. Not a published Cursor API, so it can stop working.
 
+### Kiro usage
+
+Hovering over Kiro CLI shows your **monthly credits**: how many you've used of the plan's allowance,
+when they reset, and the plan name. Agent Dock runs `kiro-cli chat --no-interactive /usage` and
+reads its report, so Kiro CLI's own sign-in is used and no token is stored. Sign in once with
+`kiro-cli login`. It checks at most every five minutes, only while you're hovering.
+
 ### GitHub Copilot usage
 
 Copilot's drawer shows this month's usage against your plan: AI credits (or premium requests, on
@@ -296,14 +308,14 @@ minutes. (The `monthlyAllowance` setting of earlier versions is no longer used.)
 
 Settings → **Accounts** lists everything your agents run on, in one place:
 
-- **Plans**: the sign-ins Agent Dock reads usage through (Claude, ChatGPT, GitHub, Cursor, Grok),
+- **Plans**: the sign-ins Agent Dock reads usage through (Claude, ChatGPT, GitHub, Cursor, Kiro, Grok),
   each with the agents that share it. Nothing is stored for these; choose one to open its agent's
   usage settings.
 - **API keys**: a key is added once (**Add a key**: a name, the service, and the key itself, or
   `%DEEPSEEK_API_KEY%` to read it from an environment variable) and then handed to every agent you
   switch on for it, on the key's own page under **Agents that use this key**, or from the agent's
-  page under **Account**. Services: DeepSeek, Anthropic, OpenAI, OpenRouter, Google Gemini and xAI.
-  Only DeepSeek and Anthropic have a balance Agent Dock can read; the others are keys only.
+  page under **Account**. Services: DeepSeek, Hyper, Anthropic, OpenAI, OpenRouter, Google Gemini and xAI.
+  Agent Dock can read DeepSeek and Hyper balances and Anthropic spending; the others are keys only.
 
 Keys are kept in `agents.json` as you type them:
 
@@ -318,10 +330,19 @@ Keys are kept in `agents.json` as you type them:
 set to the account's key: `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`,
 `OPENROUTER_API_KEY`, `GEMINI_API_KEY` or `XAI_API_KEY` (OpenCode reads Gemini's as
 `GOOGLE_GENERATIVE_AI_API_KEY`, Goose as `GOOGLE_API_KEY`). Agents that can take a key: Aider and
-OpenCode (any service), DeepSeek Harness (DeepSeek), Crush (all but DeepSeek), Goose (Anthropic,
+OpenCode (all but Hyper), DeepSeek Harness (DeepSeek), Crush (all but DeepSeek), Goose (Anthropic,
 OpenAI, OpenRouter, Gemini), Qwen Code (OpenAI), commands of your own (any), and Claude Code
 (Anthropic: this moves it off your Claude plan to API billing, and settings says so). A variable of
 the same name on the agent's own page wins.
+
+For Crush's native Hyper sign-in, add a **Hyper** account under Accounts and leave its API key
+blank, then select that account on Crush's page. Agent Dock reads Crush's current sign-in token
+only for Hyper's read-only credit balance request. It never refreshes or saves the token and sends
+nothing when it has expired. A Hyper API key can be entered instead; then linked Crush launches
+with `HYPER_API_KEY`. Hyper reports the number of Hypercredits left, not a plan limit or reset time,
+so Agent Dock shows the balance without a percentage bar.
+Crush uses the heart from its official artwork in the agent list; Hyper uses its own H mark in
+Accounts and the usage overview.
 
 **Anthropic has no balance API**, only spending, through the Admin API's cost report, which needs an
 **Admin API key** (`sk-ant-admin…`, from an organization's Console settings; individual accounts

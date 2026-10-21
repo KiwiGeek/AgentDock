@@ -35,12 +35,13 @@ public static class ApiUsage
 
     /// <summary>
     /// The services an API key can be for (Settings → Accounts; owner's request, 2026-10-20: one key,
-    /// handed to every agent that can use it). The first is a new key's default. Only DeepSeek and
-    /// Anthropic have a balance (or spend) Agent Dock can read; the rest are keys only.
+    /// handed to every agent that can use it). The first is a new key's default. DeepSeek and Hyper
+    /// have balances, Anthropic has spending; the rest are keys only.
     /// </summary>
     public static readonly ApiProvider[] Providers =
     [
         new("deepseek", "DeepSeek", "DEEPSEEK_API_KEY", ChecksBalance: true),
+        new("hyper", "Hyper", "HYPER_API_KEY", ChecksBalance: true),
         new("anthropic", "Anthropic", "ANTHROPIC_API_KEY", ChecksBalance: true),
         new("openai", "OpenAI", "OPENAI_API_KEY", ChecksBalance: false),
         new("openrouter", "OpenRouter", "OPENROUTER_API_KEY", ChecksBalance: false),
@@ -67,12 +68,20 @@ public static class ApiUsage
 
     public static string ProviderName(string provider) => ProviderFor(provider)?.Name ?? provider;
 
+    /// <summary>Use a service's bundled mark in usage and account rows when one is available.</summary>
+    public static string? ProviderIcon(string provider) => AgentIcons.Find(new AgentDefinition
+    {
+        Id = provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase) ? "claude" : provider,
+        Kind = AgentKind.Desktop
+    });
+
     /// <summary>
     /// The key that reads usage: the Admin key for Anthropic, the API key otherwise; as written, or
     /// the environment variable it names.
     /// </summary>
     public static string? KeyFor(ApiAccount account) =>
-        Expand(ReportsSpend(account.Provider) ? account.AdminKey : account.ApiKey);
+        Expand(ReportsSpend(account.Provider) ? account.AdminKey : account.ApiKey)
+        ?? (account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase) ? CrushHyperToken.Read() : null);
 
     private static string? Expand(string? setting)
     {
@@ -101,13 +110,17 @@ public static class ApiUsage
         var command = Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"') ?? "").ToLowerInvariant();
         var known = (agent.Catalog ?? KnownAgents.All().FirstOrDefault(k =>
             string.Equals(k.Command, command, StringComparison.OrdinalIgnoreCase))?.Id)?.ToLowerInvariant();
+        // Hyper's built-in HYPER_API_KEY sign-in is documented for Crush. A custom command can
+        // opt into the same variable; other known agents need their own Hyper configuration.
+        if (service.Id == "hyper")
+            return known == "crush" || known is null ? service.Variable : null;
         return (known ?? command) switch
         {
             // Aider goes through LiteLLM, which reads every one of these.
             "aider" => service.Variable,
             // OpenCode's providers come from models.dev, where Google's key has its own name.
             "opencode" => service.Id == "gemini" ? "GOOGLE_GENERATIVE_AI_API_KEY" : service.Variable,
-            "crush" => service.Id is "anthropic" or "openai" or "openrouter" or "gemini" or "xai" ? service.Variable : null,
+            "crush" => service.Id is "anthropic" or "openai" or "openrouter" or "gemini" or "xai" or "hyper" ? service.Variable : null,
             "goose" => service.Id switch
             {
                 "anthropic" or "openai" or "openrouter" => service.Variable,
@@ -167,9 +180,13 @@ public static class ApiUsage
             if (!ChecksBalance(account.Provider))
                 return new ApiBalanceFetch(null, "", false, NoBalanceCheck);
             if (KeyFor(account) is not { } key)
-                return new ApiBalanceFetch(null, "", false, ReportsSpend(account.Provider) ? NoAdminKey : NoKey);
+                return new ApiBalanceFetch(null, "", false, ReportsSpend(account.Provider) ? NoAdminKey
+                    : account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase)
+                        ? "Sign in to Hyper in Crush, or add a Hyper API key in settings." : NoKey);
             if (account.Provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
                 return await FetchAnthropicAsync(key, since);
+            if (account.Provider.Equals("hyper", StringComparison.OrdinalIgnoreCase))
+                return await FetchHyperAsync(key);
             if (!account.Provider.Equals("deepseek", StringComparison.OrdinalIgnoreCase))
                 return new ApiBalanceFetch(null, "", false, NotUnderstood);
 
@@ -187,6 +204,38 @@ public static class ApiUsage
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return new ApiBalanceFetch(null, "", false, Unreachable);
+        }
+    }
+
+    /// <summary>Hyper documents this read-only balance endpoint; it does not expose a limit or reset time.</summary>
+    private static async Task<ApiBalanceFetch> FetchHyperAsync(string key)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://hyper.charm.land/v1/credits");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        request.Headers.Accept.ParseAdd("application/json");
+        using var response = await Client.SendAsync(request);
+        if ((int)response.StatusCode is 401 or 403)
+            return new ApiBalanceFetch(null, "", false, BadKey);
+        if (!response.IsSuccessStatusCode)
+            return new ApiBalanceFetch(null, "", false, Unreachable);
+        return ParseHyper(await response.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>Pure parser for Hyper's documented <c>{"balance": 100}</c> reply.</summary>
+    internal static ApiBalanceFetch ParseHyper(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            return root.ValueKind == JsonValueKind.Object && root.TryGetProperty("balance", out var value)
+                   && Amount(value) is { } balance && double.IsFinite(balance) && balance >= 0
+                ? new ApiBalanceFetch(balance, "HYPER", balance == 0, null)
+                : new ApiBalanceFetch(null, "", false, NotUnderstood);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return new ApiBalanceFetch(null, "", false, NotUnderstood);
         }
     }
 
@@ -334,6 +383,7 @@ public static class ApiUsage
     /// <summary>"$5.80", or "¥40.12", or "12.00 EUR".</summary>
     public static string Money(double amount, string currency) => currency.ToUpperInvariant() switch
     {
+        "HYPER" => $"{amount.ToString("0.##", CultureInfo.InvariantCulture)} Hypercredits",
         "USD" => amount.ToString("$0.00", CultureInfo.InvariantCulture),
         "CNY" => amount.ToString("¥0.00", CultureInfo.InvariantCulture),
         _ => $"{amount.ToString("0.00", CultureInfo.InvariantCulture)} {currency}"
@@ -351,12 +401,15 @@ public static class ApiUsage
     }
 
     /// <summary>Whether there's a 100% to measure against: always after a balance, only once set by hand for spend.</summary>
-    public static bool HasPercent(ApiBalanceState state) => state.Full > 0 || state.Exhausted;
+    public static bool HasPercent(ApiBalanceState state) =>
+        !state.Currency.Equals("HYPER", StringComparison.OrdinalIgnoreCase) && (state.Full > 0 || state.Exhausted);
 
     /// <summary>"42% used · $5.80 left", or with only the spend known, "$12.40 spent since 1 Oct".</summary>
-    public static string Summary(ApiBalanceState state) => HasPercent(state)
-        ? $"{Math.Round(UsedPercent(state))}% used · {Money(state.Balance, state.Currency)} left"
-        : $"{Money(state.Spent ?? 0, state.Currency)} spent since {SinceText(state)}";
+    public static string Summary(ApiBalanceState state) => state.Currency.Equals("HYPER", StringComparison.OrdinalIgnoreCase)
+        ? $"{Money(state.Balance, state.Currency)} left"
+        : HasPercent(state)
+            ? $"{Math.Round(UsedPercent(state))}% used · {Money(state.Balance, state.Currency)} left"
+            : $"{Money(state.Spent ?? 0, state.Currency)} spent since {SinceText(state)}";
 
     /// <summary>"1 Oct": where spending is counted from.</summary>
     public static string SinceText(ApiBalanceState state)

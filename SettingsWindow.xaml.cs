@@ -213,13 +213,22 @@ public sealed partial class SettingsWindow : Window
     private async Task LoadAgentIconsAsync()
     {
         var loaded = false;
-        foreach (var source in _agents.Select(a => a.IconSource).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList())
+        var sources = _agents.Select(a => a.IconSource)
+            .Concat(_settings.ApiAccounts.Select(a => ApiUsage.ProviderIcon(a.Provider)))
+            .OfType<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        foreach (var source in sources)
             if (_icons.Get(source) is null && ShellIcons.IsOnDisk(source) && await _icons.LoadFromDiskAsync(source) is not null)
                 loaded = true;
         ApplyCachedIcons();
         // Nav items were built before these arrived; refresh their icons.
         if (loaded)
+        {
             RebuildNavMenu(_selectedTag);
+            if (_selectedTag == TagAccounts)
+                FillApiKeyRows();
+        }
     }
 
     private void ApplyCachedIcons()
@@ -518,15 +527,18 @@ public sealed partial class SettingsWindow : Window
             "claude" => ClaudeSettings,
             "grok" => GrokSettings,
             "cursor-agent" => CursorSettings,
+            "kiro-cli" => KiroSettings,
             _ => null
         };
     }
 
-    private IEnumerable<FrameworkElement> AgentSettingsPanels => [ClaudeSettings, GrokSettings, CursorSettings, CopilotSettings, AiderSettings];
+    private IEnumerable<FrameworkElement> AgentSettingsPanels =>
+        [ClaudeSettings, GrokSettings, CursorSettings, KiroSettings, CopilotSettings, AiderSettings];
 
     // Which agent is which is decided in one place, by the flyout's drawer code.
     private static string? CommandName(string? command) => FlyoutWindow.CommandName(command);
     private static bool IsCursor(AgentDefinition definition) => FlyoutWindow.IsCursor(definition);
+    private static bool IsKiro(AgentDefinition definition) => FlyoutWindow.IsKiro(definition);
     private static bool IsGitHubCopilot(AgentDefinition definition) => FlyoutWindow.IsGitHubCopilot(definition);
 
     private void ShowAgentSettings(AgentDefinition definition)
@@ -935,6 +947,7 @@ public sealed partial class SettingsWindow : Window
         var onKey = ApiUsage.AccountFor(definition, _settings.ApiAccounts) is { } key
                     && ApiUsage.KeyVariableFor(definition, key.Provider) is not null && ApiUsage.LeavesPlan(definition, key.Provider);
         var panel = IsCursor(definition) ? CursorSettings
+            : IsKiro(definition) ? KiroSettings
             : IsGitHubCopilot(definition) ? CopilotSettings
             : account is { UsesOtherProvider: true } || onKey ? null
             : account is { Agent: "claude" } ? ClaudeSettings

@@ -1152,6 +1152,13 @@ public sealed partial class FlyoutWindow : Window
         || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "copilot");
 
     /// <summary>
+    /// Kiro CLI, by catalog id or command (<c>kiro-cli</c>). Also used by settings.
+    /// </summary>
+    internal static bool IsKiro(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "kiro", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "kiro-cli");
+
+    /// <summary>
     /// Settings changed something (the window saved it already): read the files again, so this
     /// window's own later saves don't write the old values back, and refresh what depends on them.
     /// Safe while the flyout is hidden, which it normally is while settings is open.
@@ -1557,6 +1564,15 @@ public sealed partial class FlyoutWindow : Window
             ShowRecents(item);
             return true;
         }
+        if (IsKiro(item.Definition))
+        {
+            _drawerItem = item;
+            UsageOffer.IsOpen = false;
+            StartKiroCheck();
+            ShowKiroCheck();
+            ShowRecents(item);
+            return true;
+        }
         if (IsGitHubCopilot(item.Definition))
         {
             _drawerItem = item;
@@ -1748,9 +1764,10 @@ public sealed partial class FlyoutWindow : Window
             ShowSummary();
     }
 
-    /// <summary>Grok and Cursor have one account each, their CLI's sign-in.</summary>
+    /// <summary>Grok, Cursor and Kiro have one account each, their CLI's sign-in.</summary>
     private const string GrokCheckKey = "grok";
     private const string CursorCheckKey = "cursor";
+    private const string KiroCheckKey = "kiro";
 
     // Each starts its agent's check unless one is running or fresh, and fills the drawer if it's
     // still on that agent when the answer comes (else the overview, if that's showing).
@@ -1770,6 +1787,10 @@ public sealed partial class FlyoutWindow : Window
     private void StartCursorCheck() =>
         StartLiveCheck(CursorCheckKey, CursorUsage.MinInterval, CursorUsage.FetchAsync, CursorUsage.Unreachable,
             shown => IsCursor(shown.Definition), ShowCursorCheck);
+
+    private void StartKiroCheck() =>
+        StartLiveCheck(KiroCheckKey, KiroUsage.MinInterval, KiroUsage.FetchAsync, KiroUsage.Unreachable,
+            shown => IsKiro(shown.Definition), ShowKiroCheck);
 
     private void StartCopilotCheck()
     {
@@ -1836,6 +1857,12 @@ public sealed partial class FlyoutWindow : Window
             return new SummaryEntry(CursorCheckKey, item, check?.Result?.Usage ?? SavedFor(CursorCheckKey, CursorUsage.LoadSaved),
                 check?.Running == true, "month");
         }
+        if (IsKiro(item.Definition))
+        {
+            var check = Check(KiroCheckKey);
+            return new SummaryEntry(KiroCheckKey, item, check?.Result?.Usage ?? SavedFor(KiroCheckKey, KiroUsage.LoadSaved),
+                check?.Running == true, "month");
+        }
         if (IsGitHubCopilot(item.Definition))
             return new SummaryEntry("copilot", item, null, _copilotFetching && _copilotUsage is null, "month", _copilotUsage);
         // Claude desktop has Claude Code's account, so it shares that row (or has it, if alone).
@@ -1883,6 +1910,11 @@ public sealed partial class FlyoutWindow : Window
             if (IsCursor(item.Definition))
             {
                 StartCursorCheck();
+                continue;
+            }
+            if (IsKiro(item.Definition))
+            {
+                StartKiroCheck();
                 continue;
             }
             if (IsGitHubCopilot(item.Definition))
@@ -2267,6 +2299,24 @@ public sealed partial class FlyoutWindow : Window
         // One monthly billing period: the total, then its Auto + Composer and API pools under it.
         ShowCheckedUsage("Cursor usage", check?.Result?.Usage ?? saved, check?.Running == true, check?.Result?.Problem,
             CursorUsage.Checking, CursorUsage.NoWindows, CursorUsage.ShowingSaved, showSession: false, weekLabel: "Total");
+    }
+
+    private void ShowKiroCheck()
+    {
+        var check = _liveChecks.GetValueOrDefault(KiroCheckKey);
+        if (!_savedUsage.TryGetValue(KiroCheckKey, out var saved))
+            _savedUsage[KiroCheckKey] = saved = KiroUsage.LoadSaved();
+        // Monthly plan credits only (no session window). Credit counts ride on Extra when the CLI gave them.
+        var usage = check?.Result?.Usage ?? saved;
+        ShowCheckedUsage("Kiro usage", usage, check?.Running == true, check?.Result?.Problem,
+            KiroUsage.Checking, KiroUsage.NoWindows, KiroUsage.ShowingSaved, showSession: false, weekLabel: "Credits");
+        if (usage is { SevenDay: { } week, Extra: { Enabled: false, Used: { } used, Limit: { } limit } })
+        {
+            var counts = System.Globalization.CultureInfo.CurrentCulture;
+            WeekText.Text = week.ResetsAt > 0
+                ? $"{used.ToString("0.##", counts)} of {limit.ToString("0.##", counts)} · resets {ResetTime(DateTimeOffset.FromUnixTimeSeconds(week.ResetsAt))}"
+                : $"{used.ToString("0.##", counts)} of {limit.ToString("0.##", counts)}";
+        }
     }
 
     private void ShowGrokCheck()

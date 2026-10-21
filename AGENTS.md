@@ -117,10 +117,15 @@ Details per agent are under Reference; what's still to review per agent is in `t
 - [ ] **Aider** (`aider`): icon, picture, model setting, Aider-driven model search and recent folders. No usage bars: it can use arbitrary providers.
 - [ ] **Qwen Code** (`qwen`): icon, picture and recent folders. No usage bars yet.
 - [ ] **Amp** (`amp`): icon and picture only.
-- [ ] **Kiro CLI** (`kiro-cli`): icon and picture only.
+- [ ] **Kiro CLI** (`kiro-cli`): icon, picture, usage (monthly credits via `kiro-cli chat /usage`),
+  and recent folders. Still to verify by eye: the drawer, overview row, and recents.
 - [ ] **Goose** (`goose`): icon and picture only.
-- [ ] **Crush** (`crush`): icon and picture only.
-- [ ] **Factory Droid** (`droid`): icon and picture only.
+- [ ] **Crush** (`crush`): icon, picture, and recent folders. The shared CLI launcher clears
+  inherited colour suppression. Optional Hyper balance: link a Hyper account with no key to read
+  Crush's current sign-in token, or use a Hyper API key. Ollama works through Crush's `crushrc`.
+  Still to verify by eye: colours, recents, and Hyper balance; local-model tool use.
+- [ ] **Factory Droid** (`droid`): icon, picture, and recent folders. No usage bars yet. Still to
+  verify by eye: the orange mark and recents.
 - [ ] **Hermes Agent** (`hermes`): icon and picture only.
 - [ ] **DeepSeek Harness** (`dsh web`): icon, picture, DeepSeek API key (`DEEPSEEK_API_KEY`),
   recent folders, hosted in the background (no Terminal window; Stop on the row). Subtitle
@@ -452,6 +457,10 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - `Launcher`: CLIs run **inside a shell** (`pwsh -NoLogo -NoExit -Command <cmd>`, or cmd `/k`) so npm
   `.cmd` shims work and the user lands at a prompt afterwards. Windows Terminal via `wt.exe -d <folder>`
   with `;` escaped as `\;` (wt treats bare `;` as a command separator); otherwise a console window.
+  Every agent's child shell clears inherited `NO_COLOR` and corrects `TERM=dumb` so a GUI process
+  that inherited automation colour hints cannot make an agent monochrome in Windows Terminal.
+  Explicit per-agent environment variables override this cleanup. PowerShell launches use
+  `-EncodedCommand` for the setup, keeping Terminal from splitting the semicolons.
   Desktop: exe via `UseShellExecute`, or `shell:AppsFolder\<appId>`.
   - **Desktop apps that open in a folder** (owner's request, 2026-10-16): `KnownAgents.FolderLink`
     gives a link with `{folder}` (URL-encoded with `Uri.EscapeDataString`), matched by catalog id.
@@ -675,6 +684,7 @@ there degrade to a missing icon or entry, never an error.
 | `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
 | `Services/GrokUsage.cs` | Grok Build usage from grok.com (gRPC-web, with Grok Build's own sign-in from `~\.grok\auth.json`) |
 | `Services/CursorUsage.cs` | Cursor usage from cursor.com (`/api/usage-summary`, with Cursor CLI's sign-in from `%APPDATA%\cursor\auth.json`) |
+| `Services/KiroUsage.cs` | Kiro CLI monthly credits, from `kiro-cli chat --no-interactive /usage` (CLI owns the sign-in; no token) |
 | `Services/CopilotUsage.cs` | GitHub Copilot usage this month (AI credits against the plan), via `gh api copilot_internal/user` |
 | `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts), and setting a pin's icon |
@@ -735,8 +745,16 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
   - `amp`: ampcode.com/app-icon-1024.png. `qwen`: the Qwen Code docs' favicon.png (512 px).
   - `kiro`: kiro.dev/apple-icon.png (192 px). `grok`: grok.com's android-chrome-512x512.png.
   - `goose`: the desktop app's icon in block/goose (`ui/desktop/src/images/icon-512.png`).
-  - `crush`: charm.land's 180 px touch icon (Charm's ">c_" mark; Crush has no logo of its own).
-  - `droid`: the Factory-AI GitHub organisation's avatar. `deepseek`: deepseek.com/favicon.ico (225 px).
+  - `crush`: the pixel heart isolated from Charm's official Crush artwork
+    (`stuff.charm.sh/crush/charm-crush.png`, shown in Crush's README), on a transparent 256 px canvas.
+    This replaces Charm's generic ">c_" touch icon (2026-10-21).
+  - `hyper`: the stylized H and lime/pink colours from Hyper's official logo SVG on
+    `hyper.charm.land`, rendered at 256 px for API account and usage overview rows (2026-10-21).
+  - `droid`: Factory's snowflake mark from `app.factory.ai`'s app icon, coloured with the brand
+    orange accent (`#ef6f2e` — the same accent their design system puts on the glyph), on a
+    transparent 256 px canvas (2026-10-21). Replaces the black-and-white GitHub org avatar. Factory
+    has no multicolour logo; the brand is near-monochrome with that single orange.
+  - `deepseek`: deepseek.com/favicon.ico (225 px).
   - `cursor` and `cursor-cli`, from Cursor's brand kit (cursor.com/brand, `cursor-brand-assets.zip`),
     scaled to 256 px (owner's request, 2026-10-16): the desktop app gets the app tile
     (`APP_ICON_25D_DARK`, the same design `cursor-cli` used to have), and the CLI the bare shaded cube
@@ -897,8 +915,9 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   doesn't go blank.
   - Today: Claude Code (usage, or the setup or update offer), Codex (usage), Grok Build (week,
     extra usage credits and a pie of what it went on), Cursor CLI and Cursor desktop (the billing
-    period) and GitHub Copilot (AI credits against the plan), plus their presets, matched by command name
-    (`CommandName`), or for Cursor by catalog id too (`IsCursor`; the only desktop agent with a drawer).
+    period), Kiro CLI (monthly credits via `kiro-cli chat /usage`) and GitHub Copilot (AI credits
+    against the plan), plus their presets, matched by command name (`CommandName`), or for Cursor /
+    Kiro by catalog id too (`IsCursor` / `IsKiro`; Cursor is the only desktop agent with a drawer).
   - Moving between two drawer agents swaps the content in place.
   - Usage is loaded on the first hover after each show and cached until the next show
     (`ClearUsageCache` in `ReloadData`), so opening stays fast.
@@ -935,14 +954,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, DeepSeek Harness, Cursor CLI or Copilot CLI (each copy separately) was launched
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI or Copilot CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, DeepSeek Harness, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness also by catalog id, since Cursor's command can be plain `agent` and DeepSeek's is `dsh`), the CLI agents with a drawer; Codex, Grok, OpenCode, Aider, Qwen Code, DeepSeek Harness, Cursor CLI and Copilot CLI added at the owner's request. The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness / Factory Droid / Kiro also by catalog id, since Cursor's command can be plain `agent`, DeepSeek's is `dsh`, and Kiro's is `kiro-cli`). The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
@@ -1093,6 +1112,26 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Verified 2026-10-16 through the real `CursorUsage.FetchAsync` (throwaway console project, deleted):
   Pro+, 12.7% total, Auto + Composer 13.7%, API 1.6%, resets 10 Nov. **Not yet verified:** the drawer.
 
+#### Kiro usage (`Services/KiroUsage.cs`; 2026-10-21)
+
+- **Source: Kiro CLI itself** (same preference as Codex's app server and Copilot's `gh api`: the CLI
+  owns the sign-in, Agent Dock never reads a token). `kiro-cli chat --no-interactive /usage`
+  (20 s, no window, `NO_COLOR` / `TERM=dumb`). Output is plain text; older releases decorate with
+  ANSI, which is stripped before parsing.
+- **Reply** (Kiro CLI 2.33.0, Free): two lines such as
+  `Estimated Usage | resets on 2026-11-01 | KIRO FREE` and
+  `Credits (0.16 of 50 covered in plan), 0.3%`. Older box-drawing meters (`100% (resets on 01/01)`,
+  `(0.00 of 50 covered in plan)`, `Bonus credits: …`) are accepted too. Plan-only summaries
+  (`Plan: KIRO PRO MAX | 1 usage breakdowns`) keep the plan name with no bar.
+- **Drawer:** "Kiro usage", plan under the title, a **Credits** bar (the week slot), caption
+  "0.16 of 50 · resets 1 Nov" when amounts are known; bonus credits as Extra when present. Saved to
+  `kiro-usage.json`; at most every 5 minutes, only on hover / overview. Settings shows `KiroSettings`.
+- **Not used:** the undocumented `AmazonCodeWhispererService.GetUsageLimits` API (would need the
+  CLI's cached bearer token from `data.sqlite3`). Prefer the CLI until that becomes necessary for
+  overage caps org accounts omit from `/usage`.
+- Verified 2026-10-21: live `/usage` on the owner's Kiro Free account (0.16 of 50, 0.3%, resets
+  2026-11-01). **Not yet verified:** the drawer and overview row by eye.
+
 #### GitHub Copilot usage (`Services/CopilotUsage.cs`)
 
 - **No local source:** Copilot CLI (1.0.98) keeps no quota. `~/.copilot/logs` have nothing, and
@@ -1155,8 +1194,8 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 #### API usage (owner's request, 2026-10-19; `Services/ApiUsage.cs`, `FlyoutWindow.ApiAccounts.cs`)
 
 - **Accounts:** `DockSettings.ApiAccounts` in agents.json: id (`ApiUsage.NewId`: the provider, then
-  "-2"…), name, provider (`ApiUsage.Providers`, an `ApiProvider` each: DeepSeek and Anthropic, which
-  have a balance or spend, and since 2026-10-20 OpenAI, OpenRouter, Google Gemini and xAI, keys only:
+  "-2"…), name, provider (`ApiUsage.Providers`, an `ApiProvider` each: DeepSeek and Hyper have
+  balances, Anthropic has spend, and OpenAI, OpenRouter, Google Gemini and xAI are keys only:
   `ChecksBalance` false, so no checks, no drawer bar, no overview row, and `FetchAsync` says
   `NoBalanceCheck`; the flyout's `ApiAccountFor` ignores them, so a linked agent's drawer stays its own), and `apiKey`, stored as typed
   (owner: keys are not hidden from the user; settings shows them in a plain text box), or `%NAME%`
@@ -1182,7 +1221,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   before API keys** (`DockState.PreferPlansOverApi`, on by default, missing = on; owner's request): while
   any plan agent is usable, the suggestion and its alternatives come only from plan agents, so
   included usage goes first; API keys are suggested once no plan has room. The two-candidate rule
-  counts before that narrowing. A linked agent's drawer shows one bar,
+  counts before that narrowing. A linked agent's drawer shows one bar when a percentage is known,
   "42% · $5.80 left of $10.00" (`ShowApiUsage`), before its own usage logic, then its recents.
 - **Anthropic** (owner's request, 2026-10-19): no balance API (the Console shows it; claude-code issue
   #47574), so the Admin API's documented Cost Report, `GET /v1/organizations/cost_report` with
@@ -1193,12 +1232,21 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   (`Full`, `Since` = then; spending from that day, so its earlier spend counts). No top-up
   detection. Without it: "$12.40 spent since 1 Oct", no bar, not in the suggestion. Logo: Claude's.
   The Spend Limits API is Claude Enterprise members' limits, not a Console balance.
+- **Hyper for Crush** (2026-10-21): official `GET https://hyper.charm.land/v1/credits` returns
+  `{ "balance": number }` with a bearer credential. A live call using Crush's existing sign-in
+  succeeded and returned a numeric balance. An optional Hyper account on Crush's page, with its API
+  key blank, reads `%LOCALAPPDATA%\crush\crush.json`'s `providers.hyper.oauth.access_token` only
+  while `expires_at` is more than a minute away. Never read or use the refresh token, refresh it,
+  write the file, or log/save the access token. A supplied Hyper API key takes priority and is
+  passed as `HYPER_API_KEY`. The API gives no plan cap or reset, so show credits left as text without
+  a percentage bar. `CrushHyperToken` also respects `CRUSH_GLOBAL_DATA`. No Hyper request is made
+  until the user adds the optional account. Live service check passed; UI display not yet checked.
 - **Agents on a key** (owner's requests: Aider 2026-10-19; every agent that can take it 2026-10-20,
   with the Accounts redesign): `ApiUsage.EnvironmentFor` adds the variable from
   `ApiUsage.KeyVariableFor(agent, provider)` = the account's `ApiKey` as written (`%NAME%` stays a
   reference) to the agent's env at launch (`Launcher`, all launch paths), unless its own env sets it.
   `KeyVariableFor`, from each tool's documentation and **not yet verified by a launch** except Aider:
-  Aider and OpenCode any service (OpenCode's Gemini variable is `GOOGLE_GENERATIVE_AI_API_KEY`),
+  Aider and OpenCode all listed services except Hyper (OpenCode's Gemini variable is `GOOGLE_GENERATIVE_AI_API_KEY`),
   DeepSeek Harness DeepSeek only (`DEEPSEEK_API_KEY`, what its LLM and web plugins default to), Crush
   all but DeepSeek, Goose Anthropic / OpenAI / OpenRouter / Gemini (`GOOGLE_API_KEY`), Qwen Code
   OpenAI, Claude Code Anthropic, a command of the user's own (no catalog id, command not a known
