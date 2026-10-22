@@ -35,8 +35,7 @@ confirm the command (or Start menu name), keep or remove it, and look for a usag
 | `microsoft-copilot` | Microsoft Copilot | Start menu "Copilot" | yes | Launch only. Renamed from `copilot-desktop` / "Copilot" on 2026-10-19 (older entries are migrated). Not installed on the owner's PC |
 | `perplexity` | Perplexity | Start menu "Perplexity" | yes | Launch only |
 
-Windows Terminal waifu profiles now use the shared Fragments folder (not a settings `"import"`).
-Verify their appearance in the running app; close-on-exit is already good.
+Verify Windows Terminal waifu tab backgrounds (and icons/colours) in the running app; close-on-exit is already good.
 
 Answered: Cursor CLI's command is still `cursor-agent` (2026.10.16), with `agent` as an alias;
 `IsCursor` and `RecentLaunches.Records` match it by catalog id too.
