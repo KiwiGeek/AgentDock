@@ -29,10 +29,13 @@ public static class Launcher
                 var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments,
                         AiderModelArgument(item.Definition) }
                     .Where(s => !string.IsNullOrWhiteSpace(s)));
-                var profile = waifuBackgrounds ? TerminalProfiles.TryGetReadyProfile(item.Definition) : null;
+                // Profile carries the tab icon (wt has no --icon); also reinforces colour / title.
+                var profile = TerminalProfiles.TryGetReadyProfile(item.Definition);
+                // Same colour the flyout banner uses when known; null means Terminal's default tab.
+                var tabColor = ThemeColors.ForAgent(item.Definition) is { } color ? ThemeColors.ToHex(color) : null;
                 // An agent linked to an API account also gets that key's variable (ApiUsage.EnvironmentFor).
                 StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal,
-                    ApiUsage.EnvironmentFor(item.Definition, settings.ApiAccounts), settings.CloseTerminalWhenAgentExits, profile);
+                    ApiUsage.EnvironmentFor(item.Definition, settings.ApiAccounts), settings.CloseTerminalWhenAgentExits, profile, tabColor);
             }
             else if (KnownAgents.FolderLink(item.Definition) is { } link)
             {
@@ -135,7 +138,7 @@ public static class Launcher
     /// left at a prompt in the folder when the agent exits.
     /// </summary>
     private static void StartInTerminal(string? title, string? command, string folder, string shellSetting, string terminalSetting,
-        IReadOnlyDictionary<string, string>? env = null, bool closeWhenDone = false, string? profile = null)
+        IReadOnlyDictionary<string, string>? env = null, bool closeWhenDone = false, string? profile = null, string? tabColor = null)
     {
         var (shellExe, shellArgs) = BuildShell(shellSetting, command, env, closeWhenDone);
         var wt = terminalSetting.Equals("console", StringComparison.OrdinalIgnoreCase) ? null : PathResolver.Find("wt.exe");
@@ -151,8 +154,15 @@ public static class Launcher
             }
             if (title is not null)
             {
+                // Keep "Agent · folder" on the tab; without this the shell often overwrites it.
                 psi.ArgumentList.Add("--title");
                 psi.ArgumentList.Add($"{title} · {Path.GetFileName(folder.TrimEnd('\\'))}");
+                psi.ArgumentList.Add("--suppressApplicationTitle");
+            }
+            if (tabColor is not null)
+            {
+                psi.ArgumentList.Add("--tabColor");
+                psi.ArgumentList.Add(tabColor);
             }
             psi.ArgumentList.Add("-d");
             psi.ArgumentList.Add(folder);

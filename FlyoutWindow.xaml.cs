@@ -675,10 +675,8 @@ public sealed partial class FlyoutWindow : Window
         StatusText.Text = _settingsError ?? _presetsError ?? "";
         Autostart.Apply(_settings.StartWithWindows);
 
-        if (_state.ShowHoverBackgrounds)
-            TerminalProfiles.Prepare(_settings.Agents);
-        else
-            TerminalProfiles.Clear();
+        // Icon and tab colour profiles always; waifu pictures only while that setting is on.
+        TerminalProfiles.Prepare(_settings.Agents, _state.ShowHoverBackgrounds);
 
         UpdateBannerHeart();
         _bannerColorSource = null;

@@ -137,10 +137,12 @@ After that, manage them in the settings window (the gear in the footer), under *
   **Start with Windows**) and **Recent folders**.
 - Turning **Waifu backgrounds** on asks you to confirm, a little differently each time. Turning
   them off doesn't.
-- With **Waifu backgrounds** on, Agent Dock also gives supported Windows Terminal tabs the selected
-  agent's picture. It writes hidden, app-owned profiles into Terminal's Fragments folder (and
-  removes them when Waifus are off). Your other profiles are left alone. If Terminal has not loaded
-  a profile yet, the agent opens normally.
+- CLI agents opened in Windows Terminal get a tab titled **Agent · folder**, the agent's icon, and
+  (when Agent Dock knows the agent's colour) a matching tab tint, via hidden app-owned profiles in
+  Terminal's Fragments folder. With **Waifu backgrounds** on, those tabs also get the selected
+  agent's picture. Turning Waifus off removes only the pictures; icon and colour stay. Your other
+  profiles are left alone. If Terminal has not loaded a profile yet, the agent opens with title and
+  colour from the launch line, but without the icon until the next try.
 - **Taskbar icon** picks the picture on Agent Dock's pinned taskbar button: Agent Dock's own, seven
   plain logos, or (with Waifu backgrounds on) a waifu for Agent Dock or any agent it knows.
   Windows only redraws a pinned icon when File Explorer restarts, so Agent Dock offers

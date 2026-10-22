@@ -62,6 +62,22 @@ public static class AgentIcons
         typeof(AgentIcons).Assembly.GetManifestResourceStream(ResourcePrefix + source[BundledPrefix.Length..] + ".png");
 
     /// <summary>
+    /// A file path Windows Terminal can use as a profile <c>icon</c> (image file or a compiled-in
+    /// icon written out as .ico). Null when the agent has no icon Agent Dock can point at.
+    /// </summary>
+    public static string? TerminalIconPath(AgentDefinition agent)
+    {
+        var source = Find(agent);
+        if (source is null)
+            return null;
+        if (IsBundled(source))
+            return JumpListIconFor(source);
+        if (IsImageFile(source) && File.Exists(source))
+            return source;
+        return JumpListIconFor(source);
+    }
+
+    /// <summary>
     /// A file the jump list can use for this icon (it accepts only .exe, .dll and .ico). Compiled-in
     /// icons are written out once as .ico files next to the icon cache.
     /// </summary>

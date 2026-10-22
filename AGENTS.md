@@ -187,13 +187,16 @@ just above the taskbar button, listing AI agents:
   DeepSeek gets the launch folder as a Harness workspace through `tools/dsh-plugins` (`--patch`,
   `AGENTDOCK_WORKSPACE`, and a browser URL with `?agentdock_workspace=`).
 - The General setting **Close terminal when agent exits** uses a non-persistent shell, closing Agent
-  Dock's tab when the CLI returns. With Waifu backgrounds on, Agent Dock supplies each CLI agent's
-  picture through hidden, app-owned Windows Terminal profiles in
-  `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDock` (Store Terminal reads that folder
-  too; a settings.json `"import"` key is not a real Terminal setting). It prepares profiles before
-  launch, touches settings.json so Terminal reloads, and waits briefly; until then it opens an
-  ordinary tab rather than risking a failed launch. Turning Waifus off removes the fragment folder
-  and any `source: AgentDock` stubs Terminal copied into settings.json.
+  Dock's tab when the CLI returns. CLI launches through Windows Terminal set `--title` to
+  "Agent · folder" with `--suppressApplicationTitle` so the shell does not overwrite it, and
+  `--tabColor` from the agent's colour (its `color` setting, else the hand-picked built-in picture
+  colour). Tab icons need a profile (`wt` has no `--icon`), so Agent Dock keeps hidden app-owned
+  profiles in `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDock` (Store Terminal reads
+  that folder too; a settings.json `"import"` key is not a real Terminal setting) with each agent's
+  `icon`, `tabColor`, and `suppressApplicationTitle`. With Waifu backgrounds on, those profiles also
+  get the agent's picture; turning Waifus off drops only the pictures. It prepares profiles before
+  launch, touches settings.json so Terminal reloads, and waits briefly; until then it opens without
+  `--profile` rather than risking a failed launch (title and colour still apply).
 - **Desktop agents** launch directly.
 - **The user chooses the agents** (owner's decision, 2026-10-16). A fresh install has an empty list
   and a welcome offering **Find agents**, which scans for the agents in `Services/KnownAgents.cs`

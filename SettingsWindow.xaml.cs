@@ -1121,11 +1121,8 @@ public sealed partial class SettingsWindow : Window
             return;
         }
         UpdateState(state => state.ShowHoverBackgrounds = on, SettingsChange.State | SettingsChange.Waifu);
-        // Terminal's pictures follow now; the flyout's banner heart and hover pictures, when it opens.
-        if (on)
-            TerminalProfiles.Prepare(_settings.Agents);
-        else
-            TerminalProfiles.Clear();
+        // Terminal's pictures follow now; icon/colour profiles stay either way.
+        TerminalProfiles.Prepare(_settings.Agents, includeBackgrounds: on);
         TaskbarIconFollowWaifus();
         SyncAgentBackdrop(); // the agent page's own picture, if one is open
     }

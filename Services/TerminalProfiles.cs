@@ -8,11 +8,12 @@ using AgentDock.Models;
 namespace AgentDock.Services;
 
 /// <summary>
-/// Supplies hidden Windows Terminal profiles for Agent Dock's temporary tab backgrounds. Store and
-/// unpackaged Terminal both load JSON from the shared Fragments folder; a non-existent settings
-/// "import" key does not. Fragments are added and removed with Waifus, and settings.json is only
-/// touched (mtime) so Terminal reloads — plus orphaned <c>source: AgentDock</c> stubs Terminal
-/// itself wrote are scrubbed on clear.
+/// Supplies hidden Windows Terminal profiles for Agent Dock's CLI tabs (icon, tab colour, and
+/// optional waifu background). Store and unpackaged Terminal both load JSON from the shared
+/// Fragments folder; a non-existent settings "import" key does not. Background images are added
+/// and removed with Waifus; icon/colour profiles stay so tabs still look right with Waifus off.
+/// settings.json is only touched (mtime) so Terminal reloads — plus orphaned
+/// <c>source: AgentDock</c> stubs Terminal itself wrote are scrubbed on clear.
 /// </summary>
 public static class TerminalProfiles
 {
@@ -36,9 +37,10 @@ public static class TerminalProfiles
 
     /// <summary>
     /// Ensures fragment profiles match the agent list. Skips rewriting (and any reload wait) when
-    /// the on-disk fragment is already correct.
+    /// the on-disk fragment is already correct. Pass <paramref name="includeBackgrounds"/> from
+    /// Waifu backgrounds: off drops the pictures but keeps icon and tab colour.
     /// </summary>
-    public static void Prepare(IEnumerable<AgentDefinition> agents)
+    public static void Prepare(IEnumerable<AgentDefinition> agents, bool includeBackgrounds = true)
     {
         lock (Gate)
         {
@@ -48,22 +50,36 @@ public static class TerminalProfiles
                 var agentList = agents.Where(a => a.Kind == AgentKind.Cli).ToList();
                 var profiles = new List<TerminalProfileDefinition>();
                 var readyAgents = new List<AgentDefinition>();
-                var current = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var backgroundKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                 foreach (var agent in agentList)
                 {
-                    var source = AgentIcons.FindBackground(agent);
-                    if (source is null)
+                    var background = includeBackgrounds ? AgentIcons.FindBackground(agent) : null;
+                    var icon = AgentIcons.TerminalIconPath(agent);
+                    var tabColor = ThemeColors.ForAgent(agent) is { } color ? ThemeColors.ToHex(color) : null;
+                    // Icon needs a profile (no wt --icon). Colour and title also work from the launch
+                    // line, but bundling them here keeps a ready profile useful for every agent we know.
+                    if (background is null && icon is null && tabColor is null)
                         continue;
 
                     var key = ProfileKey(agent);
-                    var imagePath = Path.Combine(FragmentFolder, key + ".png");
-                    current.Add(key);
+                    string? imagePath = null;
+                    if (background is not null)
+                    {
+                        imagePath = Path.Combine(FragmentFolder, key + ".png");
+                        backgroundKeys.Add(key);
+                    }
+
                     profiles.Add(new TerminalProfileDefinition
                     {
                         Guid = ProfileGuid(agent),
                         Name = ProfileName(agent),
+                        TabColor = tabColor,
+                        Icon = icon,
                         BackgroundImage = imagePath,
+                        BackgroundImageOpacity = imagePath is null ? null : 0.16,
+                        BackgroundImageStretchMode = imagePath is null ? null : "uniformToFill",
+                        BackgroundImageAlignment = imagePath is null ? null : "center",
                     });
                     readyAgents.Add(agent);
                 }
@@ -71,13 +87,15 @@ public static class TerminalProfiles
                 var fragment = new TerminalProfileFragment { Profiles = profiles };
                 var json = JsonSerializer.Serialize(fragment, DockJsonContext.Default.TerminalProfileFragment);
                 var fragmentPath = Path.Combine(FragmentFolder, FragmentFileName);
-                var imagesPresent = readyAgents.All(a => File.Exists(Path.Combine(FragmentFolder, ProfileKey(a) + ".png")));
-                var unchanged = imagesPresent
+                var backgroundsPresent = backgroundKeys.All(k => File.Exists(Path.Combine(FragmentFolder, k + ".png")));
+                var iconsPresent = profiles.All(p => p.Icon is null || File.Exists(p.Icon));
+                var unchanged = backgroundsPresent
+                    && iconsPresent
                     && File.Exists(fragmentPath)
                     && string.Equals(File.ReadAllText(fragmentPath), json, StringComparison.Ordinal);
 
                 foreach (var path in Directory.EnumerateFiles(FragmentFolder, "AgentDock-*.png"))
-                    if (!current.Contains(Path.GetFileNameWithoutExtension(path)))
+                    if (!backgroundKeys.Contains(Path.GetFileNameWithoutExtension(path)))
                         File.Delete(path);
 
                 ClearLegacyImport();
@@ -93,16 +111,27 @@ public static class TerminalProfiles
 
                 foreach (var agent in readyAgents.ToList())
                 {
-                    var source = AgentIcons.FindBackground(agent)!;
+                    if (!includeBackgrounds || AgentIcons.FindBackground(agent) is not { } source)
+                        continue;
                     var imagePath = Path.Combine(FragmentFolder, ProfileKey(agent) + ".png");
-                    if (!WriteImage(source, imagePath))
+                    if (WriteImage(source, imagePath))
+                        continue;
+                    // Drop the background; keep the profile for icon / colour if it still has either.
+                    var profile = profiles.FirstOrDefault(p => p.Guid == ProfileGuid(agent));
+                    if (profile is null)
+                        continue;
+                    profile.BackgroundImage = null;
+                    profile.BackgroundImageOpacity = null;
+                    profile.BackgroundImageStretchMode = null;
+                    profile.BackgroundImageAlignment = null;
+                    if (profile.Icon is null && profile.TabColor is null)
                     {
-                        profiles.RemoveAll(p => p.Guid == ProfileGuid(agent));
+                        profiles.Remove(profile);
                         readyAgents.RemoveAll(a => a.Id == agent.Id);
                     }
                 }
 
-                // Re-serialize if some images failed.
+                // Re-serialize if some images failed or backgrounds were stripped.
                 json = JsonSerializer.Serialize(
                     new TerminalProfileFragment { Profiles = profiles },
                     DockJsonContext.Default.TerminalProfileFragment);
@@ -292,7 +321,12 @@ public static class TerminalProfiles
         }
     }
 
-    private static string ProfileName(AgentDefinition agent) => "Agent Dock · " + ProfileKey(agent);
+    /// <summary>
+    /// Human name for the hidden profile (fallback if <c>--title</c> is missing). The hash key stays
+    /// only on the image file name so duplicate agents with the same display name still get distinct GUIDs.
+    /// </summary>
+    private static string ProfileName(AgentDefinition agent) =>
+        string.IsNullOrWhiteSpace(agent.Name) ? ProfileKey(agent) : "Agent Dock · " + agent.Name.Trim();
 
     private static string ProfileKey(AgentDefinition agent)
     {

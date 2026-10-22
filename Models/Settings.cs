@@ -201,17 +201,28 @@ public sealed class TerminalProfileFragment
     public List<TerminalProfileDefinition> Profiles { get; set; } = [];
 }
 
-/// <summary>A temporary Windows Terminal profile used only to give one agent tab its waifu picture.</summary>
+/// <summary>
+/// A hidden Windows Terminal profile for one CLI agent: tab icon and colour, plus an optional
+/// waifu background image.
+/// </summary>
 public sealed class TerminalProfileDefinition
 {
     /// <summary>Stable id so Terminal can match fragment updates to the stub it copies into settings.json.</summary>
     public string Guid { get; set; } = "";
     public string Name { get; set; } = "";
     public bool Hidden { get; set; } = true;
-    public string BackgroundImage { get; set; } = "";
-    public double BackgroundImageOpacity { get; set; } = 0.16;
-    public string BackgroundImageStretchMode { get; set; } = "uniformToFill";
-    public string BackgroundImageAlignment { get; set; } = "center";
+    /// <summary>Tint on the tab; same colour the flyout banner uses for this agent when known.</summary>
+    public string? TabColor { get; set; }
+    /// <summary>Tab icon path (.png / .ico); Windows Terminal has no launch-time icon switch.</summary>
+    public string? Icon { get; set; }
+    /// <summary>
+    /// Keeps the launch <c>--title</c> (agent · folder) instead of letting the shell overwrite it.
+    /// </summary>
+    public bool SuppressApplicationTitle { get; set; } = true;
+    public string? BackgroundImage { get; set; }
+    public double? BackgroundImageOpacity { get; set; }
+    public string? BackgroundImageStretchMode { get; set; }
+    public string? BackgroundImageAlignment { get; set; }
 }
 
 /// <summary>One plan limit window: the 5-hour session or the week.</summary>

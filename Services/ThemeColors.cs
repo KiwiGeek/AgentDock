@@ -1,3 +1,4 @@
+using AgentDock.Models;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 using Windows.UI;
@@ -62,6 +63,31 @@ internal static class ThemeColors
             ? Hex(rgb)
             : null;
     }
+
+    /// <summary>
+    /// The colour an agent is known by without loading an image: its <c>color</c> setting, else a
+    /// hand-picked built-in picture colour (same order the banner uses before it samples a logo).
+    /// Used for Windows Terminal tab colour at launch.
+    /// </summary>
+    public static Color? ForAgent(AgentDefinition agent)
+    {
+        if (Parse(agent.Color) is { } configured)
+            return configured;
+
+        foreach (var name in new[] { agent.Catalog, agent.Id, CommandName(agent.Command) })
+        {
+            if (ForBundledBackgroundName(name) is { } color)
+                return color;
+        }
+
+        return null;
+    }
+
+    /// <summary>Windows Terminal's <c>#RRGGBB</c> form for <c>--tabColor</c> and profile <c>tabColor</c>.</summary>
+    public static string ToHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+
+    private static string? CommandName(string? command) =>
+        string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('\"'));
 
     private static Color Hex(int rgb) => Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
 
