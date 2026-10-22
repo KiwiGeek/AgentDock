@@ -14,3 +14,4 @@ _ReSharper*/
 *.DotSettings.user
 .idea/
 .aider*
+.crush/
