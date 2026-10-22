@@ -57,12 +57,14 @@ public static class RecentLaunches
     /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Crush,
     /// Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI, GitHub Copilot CLI, and the desktop apps that open in a
     /// folder (Claude, ChatGPT, Cursor). Cursor CLI's command can also be plain "agent", so its catalog id counts too;
-    /// DeepSeek Harness's command is <c>dsh</c>, and Kiro's is <c>kiro-cli</c>, so their catalog ids count too.
+    /// DeepSeek Harness's command is <c>dsh</c>, and Kiro's is <c>kiro-cli</c>, so their catalog ids count too. Aider and
+    /// Qwen Code have no usage bars, so their drawer is their recents; Crush and Factory Droid (like Aider, Qwen Code)
+    /// too.
     /// </summary>
     public static bool Records(AgentDefinition agent) =>
         agent.Kind == AgentKind.Cli
             ? Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"'))?.ToLowerInvariant()
-                  is "claude" or "codex" or "grok" or "opencode" or "aider" or "qwen" or "crush" or "droid" or "kiro-cli" or "dsh" or "cursor-agent" or "copilot"
+                  is "claude" or "codex" or "grok" or "opencode" or "aider" or "qwen" or "crush" or "droid" or "kiro-cli" or "dsh" or "cursor-agent" or "copilot" or "hermes"
               || (agent.Catalog ?? agent.Id).ToLowerInvariant() is "aider" or "qwen" or "crush" or "droid" or "kiro" or "deepseek" or "cursor-cli"
             // Desktop apps that open in a folder (Claude, ChatGPT, Cursor).
             : KnownAgents.TakesFolder(agent);

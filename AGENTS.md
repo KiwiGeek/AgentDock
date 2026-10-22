@@ -126,7 +126,9 @@ Details per agent are under Reference; what's still to review per agent is in `t
   Still to verify by eye: colours, recents, and Hyper balance; local-model tool use.
 - [ ] **Factory Droid** (`droid`): icon, picture, and recent folders. No usage bars yet. Still to
   verify by eye: the orange mark and recents.
-- [ ] **Hermes Agent** (`hermes`): icon and picture only.
+- [ ] **Hermes Agent** (`hermes`): icon, picture, and recent folders (added 2026-10-21 from the
+  owner's audit of every agent's recents; it opens in a folder but was missing from the recording
+  list). No usage: it can use any provider.
 - [ ] **DeepSeek Harness** (`dsh web`): icon, picture, DeepSeek API key (`DEEPSEEK_API_KEY`),
   recent folders, hosted in the background (no Terminal window; Stop on the row). Subtitle
   "Opens in the browser". Launch folder becomes a Harness workspace via
