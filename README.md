@@ -111,7 +111,7 @@ moment longer.
 The flyout shows only the agents you've chosen. The first time it opens, it offers to **Find
 agents**: Agent Dock looks for the agents it knows about (Claude Code, Codex, Antigravity CLI, GitHub
 Copilot CLI, OpenCode, Aider, Qwen Code, Cursor, Amp, Kiro, Goose, Crush, Factory Droid, Grok
-Build, Hermes Agent, DeepSeek Harness, and the Claude, ChatGPT, GitHub Copilot, Microsoft Copilot,
+Build, Freebuff, Hermes Agent, DeepSeek Harness, and the Claude, ChatGPT, GitHub Copilot, Microsoft Copilot,
 Perplexity and Cursor desktop apps), lists the ones installed, and adds the ones you leave ticked. **Not now** starts
 you with an empty list.
 
@@ -237,7 +237,7 @@ earlier keeps working alongside it. Asking directly also shows any per-model wee
 Sonnet's) as extra bars, and your extra usage when it's turned on. Under the title, the drawer names
 the model your last session used, when the status line has reported it.
 
-The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, OpenCode's, Aider's, Qwen Code's, Crush's, Factory Droid's, Kiro CLI's, DeepSeek Harness's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
+The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, Freebuff's, OpenCode's, Aider's, Qwen Code's, Crush's, Factory Droid's, Kiro CLI's, DeepSeek Harness's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
 to open the agent there again. Opening a folder that's already in the list moves it to the top
 and shifts the others down. At most five are kept, and only as many as fit in the drawer.
 Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.
@@ -249,7 +249,7 @@ agent in your list that has usage to show, one line each, with a bar for each re
 (session and week when both apply) and when that window resets ("85% session · resets 16:08"),
 so you can pick one with room left without hovering the agent first. Under the rows,
 it suggests the agent whose tightest active limit is least used - balancing its session and its
-weekly or monthly allowance instead of ignoring either. When another agent is materially better for
+weekly, monthly or daily allowance instead of ignoring either. When another agent is materially better for
 a quick task, sustained work, or after a limit reset within three hours, the overview names that
 alternative too. It does not rank agents by model quality, speed or price.
 Click a line to open that agent. Opening the flyout checks them all in the background (no more often than hovering
@@ -281,6 +281,17 @@ sign-in only lasts a few hours and Grok Build renews it itself, so between uses 
 the last numbers it got and say the sign-in has expired. That isn't a published xAI API, so it can
 stop working when grok.com changes; the drawer then keeps the last numbers it got and says why.
 
+### Freebuff usage
+
+Hovering over Freebuff shows today's **hours**: how many of the day's allowance are left (30 on a
+full-access account, 5 in limited-access countries) and when it resets. Freebuff counts them in
+Freebucks internally, five to an hour; Agent Dock shows hours. It asks Freebuff's own session
+endpoint, signed in as Freebuff CLI is: it reads the CLI's token from Windows Credential Manager
+(or, from older CLIs, `credentials.json`) read only, never refreshes it or changes the file, and
+never saves or shows the token. Sign in once with `freebuff login`. It checks at most every five
+minutes, only while you're hovering. That endpoint isn't published, so it can stop working; the
+drawer then keeps the last numbers it got and says why.
+
 ### Cursor usage
 
 Hovering over Cursor CLI or the Cursor desktop app (one account, so both show the same numbers)
@@ -310,7 +321,7 @@ minutes. (The `monthlyAllowance` setting of earlier versions is no longer used.)
 
 Settings → **Accounts** lists everything your agents run on, in one place:
 
-- **Plans**: the sign-ins Agent Dock reads usage through (Claude, ChatGPT, GitHub, Cursor, Kiro, Grok),
+- **Plans**: the sign-ins Agent Dock reads usage through (Claude, ChatGPT, GitHub, Cursor, Kiro, Grok, Freebuff),
   each with the agents that share it. Nothing is stored for these; choose one to open its agent's
   usage settings.
 - **API keys**: a key is added once (**Add a key**: a name, the service, and the key itself, or
@@ -373,7 +384,7 @@ on a plan has room left. The balance comes from DeepSeek's documented
 
 Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,
 `codex`, `antigravity`, `copilot`, `opencode`, `aider`, `qwen`, `cursor-cli`, `amp`, `kiro`, `goose`,
-`crush`, `droid`, `grok`, `hermes`, `deepseek`, `claude-desktop`, `chatgpt-desktop`,
+`crush`, `droid`, `grok`, `freebuff`, `hermes`, `deepseek`, `claude-desktop`, `chatgpt-desktop`,
 `github-copilot-desktop`, `microsoft-copilot`, `perplexity`, `cursor`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
 under any id. An `icon` setting overrides that. Desktop apps without either use the icon the Start
 menu shows. Anything else gets a plain terminal or app symbol.
@@ -381,7 +392,7 @@ menu shows. Anything else gets a plain terminal or app symbol.
 Hover pictures are built in the same way, as `Assets\Agents\<agent id>-background.png` (currently
 Aider, Amp, Antigravity CLI, ChatGPT, Claude, Claude Code, Codex, GitHub Copilot CLI, GitHub Copilot,
 Microsoft Copilot, Crush, Cursor, Cursor CLI,
-DeepSeek, Factory Droid, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
+DeepSeek, Factory Droid, Freebuff, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
 by agent id or command name. A `background` setting overrides one. With waifus on, the same picture
 also sits behind that agent's page in the settings window. Turn them off with **Waifu backgrounds**
 on the settings page (the gear in the footer), which also hides the hearts on the banner. That

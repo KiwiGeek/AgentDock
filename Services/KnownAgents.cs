@@ -27,6 +27,7 @@ public static class KnownAgents
         new() { Id = "crush",      Name = "Crush",              Command = "crush" },
         new() { Id = "droid",      Name = "Factory Droid",      Command = "droid" },
         new() { Id = "grok",       Name = "Grok Build",         Command = "grok" },
+        new() { Id = "freebuff",   Name = "Freebuff",           Command = "freebuff" },
         new() { Id = "hermes",     Name = "Hermes Agent",       Command = "hermes" },
         // Serves a web UI and opens it in the browser; Agent Dock hosts the process (HostedAgents).
         new() { Id = "deepseek",   Name = "DeepSeek Harness",   Command = "dsh", Arguments = "web" },

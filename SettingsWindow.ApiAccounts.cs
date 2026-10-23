@@ -148,7 +148,8 @@ public sealed partial class SettingsWindow
     /// <summary>
     /// The user's agents grouped by the sign-in their usage comes from, the way the flyout's drawers
     /// find it: Claude and Codex per config folder (<see cref="UsageAccount"/>), and one each for
-    /// Grok Build, Cursor, Kiro and GitHub. Agents on an API key or another endpoint have no plan here.
+    /// Grok Build, Freebuff, Cursor, Kiro and GitHub. Agents on an API key or another endpoint have
+    /// no plan here.
     /// </summary>
     private List<PlanGroup> PlanGroups()
     {
@@ -173,6 +174,15 @@ public sealed partial class SettingsWindow
                 group = Group("kiro", "Kiro", "Kiro CLI's sign-in (kiro-cli login)");
             else if (IsGitHubCopilot(definition))
                 group = Group("copilot", "GitHub", "GitHub CLI's sign-in (gh), for Copilot CLI and the desktop app");
+            else if (IsFreebuff(definition))
+            {
+                // Like Claude and Codex, a copy with its own config folder is another account.
+                var dir = FreebuffUsage.ConfigDirFor(definition);
+                var isDefault = string.Equals(dir, FreebuffUsage.ConfigDirFor(null), StringComparison.OrdinalIgnoreCase);
+                group = Group("freebuff|" + dir.ToLowerInvariant(),
+                    isDefault ? "Freebuff" : $"Freebuff · {Path.GetFileName(dir)}",
+                    isDefault ? "Freebuff CLI's sign-in; daily hours" : $"Signed in under {dir}");
+            }
             else if (UsageAccount.For(definition) is { } account)
             {
                 if (account.UsesOtherProvider)
@@ -198,7 +208,7 @@ public sealed partial class SettingsWindow
         var groups = PlanGroups();
         PlansNote.Text = groups.Count > 0
             ? "Usage comes from each agent's own sign-in, so nothing is stored here. Choose one for its usage settings."
-            : "None of your agents has a plan whose usage Agent Dock reads (Claude Code, Codex, Grok Build, Cursor, Kiro or GitHub Copilot).";
+            : "None of your agents has a plan whose usage Agent Dock reads (Claude Code, Codex, Grok Build, Freebuff, Cursor, Kiro or GitHub Copilot).";
         foreach (var group in groups)
         {
             var first = group.Agents[0];

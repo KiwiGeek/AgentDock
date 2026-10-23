@@ -56,7 +56,8 @@ shows a usage overview of every agent with a suggestion of which to use.
   ("Not found on this PC"), and are looked for again on every open (PATH is re-read from the
   registry each show).
 - **Usage may read a CLI's own sign-in token** (owner's decision, 2026-10-16) when that's the only
-  practical route: Cursor CLI's and Grok Build's `auth.json`. Rules for any token: read only; never
+  practical route: Cursor CLI's and Grok Build's `auth.json`, and Freebuff CLI's Windows Credential
+  Manager item. Rules for any token: read only; never
   refresh it (refresh tokens are single-use and the CLI would be signed out); never write the file;
   never log, show or save the token; an expired token sends nothing. Prefer a route where the agent
   or another CLI does the sign-in (Codex's app server, `gh api`), and keep using those where they exist.
@@ -80,6 +81,10 @@ shows a usage overview of every agent with a suggestion of which to use.
 - `gh api` from Git Bash: no leading slash (MSYS rewrites it into a file path).
 - PowerShell: `foreach` can't sit inside `( … )`; use `$( … )` or assign it.
 - Hand-set `Cookie` headers need `SocketsHttpHandler { UseCookies = false }`.
+- `.NET`'s `HttpClient` drops the `Authorization` header when it follows a redirect. `codebuff.com`
+  redirects to `www.codebuff.com`, so Freebuff's session call must name the host that serves it
+  directly; otherwise the API answers 401 as if no token were sent (Python's urllib keeps the header,
+  which made the redirect look like a bad token).
 - A failed C# compile makes the XAML compiler report misleading WMC0909/WMC1509 errors; fix the C#
   error first.
 - **A pinned taskbar icon can't be refreshed live** (tested 2026-10-19). Changing the icon of the
@@ -106,6 +111,10 @@ Details per agent are under Reference; what's still to review per agent is in `t
   Usage per account (`CODEX_HOME`).
 - [x] **Grok Build** (`grok`): icon, picture, usage from grok.com with Grok Build's token, recents,
   overview. Its token lasts hours, so the drawer often shows saved numbers between Grok runs.
+- [ ] **Freebuff** (`freebuff`): icon, picture (the owner's, added 2026-10-23), usage (daily hours
+  from codebuff.com with the CLI's keychain token), recents, overview. Verified 2026-10-23 through UI
+  Automation: the row, the drawer, and the overview row, with a live check (30 of 30 hours). Not yet
+  verified: the picture by eye, an actual launch and a recent folder.
 - [x] **Cursor CLI** (`cursor-agent`, or plain `agent`): icon, picture, usage from cursor.com with
   the CLI's token, recents, overview.
 - [x] **GitHub Copilot CLI** (`copilot`): icon, picture, usage (AI credits) via
@@ -201,7 +210,7 @@ just above the taskbar button, listing AI agents:
 - **The user chooses the agents** (owner's decision, 2026-10-16). A fresh install has an empty list
   and a welcome offering **Find agents**, which scans for the agents in `Services/KnownAgents.cs`
   (Claude Code, Codex, Antigravity CLI, Copilot CLI, OpenCode, Aider, Qwen Code, Cursor CLI, Amp, Kiro,
-  Goose, Crush, Factory Droid, Grok Build, Hermes Agent, DeepSeek Harness; Claude, ChatGPT,
+  Goose, Crush, Factory Droid, Grok Build, Freebuff, Hermes Agent, DeepSeek Harness; Claude, ChatGPT,
   GitHub Copilot, Microsoft Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
 - Gemini CLI stopped serving personal Google accounts on 2026-06-18 (API keys and Code Assist
   licences still work), so it was removed from the known agents, with its icon and picture (owner,
@@ -376,8 +385,8 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     fragments untouched.
   - **Accounts** (`ShowAccounts`, `SettingsWindow.ApiAccounts.cs`): **Plans**, the user's agents
     grouped by the sign-in their usage comes from (`PlanGroups`: Claude and Codex per `UsageAccount`,
-    one each for Cursor, GitHub and Grok; agents on another provider or on an Anthropic key are left
-    out), each row opening its first agent's page, where the usage settings are. No bars there (the
+    one each for Cursor, GitHub, Grok and Freebuff; agents on another provider or on an Anthropic key
+    are left out), each row opening its first agent's page, where the usage settings are. No bars there (the
     flyout has them). **API keys**, one row per account (service, the key shortened, who uses it, the
     balance line), **Add a key**, and **Suggest plans before API keys** (`PreferPlansOverApi`, moved
     here from General). The flyout's unlinked-key row (`section: "api"`) opens this page.
@@ -688,6 +697,7 @@ there degrade to a missing icon or entry, never an error.
 | `Services/CodexUsage.cs` | Codex plan usage, asked live of Codex's app server; last answer saved |
 | `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
 | `Services/GrokUsage.cs` | Grok Build usage from grok.com (gRPC-web, with Grok Build's own sign-in from `~\.grok\auth.json`) |
+| `Services/FreebuffUsage.cs` | Freebuff daily hours from codebuff.com (the CLI's keychain token, read only); last answer saved |
 | `Services/CursorUsage.cs` | Cursor usage from cursor.com (`/api/usage-summary`, with Cursor CLI's sign-in from `%APPDATA%\cursor\auth.json`) |
 | `Services/KiroUsage.cs` | Kiro CLI monthly credits, from `kiro-cli chat --no-interactive /usage` (CLI owns the sign-in; no token) |
 | `Services/CopilotUsage.cs` | GitHub Copilot usage this month (AI credits against the plan), via `gh api copilot_internal/user` |
@@ -765,6 +775,9 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
     (`APP_ICON_25D_DARK`, the same design `cursor-cli` used to have), and the CLI the bare shaded cube
     (`CUBE_25D`, transparent, so it shows on both themes). Cursor has no logo of its own for the CLI.
   - `hermes`: Hermes Agent's own icon from its site. Only 48 px, so it's soft at high scaling.
+  - `freebuff`: freebuff.com/brand/freebuff-mark.png (512 px), the brand's black rounded square and
+    white F, scaled to 256 px. Its hover picture (`freebuff-background.png`, 1672×941) was added by
+    the owner on 2026-10-23; the banner's lime is the neon sign (`#A2C83F`).
   - `github-copilot-desktop` (2026-10-19): the installed app's own `icons\icon.png` (512 px), scaled to 256 px.
   - `antigravity`: antigravity.google/assets/image/antigravity-logo.png (276 px, transparent), the
     site's largest icon.
@@ -919,10 +932,11 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   fills the drawer, and leaves it untouched for agents with nothing to show, so a closing drawer
   doesn't go blank.
   - Today: Claude Code (usage, or the setup or update offer), Codex (usage), Grok Build (week,
-    extra usage credits and a pie of what it went on), Cursor CLI and Cursor desktop (the billing
-    period), Kiro CLI (monthly credits via `kiro-cli chat /usage`) and GitHub Copilot (AI credits
-    against the plan), plus their presets, matched by command name (`CommandName`), or for Cursor /
-    Kiro by catalog id too (`IsCursor` / `IsKiro`; Cursor is the only desktop agent with a drawer).
+    extra usage credits and a pie of what it went on), Freebuff (daily hours), Cursor CLI and Cursor
+    desktop (the billing period), Kiro CLI (monthly credits via `kiro-cli chat /usage`) and GitHub
+    Copilot (AI credits against the plan), plus their presets, matched by command name
+    (`CommandName`), or for Cursor / Kiro / Freebuff by catalog id too (`IsCursor` / `IsKiro` /
+    `IsFreebuff`; Cursor is the only desktop agent with a drawer).
   - Moving between two drawer agents swaps the content in place.
   - Usage is loaded on the first hover after each show and cached until the next show
     (`ClearUsageCache` in `ReloadData`), so opening stays fast.
@@ -933,8 +947,8 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   each a button with the icon, name, and a bar per reset window (session and week when both exist,
   stacked a few DIP apart so they stay distinct) with a caption under each like "85% session ·
   resets 16:08" ("13% month · resets 10 Nov" for Cursor, "79% of AI credits · resets 1 Nov" for
-  Copilot). Clicking launches the agent. Rows only for agents with usage or a check running, so
-  with none the drawer stays shut.
+  Copilot, "30 of 30 hours · resets Sat 0:00" for Freebuff). Clicking launches the agent. Rows only
+  for agents with usage or a check running, so with none the drawer stays shut.
   - Opening the flyout starts every agent's check (`StartSummaryChecks`, through the same
     `Start…Check` helpers and intervals as hovering; Claude only when asked directly) and opens the
     overview once the window is placed. A finished check rebuilds it (`RunLiveCheckAsync`, Copilot's fetch).
@@ -947,7 +961,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
     settings brings it back.
   - **Suggestion** under the rows (`ShowSuggestion`, owner's request): the agent whose tightest
     active quota window is least used (a minimax score across session and week, or month for Cursor
-    and Copilot). A candidate with any current 100% limit is ruled out; expired limits are fresh,
+    and Copilot, or day for Freebuff). A candidate with any current 100% limit is ruled out; expired limits are fresh,
     and unlimited Copilot is unconstrained. Ties favour more longer-window headroom, then more
     session headroom. When the winner changes by at least 15 points, up to three alternatives name
     the better agent for a quick task, sustained work, or after a reset within three hours. Unknown
@@ -959,14 +973,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI or Copilot CLI (each copy separately) was launched
+- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Freebuff, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI or Copilot CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness / Factory Droid / Kiro also by catalog id, since Cursor's command can be plain `agent`, DeepSeek's is `dsh`, and Kiro's is `kiro-cli`). The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Freebuff, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness / Factory Droid / Kiro / Freebuff also by catalog id, since Cursor's command can be plain `agent`, DeepSeek's is `dsh`, Kiro's is `kiro-cli`, and Freebuff's is `freebuff`). The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
@@ -1117,6 +1131,33 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Verified 2026-10-16 through the real `CursorUsage.FetchAsync` (throwaway console project, deleted):
   Pro+, 12.7% total, Auto + Composer 13.7%, API 1.6%, resets 10 Nov. **Not yet verified:** the drawer.
 
+#### Freebuff usage (`Services/FreebuffUsage.cs`; 2026-10-23)
+
+- **Source: Freebuff's own session endpoint**, the one its CLI polls:
+  `GET https://www.codebuff.com/api/v1/freebuff/session` with `Authorization: Bearer <token>`.
+  `codebuff.com` redirects to `www`, and .NET drops the header on a redirect (see "Things learned").
+  Undocumented; `status: "none"` means no session is running, not signed out, and still carries the
+  day's numbers.
+- **Sign-in: Freebuff CLI's**, read only. Current CLIs keep the token in Windows Credential Manager
+  through Bun.secrets, service `freebuff-cli`, name the full path of `credentials.json`; older ones
+  kept `authToken` in `credentials.json` (under `default`). Agent Dock reads either, never refreshes
+  it, never writes the file, and never logs, shows or saves the token. `FREEBUFF_CONFIG_DIR` is
+  honoured per agent, so copies can show their own accounts.
+- **Reply:** `freebucks.daily` with `limit`, `spent`, `remaining` and `resetAt` (ISO 8601), and
+  `subscription.tierId` for the plan. Five freebucks are one hour (the CLI's own formatter says so);
+  `Parse` turns them into hours. `status: "none"` still returns the daily block.
+- **Drawer:** "Freebuff usage", the plan ("Free plan"), one **Daily** bar and
+  "30 of 30 hours · resets Sat 0:00" (`PlanUsage.SevenDay` for the percentage and
+  `PlanUsage.Allowance` for the hours); `showSession: false`, `weekLabel: "Daily"`. The overview row
+  uses the same counts and the suggestion treats it as a **day** window. Saved to
+  `freebuff-usage.json` (or a hashed file for another `FREEBUFF_CONFIG_DIR`), at most every 5
+  minutes, only on hover and the overview.
+- Verified 2026-10-23 through the real `FreebuffUsage.FetchAsync` (throwaway console project,
+  deleted): 30 of 30 hours, resets 2026-10-24 04:00 UTC, free plan; and through UI Automation the
+  Flyout row, the drawer ("Freebuff usage", "Daily", "30 of 30 hours · resets Sat 0:00") and the
+  overview row. **Not yet verified:** an actual launch and a recent folder; there is no hover
+  picture.
+
 #### Kiro usage (`Services/KiroUsage.cs`; 2026-10-21)
 
 - **Source: Kiro CLI itself** (same preference as Codex's app server and Copilot's `gh api`: the CLI
@@ -1173,7 +1214,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   `*-background.png` from the icon glob, so they never count as icons.
   - Source string `bundled-background:<id>`, matched by agent id or CLI command name
     (`AgentIcons.FindBackground`). Loaded with `BitmapImage.SetSourceAsync` from the resource stream.
-  - About 19 MB of PNGs, which is why the DLL is about 20 MB.
+  - About 43 MB of PNGs, which is why the DLL is about 48 MB.
   - Two files were renamed to match ids: `github-copilot-background` became `copilot-background`,
     and `grok-backgorund` became `grok-background`.
 - An optional `background` per agent in `agents.json` overrides the built-in one: an image path,
@@ -1193,8 +1234,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
     the picture is shifted so its subject is centred in the list. The built-in pictures put
     the character about 72% of the way across (`BackdropSubjectX`); new pictures should keep that layout.  Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
-- **Not yet verified in-app:** loading from the embedded resources. The build embeds all 10, but
-  nobody has hovered since.
+- **Not yet verified by eye:** the Freebuff picture added 2026-10-23. The build embeds all 23.
 
 #### API usage (owner's request, 2026-10-19; `Services/ApiUsage.cs`, `FlyoutWindow.ApiAccounts.cs`)
 

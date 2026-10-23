@@ -32,6 +32,7 @@ internal static class ThemeColors
         ["cursor-cli"] = Hex(0x7D8590),      // grey and white
         ["deepseek"] = Hex(0x2D4FB8),        // royal blue
         ["droid"] = Hex(0xEF6F2E),           // Factory's orange accent (brand snowflake)
+        ["freebuff"] = Hex(0xA2C83F),        // lime neon sign
         ["goose"] = Hex(0x4C6B3A),           // green shorts
         ["grok"] = Hex(0xC81E32),            // red neon and hair streaks on black
         ["hermes"] = Hex(0x1F6B4A),          // green top

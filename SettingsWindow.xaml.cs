@@ -539,6 +539,7 @@ public sealed partial class SettingsWindow : Window
     private static string? CommandName(string? command) => FlyoutWindow.CommandName(command);
     private static bool IsCursor(AgentDefinition definition) => FlyoutWindow.IsCursor(definition);
     private static bool IsKiro(AgentDefinition definition) => FlyoutWindow.IsKiro(definition);
+    private static bool IsFreebuff(AgentDefinition definition) => FlyoutWindow.IsFreebuff(definition);
     private static bool IsGitHubCopilot(AgentDefinition definition) => FlyoutWindow.IsGitHubCopilot(definition);
 
     private void ShowAgentSettings(AgentDefinition definition)

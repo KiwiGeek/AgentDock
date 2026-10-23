@@ -1157,6 +1157,14 @@ public sealed partial class FlyoutWindow : Window
         || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "kiro-cli");
 
     /// <summary>
+    /// Freebuff, by catalog id or command. Its daily hours come from the CLI's own sign-in, so a copy
+    /// with another <c>FREEBUFF_CONFIG_DIR</c> is a different account.
+    /// </summary>
+    internal static bool IsFreebuff(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "freebuff", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "freebuff");
+
+    /// <summary>
     /// Settings changed something (the window saved it already): read the files again, so this
     /// window's own later saves don't write the old values back, and refresh what depends on them.
     /// Safe while the flyout is hidden, which it normally is while settings is open.
@@ -1552,6 +1560,15 @@ public sealed partial class FlyoutWindow : Window
             ShowRecents(item);
             return true;
         }
+        if (IsFreebuff(item.Definition))
+        {
+            _drawerItem = item;
+            UsageOffer.IsOpen = false;
+            StartFreebuffCheck(item.Definition);
+            ShowFreebuffCheck(item.Definition);
+            ShowRecents(item);
+            return true;
+        }
         // The CLI and the desktop app share one account, so both show its usage.
         if (IsCursor(item.Definition))
         {
@@ -1782,6 +1799,19 @@ public sealed partial class FlyoutWindow : Window
         StartLiveCheck(GrokCheckKey, GrokUsage.MinInterval, GrokUsage.FetchAsync, GrokUsage.Unreachable,
             shown => CommandName(shown.Definition.Command) == "grok", ShowGrokCheck);
 
+    /// <summary>Freebuff's account, one per CLI config folder.</summary>
+    private static string FreebuffCheckKey(AgentDefinition definition) =>
+        $"freebuff|{FreebuffUsage.ConfigDirFor(definition).ToLowerInvariant()}";
+
+    private void StartFreebuffCheck(AgentDefinition definition)
+    {
+        var key = FreebuffCheckKey(definition);
+        StartLiveCheck(key, FreebuffUsage.MinInterval, () => FreebuffUsage.FetchAsync(FreebuffUsage.ConfigDirFor(definition)),
+            FreebuffUsage.Unreachable,
+            shown => IsFreebuff(shown.Definition) && FreebuffCheckKey(shown.Definition) == key,
+            () => ShowFreebuffCheck(definition));
+    }
+
     private void StartCursorCheck() =>
         StartLiveCheck(CursorCheckKey, CursorUsage.MinInterval, CursorUsage.FetchAsync, CursorUsage.Unreachable,
             shown => IsCursor(shown.Definition), ShowCursorCheck);
@@ -1861,6 +1891,14 @@ public sealed partial class FlyoutWindow : Window
             return new SummaryEntry(KiroCheckKey, item, check?.Result?.Usage ?? SavedFor(KiroCheckKey, KiroUsage.LoadSaved),
                 check?.Running == true, "month");
         }
+        if (IsFreebuff(item.Definition))
+        {
+            var key = FreebuffCheckKey(item.Definition);
+            var check = Check(key);
+            return new SummaryEntry(key, item,
+                check?.Result?.Usage ?? SavedFor(key, () => FreebuffUsage.LoadSaved(FreebuffUsage.ConfigDirFor(item.Definition))),
+                check?.Running == true, "day");
+        }
         if (IsGitHubCopilot(item.Definition))
             return new SummaryEntry("copilot", item, null, _copilotFetching && _copilotUsage is null, "month", _copilotUsage);
         // Claude desktop has Claude Code's account, so it shares that row (or has it, if alone).
@@ -1913,6 +1951,11 @@ public sealed partial class FlyoutWindow : Window
             if (IsKiro(item.Definition))
             {
                 StartKiroCheck();
+                continue;
+            }
+            if (IsFreebuff(item.Definition))
+            {
+                StartFreebuffCheck(item.Definition);
                 continue;
             }
             if (IsGitHubCopilot(item.Definition))
@@ -2030,7 +2073,9 @@ public sealed partial class FlyoutWindow : Window
         }
         Add(entry.Usage?.FiveHour, "session", reset => reset.AddHours(-5));
         Add(entry.Usage?.SevenDay, entry.WeekWord,
-            entry.WeekWord == "month" ? reset => reset.AddMonths(-1) : reset => reset.AddDays(-7));
+            entry.WeekWord == "month" ? reset => reset.AddMonths(-1)
+            : entry.WeekWord == "day" ? reset => reset.AddDays(-1)
+            : reset => reset.AddDays(-7));
         return windows;
     }
 
@@ -2045,7 +2090,7 @@ public sealed partial class FlyoutWindow : Window
 
         var bottleneck = windows.OrderByDescending(window => window.Used).First();
         var session = windows.FirstOrDefault(window => window.Word == "session");
-        var longer = windows.FirstOrDefault(window => window.Word is "week" or "month" or "balance");
+        var longer = windows.FirstOrDefault(window => window.Word is "week" or "month" or "day" or "balance");
         return new CapacityChoice(entry, bottleneck, bottleneck.Used, session?.Used ?? bottleneck.Used,
             longer?.Used ?? bottleneck.Used);
     }
@@ -2113,7 +2158,7 @@ public sealed partial class FlyoutWindow : Window
 
         var sustained = choices.Where(choice => !shown.Contains(choice.Entry.Key))
             .Select(choice => (Choice: choice, Window: PaceWindows(choice.Entry, now)
-                .FirstOrDefault(window => window.Word is "week" or "month" or "balance")))
+                .FirstOrDefault(window => window.Word is "week" or "month" or "day" or "balance")))
             .Where(candidate => candidate.Window is not null)
             .OrderBy(candidate => candidate.Choice.Sustained).ThenBy(candidate => candidate.Choice.Balanced).FirstOrDefault();
         if (sustained.Choice is not null && MateriallyBetter(pick.Sustained, sustained.Choice.Sustained))
@@ -2187,6 +2232,23 @@ public sealed partial class FlyoutWindow : Window
             }
             else
                 bars.Add(new SummaryBar(null, $"{used:N0} {unit}{resets}"));
+        }
+        else if (entry.Item is not null && IsFreebuff(entry.Item.Definition))
+        {
+            if (entry.Usage?.Allowance is { } allowance)
+            {
+                var reset = allowance.ResetsAt > 0 ? DateTimeOffset.FromUnixTimeSeconds(allowance.ResetsAt) : (DateTimeOffset?)null;
+                var remaining = reset is { } at && at <= now ? allowance.Limit : allowance.Remaining;
+                var percent = allowance.Limit > 0 ? Math.Clamp((allowance.Limit - remaining) * 100 / allowance.Limit, 0, 100) : 0;
+                var counts = $"{FreebuffUsage.FormatHours(remaining)} of {FreebuffUsage.FormatHours(allowance.Limit)} {allowance.Unit}";
+                bars.Add(new SummaryBar(percent,
+                    reset is { } when && when <= now ? $"{counts} · reset" : reset is { } later ? $"{counts} · resets {ResetTime(later)}" : counts,
+                    "Daily hours"));
+            }
+            else if (entry.Checking)
+                bars.Add(new SummaryBar(null, "Checking…"));
+            else
+                return null;
         }
         else
         {
@@ -2287,6 +2349,27 @@ public sealed partial class FlyoutWindow : Window
         }
         var percent = Math.Clamp(window.UsedPercentage, 0, 100);
         return new SummaryBar(percent, $"{Math.Round(percent)}% {word}", $"{word} usage");
+    }
+
+    private void ShowFreebuffCheck(AgentDefinition definition)
+    {
+        var key = FreebuffCheckKey(definition);
+        var check = _liveChecks.GetValueOrDefault(key);
+        if (!_savedUsage.TryGetValue(key, out var saved))
+            _savedUsage[key] = saved = FreebuffUsage.LoadSaved(FreebuffUsage.ConfigDirFor(definition));
+        var usage = check?.Result?.Usage ?? saved;
+        // One daily pool, counted in hours rather than a 5-hour session or a week.
+        ShowCheckedUsage("Freebuff usage", usage, check?.Running == true, check?.Result?.Problem,
+            FreebuffUsage.Checking, FreebuffUsage.NoWindows, FreebuffUsage.ShowingSaved, showSession: false, weekLabel: "Daily");
+        if (usage?.Allowance is not { } allowance)
+            return;
+        var now = DateTimeOffset.UtcNow;
+        var reset = allowance.ResetsAt > 0 ? DateTimeOffset.FromUnixTimeSeconds(allowance.ResetsAt) : (DateTimeOffset?)null;
+        var remaining = reset is { } at && at <= now ? allowance.Limit : allowance.Remaining;
+        var counts = $"{FreebuffUsage.FormatHours(remaining)} of {FreebuffUsage.FormatHours(allowance.Limit)} {allowance.Unit}";
+        WeekText.Text = reset is { } when && when <= now ? $"{counts} · reset"
+            : reset is { } later ? $"{counts} · resets {ResetTime(later)}"
+            : counts;
     }
 
     private void ShowCursorCheck()

@@ -262,6 +262,26 @@ public sealed class PlanUsage
 
     /// <summary>What the week's usage went on (Grok: Imagine, Cursor, Grok Build…), as shares adding to 100.</summary>
     public List<UsageShare>? Breakdown { get; set; }
+
+    /// <summary>
+    /// A daily allowance counted in units rather than percentages (Freebuff's hours). The percent the
+    /// bar uses is still <see cref="SevenDay"/>, so the overview's suggestion can compare it with the
+    /// other agents; this carries the "24.5 of 30 hours" wording.
+    /// </summary>
+    public UsageAllowance? Allowance { get; set; }
+}
+
+/// <summary>How much of a daily allowance is left, for drawers and overview rows that count units.</summary>
+public sealed class UsageAllowance
+{
+    /// <summary>Units left (Freebuff: hours).</summary>
+    public double Remaining { get; set; }
+    /// <summary>Units the day includes.</summary>
+    public double Limit { get; set; }
+    /// <summary>What the units are called in the UI ("hours").</summary>
+    public string Unit { get; set; } = "hours";
+    /// <summary>Unix seconds.</summary>
+    public long ResetsAt { get; set; }
 }
 
 /// <summary>One part of <see cref="PlanUsage.Breakdown"/>.</summary>
