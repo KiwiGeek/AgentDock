@@ -18,3 +18,16 @@ public sealed partial class ResizeGrip : Grid
         ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeNorthSouth);
     }
 }
+
+/// <summary>
+/// The strip down the flyout's right edge that resizes its width, and with it how many columns the
+/// rows fill. A separate class only for the cursor, as with <see cref="ResizeGrip"/>.
+/// </summary>
+public sealed partial class WidthResizeGrip : Grid
+{
+    public WidthResizeGrip()
+    {
+        Background = new SolidColorBrush(Colors.Transparent);
+        ProtectedCursor = InputSystemCursor.Create(InputSystemCursorShape.SizeWestEast);
+    }
+}

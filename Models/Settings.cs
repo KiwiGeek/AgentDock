@@ -320,6 +320,12 @@ public sealed class DockState
     /// </summary>
     public double? FlyoutHeight { get; set; }
 
+    /// <summary>
+    /// The list's width in DIPs (client area, without the drawer), set by dragging the flyout's right
+    /// edge. Null is one column's worth. With room for two, each section's rows wrap into two columns.
+    /// </summary>
+    public double? FlyoutWidth { get; set; }
+
     /// <summary>Last known shell:AppsFolder id per desktop agent, so the menu can show them instantly.</summary>
     public Dictionary<string, string> DesktopApps { get; set; } = [];
 

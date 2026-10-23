@@ -178,8 +178,9 @@ Details per agent are under Reference; what's still to review per agent is in `t
 - **CI and releases:** `.github/workflows/build.yml` and `RELEASING.md` are referenced but were
   never committed.
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
-  overview row; the new Cursor, Grok and Copilot drawers; drag to reorder; the published Native AOT
-  build. See "Verify first" under Reference.
+  overview row; the new Cursor, Grok and Copilot drawers; drag to reorder (including with the
+  two-column list); the look of the width grip and of two columns; the published Native AOT build.
+  See "Verify first" under Reference.
 
 ## Reference
 
@@ -328,7 +329,8 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   monitor work area via `MonitorFromPoint`/`GetMonitorInfo` → DPI via `GetDpiForMonitor`.
   Taskbar edge is inferred from where the cursor sits outside the work area. If the cursor is
   inside the work area (launched from a terminal), the flyout centres. Height comes from
-  `Root.Measure(380 DIP, ∞)`, capped at 640 DIP and the work area.
+  `Root.Measure(<list width> DIP, ∞)`: 412 by default (banner 32 plus a 380 list), or the width the
+  user dragged. Capped at 640 DIP and the work area.
 - **Height can be dragged** (owner's request, 2026-10-16), on the list. `HeightGrip` (a
   `ResizeGrip`, a `Grid` subclass because only a subclass can set `ProtectedCursor`) is a 6 DIP strip
   on the edge away from the taskbar (bottom if the taskbar is at the top); the edge by the taskbar
@@ -337,6 +339,22 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   of fitting the content (min 240 DIP, max the work area; the 640 DIP cap applies only to fitting).
   Double-clicking the grip clears it. Settings shared this height until it became its own window
   (2026-10-19), which is resizable by itself. The flyout stays non-resizable. Not yet verified in-app.
+- **Width can be dragged** (owner's request, 2026-10-23), on the window's right edge: `WidthGrip`, a
+  `WidthResizeGrip` (the same kind of 6 DIP `Grid` subclass, with the west-east cursor). The window's
+  left edge stays put, so the list's right edge and the drawer follow the pointer, and the drag stops
+  at the work area. The width is `DockState.FlyoutWidth` (client DIPs, without the drawer);
+  `PlaceWindow` and `ApplyWindowForDrawer` use it, and `PlaceWindow` fits it to the monitor without
+  overwriting the stored value, so a width dragged on a wide monitor is still used there. Releasing
+  re-fits the height and settles the list's left edge back over the taskbar anchor; double-clicking
+  clears the width. A drag holds the drawer open (`_widthResizing`) though the pointer has left it.
+  **Two columns:** `UpdateRowColumns` sets each list's `ItemsWrapGrid.ItemWidth` to the list's width
+  past the banner divided by 1 (below 784 DIP) or 2 (above), so rows fill left to right and wrap,
+  each section on its own. Rows share the extra width rather than leaving a gap. Reordering by
+  dragging should carry over (the wrap panel is the panel GridView reorders in), but that and the
+  look of the second column are **not yet verified by hand**. The layout itself was verified
+  2026-10-23 through UI Automation: 780 DIP gave one 740 wide column, 790 gave two of 375, 890 two of
+  425, and the window was the list plus the 240 drawer throughout (a drag from 790 to 890 grew the
+  client by 100 and saved `flyoutWidth`).
 - **Hide on deactivation**, except while the folder picker is open (`_keepOpen`).
 - **Toggle guard**: clicking the taskbar icon while open deactivates (hides) on mouse-down,
   then launches #2 on mouse-up. `ShowFlyout` ignores a show within 600 ms of a deactivation-hide.
@@ -723,8 +741,8 @@ there degrade to a missing icon or entry, never an error.
   allowed. Schema is documented in `README.md`; keep the two in sync.
 - `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids,
   whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
-  folders, the dragged list height, where Claude usage comes from, the taskbar icon choice, and each
-  API account's last balance and 100% amount).
+  folders, the dragged list height and width, where Claude usage comes from, the taskbar icon
+  choice, and each API account's last balance and 100% amount).
 - `%LOCALAPPDATA%\AgentDock\Icons\`: PNG icon cache.
 - `%LOCALAPPDATA%\AgentDock\TaskbarIcons\`: the chosen taskbar icon, which the pin's shortcut points at.
 

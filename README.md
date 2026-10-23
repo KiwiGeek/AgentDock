@@ -53,6 +53,7 @@ to the same folder, the existing pin and sign-in entry keep working; otherwise u
 | Right-click an agent (or Shift+F10) | **Save as preset** for the current folder (agents that open in a folder), **Settings**, or **Remove from list**. Claude also has **New chat** and **New Cowork session**, ChatGPT and GitHub Copilot **Open without a folder** |
 | Right-click a preset | Rename or remove it |
 | Drag the top edge (the bottom edge if your taskbar is at the top) | Makes the list taller or shorter. Double-click the edge to fit the list again |
+| Drag the right edge | Makes the list wider. Past about 790 DIP each section's rows wrap into two columns, and the drawer opens further right. Double-click the edge to go back to one column |
 | Esc, click elsewhere, or click the taskbar icon again | Closes the flyout |
 
 ### Presets

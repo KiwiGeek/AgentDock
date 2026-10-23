@@ -25,9 +25,14 @@ namespace AgentDock;
 /// </summary>
 public sealed partial class FlyoutWindow : Window
 {
-    /// <summary>The banner plus the list itself (380). Matches ListColumn and FooterContent in the XAML.</summary>
-    private const double ListWidthDip = 412;
+    /// <summary>
+    /// The banner plus one column of rows (380): what ListColumn and FooterContent are in the XAML,
+    /// and the narrowest the list can be dragged to.
+    /// </summary>
+    private const double DefaultListWidthDip = 412;
     private const double BannerWidthDip = 32;
+    /// <summary>A row's width in the narrowest column: 380 less the lists' 4 DIP margin on each side.</summary>
+    private const double ColumnWidthDip = 372;
     /// <summary>How far the window grows when the drawer is open.</summary>
     private const double DrawerWidthDip = 240;
     private const double HoverBackdropOpacity = 0.3;
@@ -63,6 +68,10 @@ public sealed partial class FlyoutWindow : Window
     private string? _pendingStatus;
     private bool _keepOpen;
     private bool _hiddenByDeactivation;
+    /// <summary>The width the user dragged to, before this monitor's work area is taken into account.</summary>
+    private double _requestedListWidthDip = DefaultListWidthDip;
+    /// <summary>The width actually laid out: <see cref="_requestedListWidthDip"/>, fitted to the monitor.</summary>
+    private double _listWidthDip = DefaultListWidthDip;
     private bool _loadingFolders;
     /// <summary>Why agents.json couldn't be read this time, if it couldn't.</summary>
     private string? _settingsError;
@@ -99,7 +108,12 @@ public sealed partial class FlyoutWindow : Window
         };
 
         Activated += OnActivated;
-        Root.Loaded += (_, _) => _rootLoaded.TrySetResult();
+        Root.Loaded += (_, _) =>
+        {
+            // The lists' item panels exist once the tree is loaded, so their column widths can be set.
+            ApplyListWidth(_requestedListWidthDip);
+            _rootLoaded.TrySetResult();
+        };
         // Resizing the height changes how a picture needs to be scaled to cover the flyout.
         Root.SizeChanged += (_, _) =>
         {
@@ -672,6 +686,8 @@ public sealed partial class FlyoutWindow : Window
         (_settings, _settingsError) = _store.LoadSettings();
         _state = _store.LoadState();
         (_presetList, _presetsError) = _store.LoadPresets();
+        _requestedListWidthDip = _state.FlyoutWidth ?? DefaultListWidthDip;
+        ApplyListWidth(_requestedListWidthDip);
         StatusText.Text = _settingsError ?? _presetsError ?? "";
         Autostart.Apply(_settings.StartWithWindows);
 
@@ -795,6 +811,7 @@ public sealed partial class FlyoutWindow : Window
         EmptyText.Visibility = _settings.Agents.Count > 0 && _presets.Count + _cli.Count + _desktop.Count == 0
             ? Visibility.Visible : Visibility.Collapsed;
         UpdateSetupPanel();
+        UpdateRowColumns();
     }
 
     // ---------- Reordering by dragging ----------
@@ -3165,7 +3182,7 @@ public sealed partial class FlyoutWindow : Window
 
         // Always big enough for the list and an open drawer, so sliding never needs a zoom.
         var height = Root.ActualHeight;
-        var scale = Math.Max((ListWidthDip + DrawerWidthDip) / image.PixelWidth, height / image.PixelHeight);
+        var scale = Math.Max((_listWidthDip + DrawerWidthDip) / image.PixelWidth, height / image.PixelHeight);
         var width = image.PixelWidth * scale;
         var imageHeight = image.PixelHeight * scale;
 
@@ -3174,10 +3191,10 @@ public sealed partial class FlyoutWindow : Window
         // of list and drawer together (the drawer is right of the list, or left at negative x). Each
         // only as far as the picture still covers what's on screen. Pinning the open picture's edge to
         // the window's instead left the subject well left of centre (owner's screenshot, 2026-10-19).
-        var closed = Math.Clamp(BannerWidthDip + (ListWidthDip - BannerWidthDip) / 2 - width * BackdropSubjectX,
-            ListWidthDip - width, 0);
+        var closed = Math.Clamp(BannerWidthDip + (_listWidthDip - BannerWidthDip) / 2 - width * BackdropSubjectX,
+            _listWidthDip - width, 0);
         var spanLeft = _drawerSide > 0 ? 0 : -DrawerWidthDip;
-        var spanRight = spanLeft + ListWidthDip + DrawerWidthDip;
+        var spanRight = spanLeft + _listWidthDip + DrawerWidthDip;
         var open = Math.Clamp((spanLeft + spanRight + BannerWidthDip) / 2 - width * BackdropSubjectX,
             spanRight - width, spanLeft);
         var drawer = DrawerDip();
@@ -3251,7 +3268,7 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private void ScheduleDrawerClose()
     {
-        if (_popupsOpen > 0 || (!_drawerOpen && !_state.ShowUsageSummary))
+        if (_popupsOpen > 0 || _widthResizing || (!_drawerOpen && !_state.ShowUsageSummary))
             return;
         if (_drawerCloseTimer is null)
         {
@@ -3417,7 +3434,7 @@ public sealed partial class FlyoutWindow : Window
         var scale = Win32.ScaleFor(monitor);
         var drawerPx = (int)Math.Round(DrawerDip() * scale);
         var borderW = AppWindow.Size.Width - AppWindow.ClientSize.Width;
-        var w = (int)Math.Ceiling(ListWidthDip * scale) + drawerPx + borderW;
+        var w = (int)Math.Ceiling(_listWidthDip * scale) + drawerPx + borderW;
         var x = _drawerSide > 0 || drawerPx == 0 ? _listScreenX : _listScreenX - drawerPx;
         var pos = AppWindow.Position;
         if (pos.X == x && AppWindow.Size.Width == w)
@@ -3453,7 +3470,13 @@ public sealed partial class FlyoutWindow : Window
         // Position the list as its own window, then add the drawer on beside it. The anchor math
         // stays about the list, so opening the drawer doesn't drag the list off the taskbar button.
         var drawerDip = DrawerDip();
-        Root.Measure(new Windows.Foundation.Size(ListWidthDip + drawerDip, double.PositiveInfinity));
+        // A wider list dragged on a bigger monitor is kept for the next time it opens on one.
+        var widthDip = Math.Clamp(_requestedListWidthDip, DefaultListWidthDip,
+            Math.Max(DefaultListWidthDip, (work.Width - 2 * gap) / scale - drawerDip));
+        if (Math.Abs(widthDip - _listWidthDip) > 0.01)
+            ApplyListWidth(widthDip);
+        UpdateRowColumns();
+        Root.Measure(new Windows.Foundation.Size(widthDip + drawerDip, double.PositiveInfinity));
         var workHeightDip = (work.Height - 2 * gap) / scale;
         var fitDip = Root.DesiredSize.Height > 1 ? Root.DesiredSize.Height : AppWindow.ClientSize.Height / scale;
         // The height the user dragged to (the list scrolls if its content is taller); without one,
@@ -3468,7 +3491,7 @@ public sealed partial class FlyoutWindow : Window
         // Window size includes the thin border around the client area.
         var borderW = AppWindow.Size.Width - AppWindow.ClientSize.Width;
         var borderH = AppWindow.Size.Height - AppWindow.ClientSize.Height;
-        var listW = (int)Math.Ceiling(ListWidthDip * scale) + borderW;
+        var listW = (int)Math.Ceiling(_listWidthDip * scale) + borderW;
         var h = (int)Math.Ceiling(heightDip * scale) + borderH;
 
         int x, y;
@@ -3492,6 +3515,115 @@ public sealed partial class FlyoutWindow : Window
             x -= drawerPx;
 
         AppWindow.MoveAndResize(new RectInt32(x, y, w, h));
+    }
+
+    // ---------- Resizing the width ----------
+
+    /// <summary>
+    /// Lays the list out at a width: the two XAML columns, the footer, and the rows' column count.
+    /// The drawer keeps its own width and moves with the list's edge, so a wider list pushes it
+    /// further out rather than making it wider.
+    /// </summary>
+    private void ApplyListWidth(double widthDip)
+    {
+        _listWidthDip = widthDip;
+        ListColumn.Width = widthDip;
+        FooterContent.Width = widthDip;
+        UpdateRowColumns();
+        LayoutBackdrop();
+    }
+
+    /// <summary>
+    /// How many columns the rows fill: two once each would still get a row's worth of width, one
+    /// otherwise. They share the extra width instead of leaving a gap, so a very wide list gives
+    /// names and subtitles more room.
+    /// </summary>
+    private void UpdateRowColumns()
+    {
+        var content = _listWidthDip - BannerWidthDip - 8; // the lists' Margin="4,0"
+        var columns = content >= ColumnWidthDip * 2 ? 2 : 1;
+        var itemWidth = Math.Floor(content / columns);
+        foreach (var list in Lists)
+            if (list.ItemsPanelRoot is ItemsWrapGrid panel)
+                panel.ItemWidth = itemWidth;
+    }
+
+    private bool _widthResizing;
+    private int _widthResizeStartCursorX;
+    private RectInt32 _widthResizeStart;
+
+    private void WidthGrip_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!WidthGrip.CapturePointer(e.Pointer) || !Win32.GetCursorPos(out var cursor))
+            return;
+        // Screen coordinates throughout: the grip moves with the window while it's dragged.
+        _widthResizeStartCursorX = cursor.X;
+        _widthResizeStart = new RectInt32(AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
+        _widthResizing = true;
+        // The pointer left the drawer to reach the grip: keep it open while it changes underneath.
+        _drawerCloseTimer?.Stop();
+        e.Handled = true;
+    }
+
+    private void WidthGrip_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_widthResizing || !Win32.GetCursorPos(out var cursor) || Win32.MonitorInfoAt(_anchor, out var monitor) is not { } info)
+            return;
+
+        var scale = Win32.ScaleFor(monitor);
+        var work = info.rcWork;
+        var gap = (int)Math.Round(12 * scale);
+        var borderW = AppWindow.Size.Width - AppWindow.ClientSize.Width;
+        var drawerPx = (int)Math.Round(DrawerDip() * scale);
+        var minW = (int)Math.Ceiling(DefaultListWidthDip * scale) + drawerPx + borderW;
+        var maxW = Math.Max(minW, work.Right - gap - _widthResizeStart.X);
+        var w = Math.Clamp(_widthResizeStart.Width + (cursor.X - _widthResizeStartCursorX), minW, maxW);
+        // The window's left edge stays put, so the list's right edge (and the drawer's) follows the pointer.
+        var widthDip = (w - drawerPx - borderW) / scale;
+        if (Math.Abs(widthDip - _requestedListWidthDip) < 0.5)
+            return;
+        _requestedListWidthDip = widthDip;
+        ApplyListWidth(widthDip);
+        ApplyWindowForDrawer();
+        e.Handled = true;
+    }
+
+    private void WidthGrip_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        WidthGrip.ReleasePointerCapture(e.Pointer);
+        EndWidthResize();
+    }
+
+    private void WidthGrip_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => EndWidthResize();
+
+    /// <summary>
+    /// Remembers the width, then settles: a second column may have made the list shorter, and the
+    /// list's left edge returns to its place over the taskbar button's anchor.
+    /// </summary>
+    private void EndWidthResize()
+    {
+        if (!_widthResizing)
+            return;
+        _widthResizing = false;
+        if (Win32.MonitorInfoAt(_anchor, out var monitor) is not null)
+        {
+            _state.FlyoutWidth = Math.Round(_listWidthDip);
+            _store.SaveState(_state);
+        }
+        // The pointer is still over the grip, so nothing else reports leaving the drawer.
+        if (_drawerOpen && !PointerOverRowOrDrawer())
+            ScheduleDrawerClose();
+        PlaceWindow();
+    }
+
+    private void WidthGrip_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        _state.FlyoutWidth = null;
+        _store.SaveState(_state);
+        _requestedListWidthDip = DefaultListWidthDip;
+        ApplyListWidth(DefaultListWidthDip);
+        PlaceWindow();
+        e.Handled = true;
     }
 
     // ---------- Resizing the height ----------

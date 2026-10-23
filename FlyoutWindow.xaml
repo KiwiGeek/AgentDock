@@ -206,7 +206,14 @@
                           ItemTemplate="{StaticResource AgentTemplate}"
                           ScrollViewer.VerticalScrollMode="Disabled"
                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                          AutomationProperties.Name="Presets" />
+                          AutomationProperties.Name="Presets">
+                    <!-- Rows fill left to right and wrap: one column until the list is wide enough for two (UpdateRowColumns). -->
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsWrapGrid Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
+                </ListView>
 
                 <TextBlock x:Name="CliHeader" Text="Command line" Style="{StaticResource SectionHeaderStyle}" />
                 <ListView x:Name="CliList" Margin="4,0" SelectionMode="None" IsItemClickEnabled="True"
@@ -216,7 +223,13 @@
                           ItemTemplate="{StaticResource AgentTemplate}"
                           ScrollViewer.VerticalScrollMode="Disabled"
                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                          AutomationProperties.Name="Command line agents" />
+                          AutomationProperties.Name="Command line agents">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsWrapGrid Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
+                </ListView>
 
                 <TextBlock x:Name="DesktopHeader" Text="Desktop apps" Style="{StaticResource SectionHeaderStyle}" />
                 <ListView x:Name="DesktopList" Margin="4,0" SelectionMode="None" IsItemClickEnabled="True"
@@ -226,7 +239,13 @@
                           ItemTemplate="{StaticResource AgentTemplate}"
                           ScrollViewer.VerticalScrollMode="Disabled"
                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                          AutomationProperties.Name="Desktop apps" />
+                          AutomationProperties.Name="Desktop apps">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <ItemsWrapGrid Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
+                </ListView>
 
                 <TextBlock x:Name="EmptyText" Visibility="Collapsed" Margin="16,12" TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -407,5 +426,16 @@
                           PointerReleased="HeightGrip_PointerReleased" PointerCaptureLost="HeightGrip_PointerCaptureLost"
                           DoubleTapped="HeightGrip_DoubleTapped"
                           ToolTipService.ToolTip="Drag to resize. Double-click to fit." />
+
+        <!--
+            The same for the width, down the window's right edge (the drawer's outer edge while it's
+            open): widening the list wraps each section's rows into two columns, and the drawer comes
+            out further to the right. Last, so it's on top of everything else.
+        -->
+        <local:WidthResizeGrip x:Name="WidthGrip" Grid.RowSpan="2" Width="6" HorizontalAlignment="Right"
+                               PointerPressed="WidthGrip_PointerPressed" PointerMoved="WidthGrip_PointerMoved"
+                               PointerReleased="WidthGrip_PointerReleased" PointerCaptureLost="WidthGrip_PointerCaptureLost"
+                               DoubleTapped="WidthGrip_DoubleTapped"
+                               ToolTipService.ToolTip="Drag to resize. Double-click to fit." />
     </Grid>
 </Window>
