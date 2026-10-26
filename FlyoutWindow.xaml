@@ -210,7 +210,7 @@
                     <!-- Rows fill left to right and wrap: one column until the list is wide enough for two (UpdateRowColumns). -->
                     <ListView.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <ItemsWrapGrid Orientation="Horizontal" />
+                            <ItemsWrapGrid Orientation="Horizontal" Loaded="RowsPanel_Loaded" />
                         </ItemsPanelTemplate>
                     </ListView.ItemsPanel>
                 </ListView>
@@ -226,7 +226,7 @@
                           AutomationProperties.Name="Command line agents">
                     <ListView.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <ItemsWrapGrid Orientation="Horizontal" />
+                            <ItemsWrapGrid Orientation="Horizontal" Loaded="RowsPanel_Loaded" />
                         </ItemsPanelTemplate>
                     </ListView.ItemsPanel>
                 </ListView>
@@ -242,7 +242,7 @@
                           AutomationProperties.Name="Desktop apps">
                     <ListView.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <ItemsWrapGrid Orientation="Horizontal" />
+                            <ItemsWrapGrid Orientation="Horizontal" Loaded="RowsPanel_Loaded" />
                         </ItemsPanelTemplate>
                     </ListView.ItemsPanel>
                 </ListView>

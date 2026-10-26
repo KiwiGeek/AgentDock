@@ -3545,13 +3545,26 @@ public sealed partial class FlyoutWindow : Window
     /// </summary>
     private void UpdateRowColumns()
     {
-        var content = _listWidthDip - BannerWidthDip - 8; // the lists' Margin="4,0"
-        var columns = content >= ColumnWidthDip * 2 ? 2 : 1;
-        var itemWidth = Math.Floor(content / columns);
+        var itemWidth = RowItemWidth();
         foreach (var list in Lists)
             if (list.ItemsPanelRoot is ItemsWrapGrid panel)
                 panel.ItemWidth = itemWidth;
     }
+
+    private double RowItemWidth()
+    {
+        var content = _listWidthDip - BannerWidthDip - 8; // the lists' Margin="4,0"
+        var columns = content >= ColumnWidthDip * 2 ? 2 : 1;
+        return Math.Floor(content / columns);
+    }
+
+    /// <summary>
+    /// A list's panel only exists once the list is first laid out while visible, which can be after
+    /// <see cref="UpdateRowColumns"/> last ran. Without a width it sizes every row to the first one's
+    /// content, which packs narrow, cut-off rows several to a line.
+    /// </summary>
+    private void RowsPanel_Loaded(object sender, RoutedEventArgs e) =>
+        ((ItemsWrapGrid)sender).ItemWidth = RowItemWidth();
 
     private bool _widthResizing;
     private int _widthResizeStartCursorX;
