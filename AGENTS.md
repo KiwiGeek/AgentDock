@@ -799,6 +799,18 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
   - `github-copilot-desktop` (2026-10-19): the installed app's own `icons\icon.png` (512 px), scaled to 256 px.
   - `antigravity`: antigravity.google/assets/image/antigravity-logo.png (276 px, transparent), the
     site's largest icon.
+- **Recoloured 2026-10-26, at the owner's request:** most icons were black, white or grey, so the
+  list was hard to scan. The owner chose to drop each tile and give the bare mark one colour (or a
+  gradient), taken from the brand or from that agent's hover picture. Each is a 256 px transparent PNG.
+  - Same mark, new colour: `chatgpt-desktop` mint `#10A37F`, `copilot` cyan `#22D3EE`,
+    `github-copilot-desktop` purple `#8957E5`→`#C084FC`, `cursor` blue→indigo `#93C5FD`→`#6366F1`
+    and `cursor-cli` green `#86EFAC`→`#22C55E` (the cube's shading kept, so the two now differ),
+    `freebuff` lime `#D4F53C`, `goose` gold `#F5A524`, `grok` red `#FF5A5A`→`#C0132F`,
+    `perplexity` teal `#20B8CD`, `opencode` coral `#FF6B8B`.
+  - New marks: `codex` is `>_` (Cascadia Code, `#5EA2FF`→`#A66BFF`), because it shared ChatGPT's knot
+    and its hover picture shows that prompt. `amp` is a heavy "amp" (Segoe UI Black, orange), because the
+    thin wordmark vanished at 28 px. `hermes` is a gold caduceus (U+2624, Segoe UI Symbol) from its
+    hover picture, replacing the 48 px portrait. The sources above describe the originals.
 
 #### Built: presets (an agent pinned to a folder, for work that repeats)
 
