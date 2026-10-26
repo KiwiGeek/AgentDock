@@ -114,6 +114,7 @@
                     highlighted agent's colour (SetBannerColors). The text reads bottom to top; it's rotated and
                     placed in code (LayoutBanner), since WinUI has no layout transform. A Canvas, so the text's
                     length doesn't affect the flyout's height. The fill is translucent; the text isn't.
+                    Debug builds add " DEV" to the text (constructor).
                 -->
                 <Grid x:Name="Banner" SizeChanged="Banner_SizeChanged" AutomationProperties.AccessibilityView="Raw">
                     <Border Opacity="0.7">

@@ -81,6 +81,14 @@ public sealed partial class FlyoutWindow : Window
         _store = store;
         InitializeComponent();
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+#if DEBUG
+        // A Debug build runs beside the installed copy (AppIdentity), so the banner says which this is.
+        BannerText.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run
+        {
+            Text = " DEV",
+            FontWeight = Microsoft.UI.Text.FontWeights.Black
+        });
+#endif
 
         // Borderless, fixed-size, always on top, and absent from the taskbar and Alt+Tab.
         var presenter = OverlappedPresenter.Create();
