@@ -1179,17 +1179,37 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Reply:** `freebucks.daily` with `limit`, `spent`, `remaining` and `resetAt` (ISO 8601), and
   `subscription.tierId` for the plan. Five freebucks are one hour (the CLI's own formatter says so);
   `Parse` turns them into hours. `status: "none"` still returns the daily block.
+  Also `freeWindows` (`dayUsed`/`dayLimit` 5, `weekUsed`/`weekLimit` 14, `monthUsed`/`monthLimit` 40,
+  with `dayResetAt` and `monthResetAt`): the free tier's **sessions**, Freebuff's other limit, which
+  the paid tiers add to (3, 7 and 11 a day for Starter, Plus, Pro in `subscription.tiers`). The week
+  is a rolling seven days, so it has no reset field. `freebucks.prices` is freebucks an **hour** for
+  each model (divide by five for the multiplier; the 150 freebucks a day divide by it into the
+  per-model hours on freebuff.com/plans), `untimedModelIds` are the models that cost no session at
+  full access, and `planRequiredModelIds` need a paid plan. `rateLimitsByModel` gives each premium
+  model 5 sessions a Pacific day, the same 5 the day window counts, so only the window is shown.
 - **Drawer:** "Freebuff usage", the plan ("Free plan"), one **Daily** bar and
   "30 of 30 hours · resets Sat 0:00" (`PlanUsage.SevenDay` for the percentage and
-  `PlanUsage.Allowance` for the hours); `showSession: false`, `weekLabel: "Daily"`. The overview row
-  uses the same counts and the suggestion treats it as a **day** window. Saved to
-  `freebuff-usage.json` (or a hashed file for another `FREEBUFF_CONFIG_DIR`), at most every 5
-  minutes, only on hover and the overview.
+  `PlanUsage.Allowance` for the hours); `showSession: false`, `weekLabel: "Daily"`. Under it, the
+  three session windows from `freeWindows` (`ModelWeeks` with `UsageWindow.Used`/`Limit`, which
+  `ShowWindow` prints as "0 of 5" instead of a percentage): "Free sessions · day" (resets at the
+  Pacific midnight), "· week" (no reset, it's rolling) and "· month". The overview row uses the same
+  hours and the suggestion treats it as a **day** window. Saved to `freebuff-usage.json` (or a
+  hashed file for another `FREEBUFF_CONFIG_DIR`), at most every 5 minutes, only on hover and the
+  overview.
 - Verified 2026-10-23 through the real `FreebuffUsage.FetchAsync` (throwaway console project,
   deleted): 30 of 30 hours, resets 2026-10-24 04:00 UTC, free plan; and through UI Automation the
   Flyout row, the drawer ("Freebuff usage", "Daily", "30 of 30 hours · resets Sat 0:00") and the
-  overview row. **Not yet verified:** an actual launch and a recent folder; there is no hover
-  picture.
+  overview row. The session windows were verified the same way after they were added: "Free sessions
+  · day" 0 of 5 resets Sat 3:00, "· week" 0 of 14, "· month" 0 of 40 resets Nov 1. **Not yet
+  verified:** an actual launch and a recent folder; there is no hover picture.
+- **Why the hours can sit still** (owner asked 2026-10-23, after an hour of chat left it at 30 of 30):
+  the service really reported `spent: 0` and `dayUsed: 0`, both live and in the saved answer. Freebuff
+  measures usage in hours per model where one hour of its cheapest model costs 5 freebucks, so
+  DeepSeek V4.1 Flash (15) is 3x and Gemini 4 Argon (250) is 50x; its GitHub README says GLM 5.3
+  Flash, DeepSeek V4.1 Flash, MiMo v2.6 Flash Fast, Solar Mini 4 and Solar Pro 4 are unmetered at
+  full access and cost no session at all, which is what the owner's account showed. DeepSeek V4.1
+  Flash is the model that chat ran on. Don't treat the hours as a clock that runs while Freebuff is
+  open.
 
 #### Kiro usage (`Services/KiroUsage.cs`; 2026-10-21)
 

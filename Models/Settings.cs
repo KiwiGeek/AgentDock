@@ -236,6 +236,14 @@ public sealed class UsageWindow
     public double UsedPercentage { get; set; }
     /// <summary>Unix seconds.</summary>
     public long ResetsAt { get; set; }
+
+    /// <summary>
+    /// For a window that counts units rather than a percentage (Freebuff's free sessions), how many
+    /// are used and how many it allows. The bar still follows <see cref="UsedPercentage"/>.
+    /// </summary>
+    public double? Used { get; set; }
+    /// <summary>The units <see cref="Used"/> is counted against.</summary>
+    public double? Limit { get; set; }
 }
 
 /// <summary>

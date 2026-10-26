@@ -293,6 +293,14 @@ never saves or shows the token. Sign in once with `freebuff login`. It checks at
 minutes, only while you're hovering. That endpoint isn't published, so it can stop working; the
 drawer then keeps the last numbers it got and says why.
 
+Under the hours are the free tier's **sessions**: how many of the day's 5, the week's 14 and the
+month's 40 are used. Sessions are Freebuff's other limit, and each paid plan adds more of them
+alongside its hours. How fast the hours go depends on the model: Freebuff prices each one in hours
+per hour, and its model list calls GLM 5.3 Flash, DeepSeek V4.1 Flash, MiMo v2.6 Flash Fast, Solar
+Mini 4 and Solar Pro 4 unmetered at full access, so they cost no hours. Gemini 3.8 Flash and Muse
+Spark 1.3 need a paid plan, and GPT-6.1 Sol and Gemini 4 Argon (outside the US) are one session a
+day.
+
 ### Cursor usage
 
 Hovering over Cursor CLI or the Cursor desktop app (one account, so both show the same numbers)

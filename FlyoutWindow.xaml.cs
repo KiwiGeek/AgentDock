@@ -2903,11 +2903,15 @@ public sealed partial class FlyoutWindow : Window
             return;
         }
 
+        // A window that counts sessions (Freebuff's free ones) reads "2 of 5" rather than a percentage.
+        var counts = window is { Used: { } countUsed, Limit: { } countLimit }
+            ? $"{countUsed:0.#} of {countLimit:0.#}"
+            : null;
         var resetsAt = DateTimeOffset.FromUnixTimeSeconds(window.ResetsAt);
         if (window.ResetsAt > 0 && resetsAt <= now)
         {
             bar.Value = 0;
-            text.Text = "0% · reset";
+            text.Text = counts is null ? "0% · reset" : $"{counts} · reset";
             return;
         }
 
@@ -2916,7 +2920,8 @@ public sealed partial class FlyoutWindow : Window
         // Windows' own warning and error colours for the bar.
         bar.ShowError = used >= 90;
         bar.ShowPaused = used is >= 75 and < 90;
-        text.Text = window.ResetsAt > 0 ? $"{Math.Round(used)}% · resets {ResetTime(resetsAt)}" : $"{Math.Round(used)}%";
+        var reset = window.ResetsAt > 0 ? $" · resets {ResetTime(resetsAt)}" : "";
+        text.Text = counts is null ? $"{Math.Round(used)}%{reset}" : counts + reset;
     }
 
     private static string ResetTime(DateTimeOffset when)

@@ -176,7 +176,8 @@ public static partial class FreebuffUsage
                     Limit = limit.Value / FreebucksPerHour,
                     Unit = "hours",
                     ResetsAt = resets
-                }
+                },
+                ModelWeeks = SessionWindows(root)
             };
             return new UsageFetch(usage, null);
         }
@@ -189,8 +190,40 @@ public static partial class FreebuffUsage
     private static double? Number(JsonElement parent, string name) =>
         parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
 
-    private static long ResetAt(JsonElement daily) =>
-        daily.TryGetProperty("resetAt", out var value) && value.ValueKind == JsonValueKind.String
+    /// <summary>
+    /// The free tier's session windows (day, week, month): how many of the account's free sessions
+    /// are used in each span. The week's is a rolling seven days, so the service gives it no reset
+    /// time. Null when the reply has none.
+    /// </summary>
+    private static List<UsageWindow>? SessionWindows(JsonElement root)
+    {
+        if (!root.TryGetProperty("freeWindows", out var free) || free.ValueKind != JsonValueKind.Object)
+            return null;
+        var windows = new List<UsageWindow>();
+        AddSessionWindow(windows, free, "day", "dayUsed", "dayLimit", "dayResetAt");
+        AddSessionWindow(windows, free, "week", "weekUsed", "weekLimit", null);
+        AddSessionWindow(windows, free, "month", "monthUsed", "monthLimit", "monthResetAt");
+        return windows.Count > 0 ? windows : null;
+    }
+
+    private static void AddSessionWindow(List<UsageWindow> windows, JsonElement free, string span,
+        string usedName, string limitName, string? resetName)
+    {
+        var limit = Number(free, limitName);
+        if (Number(free, usedName) is not { } used || limit is not > 0)
+            return;
+        windows.Add(new UsageWindow
+        {
+            Title = $"Free sessions · {span}",
+            Used = used,
+            Limit = limit.Value,
+            UsedPercentage = Math.Clamp(used * 100 / limit.Value, 0, 100),
+            ResetsAt = resetName is null ? 0 : ResetAt(free, resetName)
+        });
+    }
+
+    private static long ResetAt(JsonElement parent, string name = "resetAt") =>
+        parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
         && DateTimeOffset.TryParse(value.GetString(), CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var at)
             ? at.ToUnixTimeSeconds()
