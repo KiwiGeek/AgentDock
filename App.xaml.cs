@@ -56,6 +56,7 @@ public partial class App : Application
 
         await _flyout!.PrepareAsync();
         Handle(_initial);
+        _ = Updates.CheckPeriodicallyAsync(_shutdown.Token);
     }
 
     private void Handle(DockCommand command)

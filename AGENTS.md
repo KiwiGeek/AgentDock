@@ -21,7 +21,7 @@ shows a usage overview of every agent with a suggestion of which to use.
   Visual Studio file).
 - The owner isn't confident with release workflows: any change to how releases work goes, step by
   step, into `RELEASING.md`, and when asking them to push or tag, give the exact commands.
-- Bump `<Version>` in the `.csproj` only as part of a release.
+- Don't bump `<Version>` in the `.csproj`: a release takes its version from the tag (`RELEASING.md`).
 
 **Working on the code**
 
@@ -175,8 +175,14 @@ Details per agent are under Reference; what's still to review per agent is in `t
 
 ## Not done, across the app
 
-- **CI and releases:** `.github/workflows/build.yml` and `RELEASING.md` are referenced but were
-  never committed.
+- **Releases and updates (Velopack, 2026-10-26):** `.github/workflows/release.yml` and
+  `RELEASING.md` exist, but no tag has been pushed yet, so the workflow (above all the
+  `windows-11-arm` job) has never run. Verified locally: the Native AOT publish has no warnings with
+  Velopack in, `--quit` still exits in about 40 ms, and `vpk pack` builds Setup, Portable and the
+  full package (about 102 MB each). **Not yet verified:** installing with Setup, running from
+  `current\`, pinning that copy, an update being downloaded and applied, uninstalling. Still to do:
+  code signing, winget, a CI build on push/PR, and maybe dropping the Windows App SDK's unused AI
+  runtime (`onnxruntime.dll`, `DirectML.dll`, about 38 MB) from the package.
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
   overview row; the new Cursor, Grok and Copilot drawers; drag to reorder (including with the
   two-column list); the look of the width grip and of two columns; the published Native AOT build.
@@ -236,7 +242,7 @@ Repo: `KiwiGeek/AgentDock` on GitHub. The `.csproj` is at the repo root (CI depe
 | C# | Type-checks with zero warnings, including Native AOT and CsWinRT analyzers |
 | XAML | Compiled on the owner's machine after one fix (a field name clashed with XAML-generated `_contentLoaded`). Confirm with a clean build |
 | Runtime | Partly run (2026-10-15). See "Verify first" for what passed |
-| CI | **Missing.** `.github/workflows/build.yml` and `RELEASING.md` are referenced here but were never committed; neither is in git history |
+| CI | Release workflow (`.github/workflows/release.yml`) written 2026-10-26, not yet run. No build on push/PR |
 
 History: first built as WPF, then rewritten in WinUI 3 at the owner's request for a more native look.
 Data files (`agents.json`, `state.json`, icon cache) are compatible across both versions.
@@ -287,7 +293,8 @@ dotnet publish -c Release -r win-x64 -o C:\Tools\AgentDock   # Native AOT
   runs per session; a Debug run otherwise hands off to the installed copy and exits silently.
 - Native AOT needs Visual Studio's "Desktop development with C++" workload (MSVC linker).
 - Debug builds don't write the sign-in Run key (`#if DEBUG` in `Autostart.cs`).
-- Releases: push a `v*` tag; `.github/workflows/build.yml` builds and attaches the zip. See `RELEASING.md`.
+- Releases: push a `v*` tag; `.github/workflows/release.yml` builds, packs with Velopack and
+  publishes the GitHub release. See `RELEASING.md`.
 
 ### Architecture
 
@@ -678,6 +685,31 @@ there degrade to a missing icon or entry, never an error.
 
 **Unpackaged, self-contained Windows App SDK.** No MSIX, nothing for the user to install.
 
+**Installing and updating: Velopack** (`Services/Updates.cs`; owner's choice, 2026-10-26, over a
+home-made updater, MSIX or Inno Setup). The one NuGet package besides the Windows App SDK, because
+writing and maintaining an updater isn't worth it. How it fits:
+- **Pack id `KiwiGeek.AgentDock`**, so it installs to `%LOCALAPPDATA%\KiwiGeek.AgentDock` and not
+  `%LOCALAPPDATA%\AgentDock`, which holds our data (icon cache, taskbar icons, usage files) and which
+  uninstalling would delete. It also matches the winget id we'd use.
+- **The exe's path never changes** (`...\current\AgentDock.exe`; Velopack swaps the folder's
+  contents), which the pin, the Run key, the jump list, Terminal profiles and Claude's status line
+  all depend on.
+- **`Program.Main`:** `Updates.RunHooks()` runs after the status-line check (that path stays as
+  fast as before) and before `DockCommand.FromArgs`, since the hooks pass their own arguments. The
+  uninstall hook removes the Run key.
+- **Automatic apply on startup is off.** It would also fire in a click's hand-off copy and kill the
+  resident one mid-click. Instead the copy about to become resident calls `Updates.ApplyPending`
+  (after taking the mutex, before WinUI), which applies a downloaded update and restarts with the
+  same arguments.
+- **Checking:** the resident copy checks a minute after start, then every 6 hours, and only
+  downloads. So an update lands at the next start (sign-in, or Quit and click). There's no
+  "restart to update" in the UI yet.
+- **Channels:** one per architecture (`win-x64`, `win-arm64`); a copy keeps the one it was
+  installed from. `GithubSource` ignores pre-releases.
+- A Debug build or a portable copy has `IsInstalled` false, and all of this does nothing.
+- **Native AOT publish outside a VS prompt** needs `vswhere.exe` on PATH
+  (`%ProgramFiles(x86)%\Microsoft Visual Studio\Installer`), or the link step fails with error 123.
+
 ### Files
 
 | Path | Purpose |
@@ -703,6 +735,7 @@ there degrade to a missing icon or entry, never an error.
 | `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: open the launch folder; `agentdock-waifu`: serve her PNG and soften theme fills when Waifu backgrounds is on) |
 | `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
 | `Services/Autostart.cs` | HKCU Run entry |
+| `Services/Updates.cs` | Velopack: install/uninstall hooks, applying a downloaded update at start, checking GitHub |
 | `Services/JumpList.cs` | Taskbar jump list |
 | `Interop/Win32.cs` | Win32 P/Invoke and structs |
 | `Interop/ShellCom.cs` | Shell COM interfaces, GUIDs, constants |
@@ -727,7 +760,7 @@ there degrade to a missing icon or entry, never an error.
 | `Models/TaskbarIconChoice.cs` | An icon in the settings page's taskbar icon picker |
 | `Assets/AppIcons/` | Taskbar icon sources (`appicon-<id>.png`, 1024 px, not shipped) and the built `ico/<id>.ico` (compiled in) |
 | `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
-| `.github/workflows/build.yml` | CI on push/PR; release on `v*` tag (win-x64 only) |
+| `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
 | `AGENTS.md` | This handoff: the owner's rules, lessons learned, which agents are done, and the reference |
 | `tasks.md` | Agreed work not yet started (agents to review, API-credit profiles, custom groups) |
@@ -751,9 +784,9 @@ there degrade to a missing icon or entry, never an error.
 - Match the existing style: file-scoped namespaces, nullable enabled, XML doc comments that
   explain *why* rather than restating the code.
 - UI text: sentence case, plain wording, no exclamation marks.
-- Don't add NuGet packages without a clear reason; keep the dependency list to the Windows App SDK
-  and SDK build tools.
-- Bump `<Version>` in the `.csproj` only as part of a release (see `RELEASING.md`).
+- Don't add NuGet packages without a clear reason; keep the dependency list to the Windows App SDK,
+  SDK build tools and Velopack.
+- The version comes from the release tag; don't bump `<Version>` in the `.csproj` (see `RELEASING.md`).
 - When behaviour changes, update `README.md` and this file in the same commit.
 
 ### Planned work (agreed with the owner 2026-10-15)

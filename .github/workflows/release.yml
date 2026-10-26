@@ -1,0 +1,111 @@
+# Builds and publishes a release when a version tag is pushed (v2.1.0, or v2.1.0-beta.1 for a
+# pre-release). See RELEASING.md. The version comes from the tag; the .csproj's <Version> isn't used.
+#
+# Each architecture is its own Velopack channel (win-x64, win-arm64). An installed copy keeps the
+# channel it was installed from, and finds its updates in this repo's GitHub releases.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  VPK_VERSION: 1.2.161   # keep in step with the Velopack package in AgentDock.csproj
+  REPO_URL: https://github.com/${{ github.repository }}
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            runner: windows-latest
+          - rid: win-arm64
+            runner: windows-11-arm   # native ARM64, so Native AOT doesn't need to cross-compile
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Version from the tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "pre=$($version.Contains('-'))".ToLower() >> $env:GITHUB_OUTPUT
+
+      - name: Publish (Native AOT)
+        shell: pwsh
+        run: |
+          # The AOT linker looks for vswhere.exe on PATH.
+          $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          dotnet publish AgentDock.csproj -c Release -r ${{ matrix.rid }} -o publish `
+            -p:Version=${{ steps.version.outputs.version }} -nologo
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      # The previous release's full package, so vpk can build a delta from it. None the first time.
+      - name: Download the previous release
+        shell: pwsh
+        run: |
+          $pre = if ('${{ steps.version.outputs.pre }}' -eq 'true') { '--pre' } else { $null }
+          vpk download github --repoUrl $env:REPO_URL --token ${{ secrets.GITHUB_TOKEN }} `
+            --channel ${{ matrix.rid }} -o releases $pre
+          # Without it the release just has no delta; everyone downloads the full package.
+          if ($LASTEXITCODE) { Write-Warning "No previous release to build a delta from."; exit 0 }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          vpk pack --packId KiwiGeek.AgentDock --packVersion ${{ steps.version.outputs.version }} `
+            --packTitle "Agent Dock" --packAuthors KiwiGeek --packDir publish --mainExe AgentDock.exe `
+            --icon Assets\AgentDock.ico --runtime ${{ matrix.rid }} --channel ${{ matrix.rid }} `
+            --shortcuts StartMenuRoot -o releases
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: releases-${{ matrix.rid }}
+          path: releases
+
+  release:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: releases-*
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
+
+      # One release holding both channels: the first upload creates it, the second adds to it. Each
+      # channel has its own feed file, so x64 copies can update before the ARM64 files are in.
+      - name: Upload to the GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $pre = if ($tag.Contains('-')) { '--pre' } else { $null }
+          foreach ($rid in 'win-x64', 'win-arm64') {
+            vpk upload github --repoUrl $env:REPO_URL --token $env:GH_TOKEN --channel $rid `
+              -o "releases-$rid" --tag $tag --releaseName "Agent Dock $tag" --publish --merge $pre
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+          # GitHub's own notes: the commits and pull requests since the previous tag.
+          $notes = gh api "repos/${{ github.repository }}/releases/generate-notes" -f tag_name=$tag --jq .body
+          gh release edit $tag --notes "$notes"

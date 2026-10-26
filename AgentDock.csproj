@@ -50,6 +50,8 @@
     -->
     <EmbeddedResource Include="Assets\AppIcons\ico\*.ico" LogicalName="AppIcons.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\AgentDock.ico" LogicalName="AppIcons.default.ico" />
+    <!-- Also loose next to the exe: the pin prompt and settings window load it by path for their window icon. -->
+    <Content Include="Assets\AgentDock.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Remove="Assets\AppIcons\**" />
     <None Remove="Assets\AppIcons\**" />
   </ItemGroup>
@@ -57,6 +59,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
 
   <!--

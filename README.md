@@ -8,6 +8,17 @@ instead, with a Stop button on its row). Desktop agents just launch.
 Right-clicking the taskbar icon gives the same list as a jump list, which launches straight into
 the last folder you used without opening the flyout.
 
+## Install
+
+Download `KiwiGeek.AgentDock-win-x64-Setup.exe` (or `-win-arm64-` on an ARM PC) from the latest
+[release](https://github.com/KiwiGeek/AgentDock/releases/latest) and run it. It installs for you
+only, without an admin prompt, and adds Agent Dock to the Start menu. Then pin it (see below).
+
+Agent Dock updates itself: it checks GitHub a few times a day, downloads a new version in the
+background, and switches to it the next time it starts. Uninstall it from **Settings → Apps**.
+
+The rest of this section is for building it yourself.
+
 ## Requirements
 
 - Windows 11

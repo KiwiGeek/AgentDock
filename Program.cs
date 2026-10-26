@@ -24,6 +24,9 @@ internal static class Program
         if (args.Length > 0 && args[0].Equals(ClaudeStatusLine.Argument, StringComparison.OrdinalIgnoreCase))
             return ClaudeStatusLine.Run();
 
+        // Velopack's install/update/uninstall hooks; they exit here.
+        Updates.RunHooks();
+
         var command = DockCommand.FromArgs(args);
 
         using var mutex = new Mutex(initiallyOwned: true, ResidentMutexName, out var isFirstInstance);
@@ -42,6 +45,9 @@ internal static class Program
 
         if (command.Kind == DockCommandKind.Quit)
             return 0; // Nothing running, nothing to quit.
+
+        // Nothing else is running now, so a downloaded update can replace the files. Restarts if it does.
+        Updates.ApplyPending(args);
 
         RunResident(command);
         GC.KeepAlive(mutex);
