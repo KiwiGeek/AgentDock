@@ -27,9 +27,9 @@ jobs:
             runner: windows-11-arm   # native ARM64, so Native AOT doesn't need to cross-compile
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -70,7 +70,7 @@ jobs:
             --icon Assets\AgentDock.ico --runtime ${{ matrix.rid }} --channel ${{ matrix.rid }} `
             --shortcuts StartMenuRoot -o releases
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: releases-${{ matrix.rid }}
           path: releases
@@ -79,13 +79,13 @@ jobs:
     needs: build
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: releases-*
 
@@ -107,5 +107,6 @@ jobs:
             if ($LASTEXITCODE) { exit $LASTEXITCODE }
           }
           # GitHub's own notes: the commits and pull requests since the previous tag.
-          $notes = gh api "repos/${{ github.repository }}/releases/generate-notes" -f tag_name=$tag --jq .body
-          gh release edit $tag --notes "$notes"
+          # Through a file: PowerShell would join the note's lines with spaces if passed as an argument.
+          gh api "repos/${{ github.repository }}/releases/generate-notes" -f tag_name=$tag --jq .body > notes.md
+          gh release edit $tag --notes-file notes.md

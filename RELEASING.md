@@ -30,7 +30,7 @@ release. Installed copies find it there and update themselves.
    git push origin v2.1.0
    ```
 
-4. Watch it build: **Actions** tab on GitHub → **Release**. It takes about 10–15 minutes. When it
+4. Watch it build: **Actions** tab on GitHub → **Release**. It takes about 6 minutes. When it
    finishes, the release is under **Releases**, with notes listing the changes since the last tag.
 
 You don't edit `<Version>` in `AgentDock.csproj`; the version comes from the tag.
@@ -45,7 +45,10 @@ For each architecture (`win-x64`, `win-arm64`):
 | `KiwiGeek.AgentDock-win-x64-Portable.zip` | Runs from any folder without installing (doesn't update itself). |
 | `KiwiGeek.AgentDock-2.1.0-win-x64-full.nupkg` | The whole app, for updates from older versions. |
 | `KiwiGeek.AgentDock-2.1.0-win-x64-delta.nupkg` | Only what changed since the previous release (not on the first one). |
-| `releases.win-x64.json`, `RELEASES-win-x64`, `assets.win-x64.json` | The update feed installed copies read. |
+| `releases.win-x64.json` | The update feed installed copies read. |
+
+Each file is about 100 MB except the delta and the feed. v1.0.0 (2026-10-26), the first release,
+took about 6 minutes from tag to published.
 
 ## How updates reach people
 

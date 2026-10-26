@@ -175,14 +175,17 @@ Details per agent are under Reference; what's still to review per agent is in `t
 
 ## Not done, across the app
 
-- **Releases and updates (Velopack, 2026-10-26):** `.github/workflows/release.yml` and
-  `RELEASING.md` exist, but no tag has been pushed yet, so the workflow (above all the
-  `windows-11-arm` job) has never run. Verified locally: the Native AOT publish has no warnings with
-  Velopack in, `--quit` still exits in about 40 ms, and `vpk pack` builds Setup, Portable and the
-  full package (about 102 MB each). **Not yet verified:** installing with Setup, running from
-  `current\`, pinning that copy, an update being downloaded and applied, uninstalling. Still to do:
-  code signing, winget, a CI build on push/PR, and maybe dropping the Windows App SDK's unused AI
-  runtime (`onnxruntime.dll`, `DirectML.dll`, about 38 MB) from the package.
+- **Releases and updates (Velopack, 2026-10-26):** verified: the Native AOT publish has no warnings
+  with Velopack in; `--quit` still exits in about 40 ms; a local Setup installed to
+  `%LOCALAPPDATA%\KiwiGeek.AgentDock`, ran from `current\`, showed the pin prompt, the owner pinned
+  it, it moved the Run key to `current\`; uninstalling removed the folder, Start menu shortcut,
+  uninstall entry and Run key and kept `%LOCALAPPDATA%\AgentDock` and `%APPDATA%\AgentDock` (the pin
+  stays, pointing nowhere). **v1.0.0** was released through the workflow the same day: both
+  builds, the `windows-11-arm` one included, passed first time, about 6 minutes in all. **Not yet
+  verified:** an update being downloaded and applied (needs a second release), a delta package, the
+  flyout opening from the installed copy's pin. Still to do: code signing, winget, a CI build on
+  push/PR, and maybe dropping the Windows App SDK's unused AI runtime (`onnxruntime.dll`,
+  `DirectML.dll`, about 38 MB) from the package.
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
   overview row; the new Cursor, Grok and Copilot drawers; drag to reorder (including with the
   two-column list); the look of the width grip and of two columns; the published Native AOT build.
@@ -242,7 +245,7 @@ Repo: `KiwiGeek/AgentDock` on GitHub. The `.csproj` is at the repo root (CI depe
 | C# | Type-checks with zero warnings, including Native AOT and CsWinRT analyzers |
 | XAML | Compiled on the owner's machine after one fix (a field name clashed with XAML-generated `_contentLoaded`). Confirm with a clean build |
 | Runtime | Partly run (2026-10-15). See "Verify first" for what passed |
-| CI | Release workflow (`.github/workflows/release.yml`) written 2026-10-26, not yet run. No build on push/PR |
+| CI | Release workflow (`.github/workflows/release.yml`) released v1.0.0 on 2026-10-26. No build on push/PR |
 
 History: first built as WPF, then rewritten in WinUI 3 at the owner's request for a more native look.
 Data files (`agents.json`, `state.json`, icon cache) are compatible across both versions.
