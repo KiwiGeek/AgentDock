@@ -811,6 +811,9 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
     and its hover picture shows that prompt. `amp` is a heavy "amp" (Segoe UI Black, orange), because the
     thin wordmark vanished at 28 px. `hermes` is a gold caduceus (U+2624, Segoe UI Symbol) from its
     hover picture, replacing the 48 px portrait. The sources above describe the originals.
+  - Tile keyed out, mark kept: `kiro` is the bare ghost in the tile's purple `#9046FF` (eyes
+    `#1E1033`); `hyper` is the bare H in a deeper pink (`#FF6AF0`, shaded to `#B0209E`) so it holds up
+    on light themes. Hyper's lime went with the tile.
 
 #### Built: presets (an agent pinned to a folder, for work that repeats)
 
