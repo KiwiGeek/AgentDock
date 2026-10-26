@@ -34,7 +34,7 @@ public static class CursorUsage
     private static readonly HttpClient Client = new(new SocketsHttpHandler { UseCookies = false }) { Timeout = TimeSpan.FromSeconds(15) };
 
     private static string UsagePath { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "cursor-usage.json");
+        Path.Combine(AppIdentity.SharedLocalFolder, "cursor-usage.json");
 
     private static string AuthPath { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "cursor", "auth.json");

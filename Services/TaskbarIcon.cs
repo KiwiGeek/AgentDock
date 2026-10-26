@@ -35,8 +35,7 @@ internal static class TaskbarIcon
         ("waifu-dock-1", "Agent Dock host"), ("waifu-dock-2", "Agent Dock host, dark"), ("waifu-dock-3", "Agent Dock host, chibi"),
     ];
 
-    private static string IconFolder => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "TaskbarIcons");
+    private static string IconFolder => Path.Combine(AppIdentity.LocalFolder, "TaskbarIcons");
 
     public static bool IsWaifu(string? id) => id?.StartsWith(WaifuPrefix, StringComparison.OrdinalIgnoreCase) == true;
 

@@ -34,7 +34,7 @@ public static class GrokUsage
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     private static string UsagePath { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "grok-usage.json");
+        Path.Combine(AppIdentity.SharedLocalFolder, "grok-usage.json");
 
     /// <summary>Grok Build's sign-in: one entry per x.ai session, each with a <c>key</c> and <c>expires_at</c>.</summary>
     private static string AuthPath { get; } =

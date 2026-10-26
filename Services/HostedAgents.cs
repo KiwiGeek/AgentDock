@@ -29,7 +29,7 @@ public static class HostedAgents
     public static event Action? Changed;
 
     private static string PidDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "hosted");
+        Path.Combine(AppIdentity.LocalFolder, "hosted");
 
     /// <summary>
     /// Whether this agent is one Agent Dock hosts in the background. Matched by catalog id

@@ -1728,7 +1728,7 @@ public sealed partial class FlyoutWindow : Window
             case ClaudeStatusLine.SetupState.OtherCopy:
                 // Not dismissable: usage here has silently stopped updating.
                 OfferUsage(InfoBarSeverity.Warning, "Update",
-                    "Claude Code's status line runs a different copy of Agent Dock, so usage here won't update.", closable: false);
+                    "Claude Code's status line runs a copy of Agent Dock that isn't there any more, so usage here won't update.", closable: false);
                 break;
             case ClaudeStatusLine.SetupState.NotInstalled when !OfferDismissed(account):
                 OfferUsage(InfoBarSeverity.Informational, "Set up", setup.CurrentCommand is null

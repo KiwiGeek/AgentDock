@@ -3,7 +3,7 @@ using AgentDock.Models;
 
 namespace AgentDock.Services;
 
-/// <summary>Reads and writes %APPDATA%\AgentDock\agents.json and state.json.</summary>
+/// <summary>Reads and writes %APPDATA%\AgentDock\agents.json and state.json (AgentDock.Dev for Debug builds).</summary>
 public sealed class SettingsStore
 {
     public SettingsStore()
@@ -12,11 +12,9 @@ public sealed class SettingsStore
         Directory.CreateDirectory(IconCacheFolder);
     }
 
-    public static string DataFolder { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AgentDock");
+    public static string DataFolder => AppIdentity.RoamingFolder;
 
-    public static string IconCacheFolder { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "Icons");
+    public static string IconCacheFolder { get; } = Path.Combine(AppIdentity.LocalFolder, "Icons");
 
     public string SettingsPath => Path.Combine(DataFolder, "agents.json");
     private string StatePath => Path.Combine(DataFolder, "state.json");

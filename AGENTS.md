@@ -292,8 +292,9 @@ $env:AGENTDOCK_PIN_CHECK = "1"; dotnet run   # Debug with the pin prompt (skippe
 dotnet publish -c Release -r win-x64 -o C:\Tools\AgentDock   # Native AOT
 ```
 
-- **Quit the installed copy first** (`C:\Tools\AgentDock\AgentDock.exe --quit`). Only one instance
-  runs per session; a Debug run otherwise hands off to the installed copy and exits silently.
+- **A Debug build runs beside the installed copy** (owner's request, 2026-10-26; `Services/AppIdentity.cs`).
+  Debug builds use the name `AgentDock.Dev` for the instance lock, the pipe and their folders, so
+  each copy has its own pin, flyout and settings. One instance runs per name per session.
 - Native AOT needs Visual Studio's "Desktop development with C++" workload (MSVC linker).
 - Debug builds don't write the sign-in Run key (`#if DEBUG` in `Autostart.cs`).
 - Releases: push a `v*` tag; `.github/workflows/release.yml` builds, packs with Velopack and
@@ -309,7 +310,8 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
                        exits in milliseconds)                          and positions at cursor
 ```
 
-- `Program.Main` deliberately touches no WinUI/WinRT types. It takes mutex `Local\AgentDock.Resident`.
+- `Program.Main` deliberately touches no WinUI/WinRT types. It takes mutex `Local\AgentDock.Resident`
+  (`Local\AgentDock.Dev.Resident` in Debug).
   If another instance owns it, it calls `AllowSetForegroundWindow(ASFW_ANY)` (so the resident
   instance may take focus), sends one line over the pipe, and exits.
 - Otherwise it becomes the resident instance: `RunResident` (marked `NoInlining` so WinUI assemblies
@@ -738,6 +740,7 @@ writing and maintaining an updater isn't worth it. How it fits:
 | `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: open the launch folder; `agentdock-waifu`: serve her PNG and soften theme fills when Waifu backgrounds is on) |
 | `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
 | `Services/Autostart.cs` | HKCU Run entry |
+| `Services/AppIdentity.cs` | The name, folders and lock that keep a Debug build apart from an installed copy |
 | `Services/Updates.cs` | Velopack: install/uninstall hooks, applying a downloaded update at start, checking GitHub |
 | `Services/JumpList.cs` | Taskbar jump list |
 | `Interop/Win32.cs` | Win32 P/Invoke and structs |
@@ -769,6 +772,16 @@ writing and maintaining an updater isn't worth it. How it fits:
 | `tasks.md` | Agreed work not yet started (agents to review, API-credit profiles, custom groups) |
 
 ### Config and data
+
+Debug builds use `AgentDock.Dev` in place of `AgentDock` for everything below except the usage
+files (`AppIdentity`): `%APPDATA%\AgentDock.Dev` for settings and `%LOCALAPPDATA%\AgentDock.Dev` for the
+icon cache, taskbar icons and hosted agents. The owner's settings were copied there once
+(2026-10-26); after that the two drift apart. **Usage files stay shared** in
+`%LOCALAPPDATA%\AgentDock` (`AppIdentity.SharedLocalFolder`): they describe the user's accounts,
+and Claude Code runs one AgentDock.exe as its status line for every copy. That's also why
+`ClaudeStatusLine.CheckSetup` counts a status line run by another copy as installed, as long as that
+exe still exists. Terminal's fragment folder (`Fragments\AgentDock`) is shared too: whichever copy
+launched last wrote it.
 
 - `%APPDATA%\AgentDock\agents.json`: the agent list and global settings, **written by the app**
   (settings page) and still hand-editable. Comments and trailing commas are read, but comments are

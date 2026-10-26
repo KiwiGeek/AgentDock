@@ -26,7 +26,7 @@ public static class KiroUsage
     public static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(5);
 
     private static string UsagePath { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock", "kiro-usage.json");
+        Path.Combine(AppIdentity.SharedLocalFolder, "kiro-usage.json");
 
     // Current CLI (2.33): "Estimated Usage | resets on 2026-11-01 | KIRO FREE"
     //                      "Credits (0.16 of 50 covered in plan), 0.3%"

@@ -152,7 +152,7 @@ public static class ClaudeStatusLine
     {
         /// <summary>Claude Code runs this exe as its status line.</summary>
         Installed,
-        /// <summary>Claude Code runs Agent Dock from a different path (it was moved or reinstalled).</summary>
+        /// <summary>Claude Code runs an Agent Dock that isn't there any more (it was moved or reinstalled).</summary>
         OtherCopy,
         /// <summary>No status line, or someone else's (see <see cref="Setup.CurrentCommand"/>).</summary>
         NotInstalled,
@@ -164,6 +164,10 @@ public static class ClaudeStatusLine
 
     /// <summary>The status line command Agent Dock installs. Forward slashes work in both bash and cmd.</summary>
     private static string CommandFor(string exe) => $"\"{exe.Replace('\\', '/')}\" {Argument}";
+
+    /// <summary>The exe in a command <see cref="CommandFor"/> wrote: the quoted part.</summary>
+    private static string ExeOf(string command) =>
+        command.Trim() is ['"', .. var rest] && rest.IndexOf('"') is var end and > 0 ? rest[..end] : "";
 
     public static Setup CheckSetup(string exe, string configDir)
     {
@@ -177,7 +181,9 @@ public static class ClaudeStatusLine
         if (string.Equals(command.Trim(), CommandFor(exe), StringComparison.OrdinalIgnoreCase))
             return new Setup(SetupState.Installed, command);
         if (command.Contains("AgentDock.exe", StringComparison.OrdinalIgnoreCase) && command.Contains(Argument, StringComparison.OrdinalIgnoreCase))
-            return new Setup(SetupState.OtherCopy, command);
+            // Every copy saves usage to the same place, so another copy that's still there (the
+            // installed one beside a Debug build, say) does the job. Only a moved or removed one doesn't.
+            return new Setup(File.Exists(ExeOf(command)) ? SetupState.Installed : SetupState.OtherCopy, command);
         return new Setup(SetupState.NotInstalled, command);
     }
 

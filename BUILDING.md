@@ -61,9 +61,14 @@ Start-Process .\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe -Arg
 | What | Where |
 | --- | --- |
 | Debug exe | `bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe` |
-| Settings and agents | `%APPDATA%\AgentDock\agents.json` |
-| App-managed state | `%APPDATA%\AgentDock\state.json` |
-| Cached icons | `%LOCALAPPDATA%\AgentDock\Icons\` |
+| Settings and agents | `%APPDATA%\AgentDock.Dev\agents.json` |
+| App-managed state | `%APPDATA%\AgentDock.Dev\state.json` |
+| Cached icons | `%LOCALAPPDATA%\AgentDock.Dev\Icons\` |
+| Usage (shared with the installed copy) | `%LOCALAPPDATA%\AgentDock\*-usage.json` |
+
+A Debug build is `AgentDock.Dev`: its own instance, pin, flyout and settings, so it runs beside an
+installed Agent Dock (which uses `AgentDock` without `.Dev`). Click the Debug pin for your build, and
+the installed one for the release.
 
 No config reload is needed: every show re-reads `agents.json` and `state.json`. Debug builds
 skip the taskbar pin prompt unless `AGENTDOCK_PIN_CHECK=1` is set.

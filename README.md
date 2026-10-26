@@ -177,7 +177,8 @@ Add it?"). It's never added without asking, and closing the offer means it isn't
 
 ## Configuration
 
-`%APPDATA%\AgentDock\agents.json` holds your agent list and a few settings. Agent Dock writes it
+`%APPDATA%\AgentDock\agents.json` holds your agent list and a few settings (a Debug build keeps its
+own in `%APPDATA%\AgentDock.Dev`, so it can run beside an installed copy). Agent Dock writes it
 when you change agents in settings, so comments in it aren't kept, but it's plain JSON you can still
 edit by hand (the pencil button opens it). If a hand edit breaks it, Agent Dock says so in the footer
 and won't save over it until it's fixed; deleting it starts you again with the welcome.

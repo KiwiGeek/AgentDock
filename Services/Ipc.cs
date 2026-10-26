@@ -56,7 +56,7 @@ public readonly record struct DockCommand(DockCommandKind Kind, string? AgentId 
 public static class Ipc
 {
     private static string PipeName =>
-        $"AgentDock.{Environment.UserName}.{System.Diagnostics.Process.GetCurrentProcess().SessionId}";
+        $"{AppIdentity.Name}.{Environment.UserName}.{System.Diagnostics.Process.GetCurrentProcess().SessionId}";
 
     public static bool TrySend(string message)
     {

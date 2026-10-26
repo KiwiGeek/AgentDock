@@ -94,7 +94,7 @@ public sealed class UsageAccount
     /// </summary>
     public static string UsageFile(string name, string configDir, string defaultDir)
     {
-        var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentDock");
+        var folder = AppIdentity.SharedLocalFolder;
         var dir = Normalize(configDir);
         if (string.Equals(dir, Normalize(defaultDir), StringComparison.OrdinalIgnoreCase))
             return Path.Combine(folder, name + ".json");

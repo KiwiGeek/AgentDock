@@ -14,7 +14,6 @@ namespace AgentDock;
 /// </summary>
 internal static class Program
 {
-    private const string ResidentMutexName = @"Local\AgentDock.Resident";
     private static readonly TimeSpan QuitTimeout = TimeSpan.FromSeconds(3);
 
     [STAThread]
@@ -29,7 +28,7 @@ internal static class Program
 
         var command = DockCommand.FromArgs(args);
 
-        using var mutex = new Mutex(initiallyOwned: true, ResidentMutexName, out var isFirstInstance);
+        using var mutex = new Mutex(initiallyOwned: true, AppIdentity.ResidentMutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
             if (command.Kind == DockCommandKind.Background)
