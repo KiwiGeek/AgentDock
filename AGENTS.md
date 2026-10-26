@@ -181,9 +181,14 @@ Details per agent are under Reference; what's still to review per agent is in `t
   it, it moved the Run key to `current\`; uninstalling removed the folder, Start menu shortcut,
   uninstall entry and Run key and kept `%LOCALAPPDATA%\AgentDock` and `%APPDATA%\AgentDock` (the pin
   stays, pointing nowhere). **v1.0.0** was released through the workflow the same day: both
-  builds, the `windows-11-arm` one included, passed first time, about 6 minutes in all. **Not yet
-  verified:** an update being downloaded and applied (needs a second release), a delta package, the
-  flyout opening from the installed copy's pin. Still to do: code signing, winget, a CI build on
+  builds, the `windows-11-arm` one included, passed first time, about 6 minutes in all. **v1.0.1**
+  (same day) verified the update end to end: its delta was 3.3 MB (x64; 4 of 300 files changed), the
+  installed copy found it a minute after starting, downloaded only the delta and rebuilt the full
+  package, and the next start applied it and relaunched from the same `current\` path; its rows then
+  measured right. Velopack sets the process's AppUserModelID to `velopack.KiwiGeek.AgentDock`
+  (logged at every start); pinning and the flyout still worked with it. When testing, `& AgentDock.exe
+  --quit` in PowerShell doesn't wait (it's a GUI exe): use `Start-Process -Wait`, or a start straight
+  after races the exiting copy and just hands off. Still to do: code signing, winget, a CI build on
   push/PR, and maybe dropping the Windows App SDK's unused AI runtime (`onnxruntime.dll`,
   `DirectML.dll`, about 38 MB) from the package.
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
