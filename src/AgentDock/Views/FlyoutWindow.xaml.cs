@@ -2013,86 +2013,6 @@ public sealed partial class FlyoutWindow : Window
         return true;
     }
 
-    /// <summary>One active quota window, normalized for comparing agents with unlike reset periods.</summary>
-    private sealed record PaceWindow(string Word, double Used, double? Elapsed, DateTimeOffset? Reset);
-
-    /// <summary>
-    /// An agent's capacity from three useful perspectives. The balanced score is the bottleneck: an
-    /// agent cannot take more work than its most-used active limit allows.
-    /// </summary>
-    private sealed record CapacityChoice(SummaryEntry Entry, PaceWindow? Bottleneck, double Balanced,
-        double QuickTask, double Sustained);
-
-    /// <summary>
-    /// The agent's limits with how far through each window it is: a session is five hours, a week
-    /// seven days, a month (Cursor's billing period, Copilot's) the month before its reset.
-    /// </summary>
-    private static List<PaceWindow> PaceWindows(SummaryEntry entry, DateTimeOffset now)
-    {
-        static double? Elapsed(DateTimeOffset start, DateTimeOffset end, DateTimeOffset now) =>
-            end > start ? Math.Clamp((now - start) / (end - start) * 100, 0, 100) : null;
-
-        var windows = new List<PaceWindow>();
-        // A prepaid balance has no window: how much of the last top-up is gone, for as long as it lasts.
-        if (entry.Api is not null)
-        {
-            // Spend with no balance set (Anthropic) has nothing to compare, so it isn't suggested.
-            if (entry.Balance is { } balance && ApiUsage.HasPercent(balance))
-                windows.Add(new PaceWindow("balance", ApiUsage.UsedPercent(balance), null, null));
-            return windows;
-        }
-        if (entry.Copilot is { } copilot)
-        {
-            if (copilot is { Used: { } used, Unlimited: false, Entitlement: { } entitlement })
-            {
-                var reset = copilot.ResetsAt ?? new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).AddMonths(1);
-                windows.Add(new PaceWindow("month", Math.Clamp(used * 100 / entitlement, 0, 100),
-                    Elapsed(reset.AddMonths(-1), reset, now), reset));
-            }
-            return windows;
-        }
-
-        void Add(UsageWindow? window, string word, Func<DateTimeOffset, DateTimeOffset> startOf)
-        {
-            if (window is null)
-                return;
-            if (window.ResetsAt <= 0)
-            {
-                windows.Add(new PaceWindow(word, Math.Clamp(window.UsedPercentage, 0, 100), null, null));
-                return;
-            }
-            var reset = DateTimeOffset.FromUnixTimeSeconds(window.ResetsAt);
-            // Already reset: a fresh window.
-            windows.Add(reset <= now
-                ? new PaceWindow(word, 0, 0, reset)
-                : new PaceWindow(word, Math.Clamp(window.UsedPercentage, 0, 100), Elapsed(startOf(reset), reset, now), reset));
-        }
-        Add(entry.Usage?.FiveHour, "session", reset => reset.AddHours(-5));
-        Add(entry.Usage?.SevenDay, entry.WeekWord,
-            entry.WeekWord == "month" ? reset => reset.AddMonths(-1)
-            : entry.WeekWord == "day" ? reset => reset.AddDays(-1)
-            : reset => reset.AddDays(-7));
-        return windows;
-    }
-
-    /// <summary>Scores usable windows without assuming model quality, cost or the user's task size.</summary>
-    private static CapacityChoice? CapacityFor(SummaryEntry entry, List<PaceWindow> windows)
-    {
-        // GitHub's unlimited Copilot entitlement has no finite window to constrain it.
-        if (entry.Copilot is { Unlimited: true })
-            return new CapacityChoice(entry, null, 0, 0, 0);
-        if (windows.Count == 0 || windows.Any(window => window.Used >= 100))
-            return null;
-
-        var bottleneck = windows.OrderByDescending(window => window.Used).First();
-        var session = windows.FirstOrDefault(window => window.Word == "session");
-        var longer = windows.FirstOrDefault(window => window.Word is "week" or "month" or "day" or "balance");
-        return new CapacityChoice(entry, bottleneck, bottleneck.Used, session?.Used ?? bottleneck.Used,
-            longer?.Used ?? bottleneck.Used);
-    }
-
-    private static bool MateriallyBetter(double current, double alternative) => current - alternative >= 15;
-
     /// <summary>
     /// Who the suggestion names: the agent, or for an API key that several listed agents use, the key,
     /// with them, since any of them draws on the same balance (owner, 2026-10-19).
@@ -2108,84 +2028,46 @@ public sealed partial class FlyoutWindow : Window
     }
 
     /// <summary>
-    /// Suggests the least constrained agent across every active quota window. The main choice uses
-    /// its tightest window (a minimax score), then names other agents only when a short task,
-    /// sustained work, or a reset within three hours gives a materially better outcome.
+    /// Under the overview's rows: which agent to use, and the alternatives worth naming
+    /// (<see cref="UsageSuggestion.Suggest"/> decides; this words it).
     /// </summary>
     private void ShowSuggestion(List<SummaryEntry> entries, DateTimeOffset now)
     {
         // A key no agent is linked to can't be suggested: there's nothing to start.
-        entries = entries.Where(entry => entry.Item is not null).ToList();
-        var choices = entries
-            .Select(entry => (Entry: entry, Windows: PaceWindows(entry, now)))
-            .Select(data => CapacityFor(data.Entry, data.Windows))
-            .OfType<CapacityChoice>()
-            .ToList();
-        // A suggestion needs something to choose between, counted before the preference below narrows it.
-        var candidates = choices.Count;
-        // Included usage first: API balances only once no plan has room (the setting, on by default).
-        if (_state.PreferPlansOverApi && choices.Any(choice => choice.Entry.Api is null))
-            choices = choices.Where(choice => choice.Entry.Api is null).ToList();
-        if (candidates < 2)
+        // In the rows' order, which settles ties.
+        var startable = entries.Where(entry => entry.Item is not null).ToList();
+        var byKey = startable.ToDictionary(entry => entry.Key, StringComparer.OrdinalIgnoreCase);
+        var candidates = startable.Select(entry => new SuggestionCandidate(entry.Key, entry.Api is not null,
+            entry.Copilot is { Unlimited: true }, PaceWindows(entry, now))).ToList();
+        if (UsageSuggestion.Suggest(candidates, _state.PreferPlansOverApi, now) is not { } suggestion)
         {
             SummarySuggestion.Visibility = Visibility.Collapsed;
             return;
         }
 
-        var pick = choices.OrderBy(choice => choice.Balanced).ThenBy(choice => choice.Sustained)
-            .ThenBy(choice => choice.QuickTask).First();
-        SummarySuggestionTitle.Text = $"Suggested: {SuggestedName(pick.Entry)}";
+        string Name(CapacityChoice choice) => SuggestedName(byKey[choice.Candidate.Key]);
+        var pick = suggestion.Pick;
+        SummarySuggestionTitle.Text = $"Suggested: {Name(pick)}";
         var lines = new List<string>
         {
             pick.Bottleneck is null ? "Unlimited usage." : $"Best balanced capacity: {Math.Round(pick.Balanced)}% at its tightest limit ({pick.Bottleneck.Word})."
         };
-        var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { pick.Entry.Key };
-
-        var quick = choices.Where(choice => !shown.Contains(choice.Entry.Key))
-            .Select(choice => (Choice: choice, Window: PaceWindows(choice.Entry, now)
-                .FirstOrDefault(window => window.Word == "session")))
-            .Where(candidate => candidate.Window is not null)
-            .OrderBy(candidate => candidate.Choice.QuickTask).ThenBy(candidate => candidate.Choice.Balanced).FirstOrDefault();
-        if (quick.Choice is not null && MateriallyBetter(pick.QuickTask, quick.Choice.QuickTask))
-        {
-            lines.Add($"For a quick task: {SuggestedName(quick.Choice.Entry)} - {Math.Round(quick.Choice.QuickTask)}% of this session used.");
-            shown.Add(quick.Choice.Entry.Key);
-        }
-
-        var sustained = choices.Where(choice => !shown.Contains(choice.Entry.Key))
-            .Select(choice => (Choice: choice, Window: PaceWindows(choice.Entry, now)
-                .FirstOrDefault(window => window.Word is "week" or "month" or "day" or "balance")))
-            .Where(candidate => candidate.Window is not null)
-            .OrderBy(candidate => candidate.Choice.Sustained).ThenBy(candidate => candidate.Choice.Balanced).FirstOrDefault();
-        if (sustained.Choice is not null && MateriallyBetter(pick.Sustained, sustained.Choice.Sustained))
-        {
-            lines.Add($"For sustained work: {SuggestedName(sustained.Choice.Entry)} - {Math.Round(sustained.Choice.Sustained)}% of its {sustained.Window!.Word} used.");
-            shown.Add(sustained.Choice.Entry.Key);
-        }
-
-        const double imminentResetHours = 3;
-        (CapacityChoice Choice, PaceWindow Window)? afterReset = null;
-        foreach (var entry in entries)
-        {
-            var windows = PaceWindows(entry, now);
-            for (var index = 0; index < windows.Count; index++)
-            {
-                var window = windows[index];
-                if (window.Reset is not { } reset || reset <= now || reset - now > TimeSpan.FromHours(imminentResetHours))
-                    continue;
-                var simulated = windows.Select((candidate, candidateIndex) => candidateIndex == index ? candidate with { Used = 0 } : candidate).ToList();
-                if (CapacityFor(entry, simulated) is not { } candidate || shown.Contains(candidate.Entry.Key))
-                    continue;
-                if (afterReset is null || candidate.Balanced < afterReset.Value.Choice.Balanced)
-                    afterReset = (candidate, window);
-            }
-        }
-        if (afterReset is { } resetChoice && MateriallyBetter(pick.Balanced, resetChoice.Choice.Balanced))
-            lines.Add($"After {ResetTime(resetChoice.Window.Reset!.Value)}: {SuggestedName(resetChoice.Choice.Entry)} - {resetChoice.Window.Word} limit resets.");
+        if (suggestion.QuickTask is { } quick)
+            lines.Add($"For a quick task: {Name(quick.Choice)} - {Math.Round(quick.Choice.QuickTask)}% of this session used.");
+        if (suggestion.Sustained is { } sustained)
+            lines.Add($"For sustained work: {Name(sustained.Choice)} - {Math.Round(sustained.Choice.Sustained)}% of its {sustained.Window.Word} used.");
+        if (suggestion.AfterReset is { } afterReset)
+            lines.Add($"After {ResetTime(afterReset.Window.Reset!.Value)}: {Name(afterReset.Choice)} - {afterReset.Window.Word} limit resets.");
 
         SummarySuggestionNote.Text = string.Join('\n', lines);
         SummarySuggestion.Visibility = Visibility.Visible;
     }
+
+    /// <summary>An overview row's limits, as the suggestion compares them.</summary>
+    private static List<PaceWindow> PaceWindows(SummaryEntry entry, DateTimeOffset now) =>
+        entry.Api is not null ? UsageSuggestion.BalanceWindows(entry.Balance)
+        : entry.Copilot is { } copilot ? UsageSuggestion.CopilotWindows(copilot, now)
+        : UsageSuggestion.PlanWindows(entry.Usage, entry.WeekWord, now);
 
     /// <summary>
     /// One limit in an overview row: the bar's value (null = text only, e.g. "Checking…") and the
