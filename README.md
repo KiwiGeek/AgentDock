@@ -37,7 +37,7 @@ The Windows App SDK runtime is bundled into the output, so nothing else needs in
 ## Build and pin
 
 ```powershell
-dotnet publish -c Release -r win-x64 -o C:\Tools\AgentDock
+dotnet publish src\AgentDock\AgentDock.csproj -c Release -r win-x64 -o C:\Tools\AgentDock
 ```
 
 Use `-r win-arm64` on an ARM PC. Then run `C:\Tools\AgentDock\AgentDock.exe`. If it isn't pinned

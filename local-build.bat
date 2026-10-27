@@ -1,7 +1,7 @@
 @echo off
 setlocal
 set "ROOT=%~dp0"
-set "EXE=%ROOT%bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe"
+set "EXE=%ROOT%src\AgentDock\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe"
 pushd "%ROOT%" || exit /b 1
 
 echo Stopping running Agent Dock instances...
@@ -17,8 +17,8 @@ echo Building taskbar icon assets...
 "%PWSH%" -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\Build-AppIcons.ps1"
 if errorlevel 1 goto :failed
 
-echo Building AgentDock.csproj...
-dotnet build "%ROOT%AgentDock.csproj" -nologo -v q
+echo Building src\AgentDock\AgentDock.csproj...
+dotnet build "%ROOT%src\AgentDock\AgentDock.csproj" -nologo -v q
 if errorlevel 1 goto :failed
 
 if not exist "%EXE%" goto :missing_exe

@@ -42,7 +42,7 @@ release. Installed copies find it there and update themselves.
 4. Watch it build: **Actions** tab on GitHub → **Release**. It takes about 6 minutes. When it
    finishes, the release is under **Releases**, with notes listing the changes since the last tag.
 
-You don't edit `<Version>` in `AgentDock.csproj`; the version comes from the tag.
+You don't edit `<Version>` in `src/AgentDock/AgentDock.csproj`; the version comes from the tag.
 
 ## What a release contains
 

@@ -28,15 +28,16 @@ shows a usage overview of every agent with a suggestion of which to use.
 - **After every build, stop any running Agent Dock and relaunch the new build**, so the owner sees
   the change at once:
   ```powershell
-  $exe = "W:\AgentDock\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe"
+  $exe = "W:\AgentDock\src\AgentDock\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe"
   Get-Process AgentDock -ErrorAction SilentlyContinue | ForEach-Object { & $_.Path --quit }
   Get-Process AgentDock -ErrorAction SilentlyContinue | Stop-Process -Force
-  dotnet build W:\AgentDock\AgentDock.csproj -nologo -v q
+  dotnet build W:\AgentDock\src\AgentDock\AgentDock.csproj -nologo -v q
   Start-Process $exe -ArgumentList '--background'
   ```
-- **Build the `.csproj`, not the folder.** A bare `dotnet build` picks up `AgentDock.slnx`, whose
-  default platform is ARM64, and fails with NETSDK1032. `-p:Platform=x64` "works" but builds into
-  `bin\x64\Debug`, which isn't the copy Claude Code's status line runs.
+- **Build `src\AgentDock\AgentDock.csproj` by path.** The repo root has no project (since #27), and
+  the owner's untracked `AgentDock.slnx`, when it's there, defaults to ARM64 and fails with
+  NETSDK1032. `-p:Platform=x64` "works" but builds into `bin\x64\Debug`, which isn't the copy
+  Claude Code's status line runs.
 - Primary stack is C#, with ReSharper. Built-in WinUI controls only (no Telerik, no new NuGet
   packages without a clear reason).
 - Hard constraints (details under Reference → "Hard constraints"): Native AOT (no reflection, no `dynamic`, JSON only via
@@ -243,7 +244,8 @@ it asks the user to pin it and quits if they decline (see "Pin prompt" below). T
 the taskbar icon shows the same agents as a jump list. The two goals that drive most decisions:
 **looks native to Windows 11**, and **opens fast**.
 
-Repo: `KiwiGeek/AgentDock` on GitHub. The `.csproj` is at the repo root (CI depends on that).
+Repo: `KiwiGeek/AgentDock` on GitHub. The project is `src/AgentDock/AgentDock.csproj` (moved from the
+repo root for #27); both workflows, the build scripts and the image scripts in `tools/` name that path.
 
 ### Status
 
@@ -294,6 +296,7 @@ there's a 2-second timeout fallback).
 ### Build, run, publish
 
 ```powershell
+cd src\AgentDock                             # or pass --project src\AgentDock to each
 dotnet run                                   # Debug, JIT, centred on screen
 dotnet run -- --quit                         # stop the background instance
 $env:AGENTDOCK_PIN_CHECK = "1"; dotnet run   # Debug with the pin prompt (skipped in Debug otherwise)

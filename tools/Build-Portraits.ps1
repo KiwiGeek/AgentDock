@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    Builds the About page's slideshow pictures: Assets\AppIcons\appicon-waifu-<id>.png (the 1024 px
-    taskbar icon sources) into Assets\AppIcons\portraits\<id>.jpg, which the app compiles in.
+    Builds the About page's slideshow pictures: src\AgentDock\Assets\AppIcons\appicon-waifu-<id>.png
+    (the 1024 px taskbar icon sources) into src\AgentDock\Assets\AppIcons\portraits\<id>.jpg, which
+    the app compiles in.
 
 .DESCRIPTION
     The PNGs stay the sources, kept for quality (owner, 2026-10-26); the JPEGs are about a sixth of
@@ -15,7 +16,7 @@ param([string]$Root = (Split-Path $PSScriptRoot -Parent), [int]$Quality = 88)
 Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
-$sources = Join-Path $Root 'Assets\AppIcons'
+$sources = Join-Path $Root 'src\AgentDock\Assets\AppIcons'
 $output = Join-Path $sources 'portraits'
 New-Item -ItemType Directory -Force $output | Out-Null
 

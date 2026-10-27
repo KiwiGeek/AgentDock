@@ -246,11 +246,11 @@ public static class HostedAgents
         if (File.Exists(besideExe))
             return besideExe;
 
-        // Fallback while iterating without a rebuild: repo tools\ from bin\Debug\net…\win-x64.
+        // Fallback while iterating without a rebuild: the repo's tools\ from src\AgentDock\bin\Debug\net…\win-x64.
         try
         {
             var fromRepo = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "dsh-plugins", fileName));
+                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "tools", "dsh-plugins", fileName));
             if (File.Exists(fromRepo))
                 return fromRepo;
         }
@@ -268,7 +268,7 @@ public static class HostedAgents
         try
         {
             var fromRepo = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "tools", "dsh-plugins",
+                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "tools", "dsh-plugins",
                 "agentdock-waifu", "waifu.png"));
             if (File.Exists(fromRepo))
                 return fromRepo;

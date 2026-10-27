@@ -69,7 +69,7 @@
     published run can pass the patch overlay without depending on the repo checkout.
   -->
   <ItemGroup>
-    <None Include="tools\dsh-plugins\**\*"
+    <None Include="..\..\tools\dsh-plugins\**\*"
           CopyToOutputDirectory="PreserveNewest"
           Link="dsh-plugins\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>

@@ -27,7 +27,7 @@ Build the project file, not the repository folder: building the folder can selec
 
 ```powershell
 $root = (Get-Location).Path
-$exe = Join-Path $root 'bin/Debug/net10.0-windows10.0.26100.0/win-x64/AgentDock.exe'
+$exe = Join-Path $root 'src/AgentDock/bin/Debug/net10.0-windows10.0.26100.0/win-x64/AgentDock.exe'
 
 # Stop the old copy before building so the executable is not locked.
 Get-Process AgentDock -ErrorAction SilentlyContinue | ForEach-Object { & $_.Path --quit }
@@ -36,7 +36,7 @@ Get-Process AgentDock -ErrorAction SilentlyContinue | Stop-Process -Force
 & "$root/tools/Build-AppIcons.ps1" -Root $root
 if ($LASTEXITCODE -ne 0) { throw 'Building taskbar icon assets failed.' }
 
-dotnet build "$root/AgentDock.csproj" -nologo -v q
+dotnet build "$root/src/AgentDock/AgentDock.csproj" -nologo -v q
 if ($LASTEXITCODE -ne 0) { throw 'Building Agent Dock failed.' }
 
 Start-Process $exe -ArgumentList '--background'
