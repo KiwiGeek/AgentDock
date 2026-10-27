@@ -34,7 +34,7 @@ public sealed partial class FlyoutWindow
         // The drawer belongs to the agent, so the banner keeps its colour.
         _bannerResetTimer?.Stop();
         // The row's pointer-exit may already have started fading the picture. Bring it back.
-        if (_state.ShowHoverBackgrounds && _drawerItem?.BackgroundSource is { } source)
+        if (_state.WaifuModeEnabled && _drawerItem?.BackgroundSource is { } source)
             FadeBackdrop(source);
     }
 
@@ -82,7 +82,7 @@ public sealed partial class FlyoutWindow
             _drawerCloseTimer.Tick += (_, _) =>
             {
                 // The pointer may have moved onto an agent without a drawer, whose picture is fading in.
-                if (_state.ShowHoverBackgrounds && _hoverItem is null)
+                if (_state.WaifuModeEnabled && _hoverItem is null)
                     FadeBackdrop(null);
                 // The overview is for when no agent is pointed at (owner, 2026-10-16).
                 if (_hoverItem is null && ShowSummary())
@@ -284,7 +284,7 @@ public sealed partial class FlyoutWindow
                 if (_popupsOpen > 0 || PointerOverRowOrDrawer())
                     return;
                 _hoverItem = null;
-                if (_state.ShowHoverBackgrounds && !_drawerOpen)
+                if (_state.WaifuModeEnabled && !_drawerOpen)
                     FadeBackdrop(null);
                 ScheduleDrawerClose();
                 ScheduleBannerReset();

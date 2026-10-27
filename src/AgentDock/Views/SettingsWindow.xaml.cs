@@ -168,8 +168,9 @@ public sealed partial class SettingsWindow : Window
     private void HideSettings()
     {
         CommitEditors();
-        // Moves the focus off any box (an API key, say) so its LostFocus saves it.
-        HoverBackgroundsSwitch.Focus(FocusState.Programmatic);
+        // Moves the focus off any box (an API key, say) so its LostFocus saves it. The waifu switch
+        // can't take it: it's collapsed until waifus are unlocked.
+        GeneralNav.Focus(FocusState.Programmatic);
         StopSlideshow();
         AppWindow.Hide();
     }
@@ -464,7 +465,7 @@ public sealed partial class SettingsWindow : Window
     /// </summary>
     private void SyncAgentBackdrop()
     {
-        var source = _state.ShowHoverBackgrounds && _editingAgent is { } definition
+        var source = _state.WaifuModeEnabled && _editingAgent is { } definition
             ? AgentIcons.FindBackground(definition)
             : null;
         if (source is null)
@@ -1091,7 +1092,8 @@ public sealed partial class SettingsWindow : Window
     private void FillSettingsPage()
     {
         _settingsToggleReady = false;
-        HoverBackgroundsSwitch.IsOn = _state.ShowHoverBackgrounds;
+        HoverBackgroundsRow.Visibility = _state.WaifuModeUnlocked == true ? Visibility.Visible : Visibility.Collapsed;
+        HoverBackgroundsSwitch.IsOn = _state.WaifuModeEnabled;
         CloseTerminalOnExitSwitch.IsOn = _settings.CloseTerminalWhenAgentExits;
         RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
         UsageSummarySwitch.IsOn = _state.ShowUsageSummary;
@@ -1117,7 +1119,8 @@ public sealed partial class SettingsWindow : Window
 
     private async void HoverBackgroundsSwitch_Toggled(object sender, RoutedEventArgs e)
     {
-        if (!_settingsToggleReady || _waifuPromptOpen || _state.ShowHoverBackgrounds == HoverBackgroundsSwitch.IsOn)
+        if (!_settingsToggleReady || _state.WaifuModeUnlocked != true || _waifuPromptOpen
+            || _state.ShowHoverBackgrounds == HoverBackgroundsSwitch.IsOn)
             return;
         var on = HoverBackgroundsSwitch.IsOn;
         // Turning them on asks a second time (SettingsWindow.Waifu.cs); backing out puts the switch back.
@@ -1247,7 +1250,7 @@ public sealed partial class SettingsWindow : Window
     private void BuildTaskbarIconPicker()
     {
         _taskbarIconPickerReady = false;
-        var choices = TaskbarIcon.Choices(_state.ShowHoverBackgrounds)
+        var choices = TaskbarIcon.Choices(_state.WaifuModeEnabled)
             .Select(c => new TaskbarIconChoice(c.Id, c.Name, TaskbarIconPreview(c.Id)))
             .ToList();
         TaskbarIconPicker.ItemsSource = choices;
@@ -1302,9 +1305,9 @@ public sealed partial class SettingsWindow : Window
     /// </summary>
     private void TaskbarIconFollowWaifus()
     {
-        if (!_state.ShowHoverBackgrounds && TaskbarIcon.IsWaifu(_state.TaskbarIcon))
+        if (!_state.WaifuModeEnabled && TaskbarIcon.IsWaifu(_state.TaskbarIcon))
             SetTaskbarIcon(TaskbarIcon.DefaultId, rememberWaifuIcon: _state.TaskbarIcon);
-        else if (_state.ShowHoverBackgrounds && _state.TaskbarIcon is null && _state.TaskbarWaifuIcon is { } earlier)
+        else if (_state.WaifuModeEnabled && _state.TaskbarIcon is null && _state.TaskbarWaifuIcon is { } earlier)
             SetTaskbarIcon(earlier, forgetWaifuIcon: true);
         BuildTaskbarIconPicker();
     }

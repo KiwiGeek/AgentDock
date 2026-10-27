@@ -270,14 +270,15 @@ public sealed partial class FlyoutWindow : Window
     {
         (_settings, _settingsError) = _store.LoadSettings();
         _state = _store.LoadState();
+        LockWaifusIfNeeded();
         (_presetList, _presetsError) = _store.LoadPresets();
         _requestedListWidthDip = _state.FlyoutWidth ?? DefaultListWidthDip;
         ApplyListWidth(_requestedListWidthDip);
         StatusText.Text = _settingsError ?? _presetsError ?? "";
         Autostart.Apply(_settings.StartWithWindows);
 
-        // Icon and tab colour profiles always; waifu pictures only while that setting is on.
-        TerminalProfiles.Prepare(_settings.Agents, _state.ShowHoverBackgrounds);
+        // Icon and tab colour profiles always; waifu pictures only while waifus are unlocked and on.
+        TerminalProfiles.Prepare(_settings.Agents, _state.WaifuModeEnabled);
 
         UpdateBannerHeart();
         _bannerColorSource = null;
@@ -653,7 +654,7 @@ public sealed partial class FlyoutWindow : Window
     private void Launch(AgentItem item, string? folder = null)
     {
         var dir = folder ?? item.Preset?.Folder ?? CurrentFolder;
-        if (Launcher.Launch(item, dir, _settings, _state.ShowHoverBackgrounds) is { } error)
+        if (Launcher.Launch(item, dir, _settings, _state.WaifuModeEnabled) is { } error)
             SetStatus(error);
         else
         {
@@ -764,6 +765,39 @@ public sealed partial class FlyoutWindow : Window
         }
         else if (change.HasFlag(SettingsChange.TaskbarIcon))
             UpdateJumpList(); // the Quit entry's icon
+        if (change.HasFlag(SettingsChange.Waifu))
+        {
+            // Terminal's pictures follow at once; the heart and hover pictures wait for the next open.
+            TerminalProfiles.Prepare(_settings.Agents, _state.WaifuModeEnabled);
+            if (AppWindow.IsVisible)
+                UpdateBannerHeart();
+        }
+    }
+
+    /// <summary>
+    /// A copy that predates the unlock, or a hand-edited state.json, can carry waifus switched on and a
+    /// waifu taskbar icon. While locked, both are put back: the artwork off, the pin on Agent Dock's own
+    /// icon (the waifu one is remembered for when it's unlocked and switched on again).
+    /// </summary>
+    private void LockWaifusIfNeeded()
+    {
+        if (_state.WaifuModeUnlocked == true)
+            return;
+
+        var changed = false;
+        if (_state.ShowHoverBackgrounds)
+        {
+            _state.ShowHoverBackgrounds = false;
+            changed = true;
+        }
+        if (TaskbarIcon.IsWaifu(_state.TaskbarIcon) && TaskbarIcon.Apply(TaskbarIcon.DefaultId) is null)
+        {
+            _state.TaskbarWaifuIcon = _state.TaskbarIcon;
+            _state.TaskbarIcon = null;
+            changed = true;
+        }
+        if (changed)
+            _store.SaveState(_state);
     }
 
     /// <summary>Forgets the last direct check of every Claude account, after the choice of where usage comes from changed.</summary>
