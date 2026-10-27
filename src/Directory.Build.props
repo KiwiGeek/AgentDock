@@ -1,0 +1,14 @@
+<Project>
+
+  <!--
+    Shared by every project under src/: the app now, and its tests once they exist (#9), which have
+    to target the same Windows version to reference it. Project-specific settings stay in each .csproj.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>
