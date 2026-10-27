@@ -2,8 +2,9 @@
 
 Read this before changing anything. The first sections are the catch-up: the owner's rules, lessons
 learned, and where each agent stands. **Reference** below is the detail: architecture, every
-decision, and what has and hasn't been verified. `tasks.md` is agreed work not yet started. Keep
-both current: when a decision changes or something gets verified, update them in the same commit.
+decision, and what has and hasn't been verified. Agreed work not yet started is in the repo's
+GitHub issues (`gh issue list`; `tasks.md` moved there on 2026-10-26). Keep both current: when a
+decision changes or something gets verified, update this file in the same commit, and the issue.
 
 Agent Dock is a Windows 11 taskbar flyout (WinUI 3, unpackaged, Native AOT, C#) that launches AI
 agents: CLI agents in Windows Terminal in a chosen folder, desktop agents directly. On hover, a
@@ -116,7 +117,8 @@ shows a usage overview of every agent with a suggestion of which to use.
 
 "Done" means everything that applies is built and verified against the real service: found and
 launched, built-in icon and hover picture, usage in the drawer and the overview, recent folders.
-Details per agent are under Reference; what's still to review per agent is in `tasks.md`.
+Details per agent are under Reference; what's still to verify per agent is issue #16, and usage
+sources still to find, #17.
 
 ### Command line
 
@@ -844,14 +846,13 @@ At the repo root:
 | `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: open the launch folder; `agentdock-waifu`: serve her PNG and soften theme fills when Waifu backgrounds is on) |
 | `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
 | `tools/Build-Portraits.ps1` | Builds `Assets/AppIcons/portraits/*.jpg` (the About page's slideshow) from the waifu sources |
-| `tools/Build-And-Run.ps1`, `local-build.bat` | Stop, build and relaunch the Debug copy (#22 is to keep one of these) |
+| `tools/Build-And-Run.ps1` | Stop, build and relaunch the Debug copy |
 | `.github/workflows/ci.yml` | On a push to master or a PR: Debug build and Native AOT publish (x64), warnings as errors; no release |
 | `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
 | `BUILDING.md`, `LOCAL-DEVELOPMENT.md` | Building it yourself (#22 is to keep one of these) |
 | `LICENSE` | GPL-3.0 (see README's "Licence" for the copyright line and third-party marks) |
 | `AGENTS.md` | This handoff: the owner's rules, lessons learned, which agents are done, and the reference |
-| `tasks.md` | Agreed work not yet started (agents to review, API-credit profiles, custom groups) |
 
 ### Config and data
 
@@ -1536,5 +1537,5 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - More of the settings page. It exists (gear in the footer): general settings, the agent list
   (add, remove, duplicate, rename, arguments, environment variables, drag to reorder), and per-agent
   pages. Only Claude Code has real settings there; Codex and Copilot have none.
-- Usage for the agents not done yet (see "Agents: where each one stands" and `tasks.md`), and for the Claude and
+- Usage for the agents not done yet (see "Agents: where each one stands" and #17), and for the Claude and
   ChatGPT desktop apps from their CLI counterparts' accounts.
