@@ -6,6 +6,8 @@
     <RootNamespace>AgentDock</RootNamespace>
     <AssemblyName>AgentDock</AssemblyName>
     <Product>Agent Dock</Product>
+    <!-- The exe's file description: what the taskbar pin and Task Manager call it (else "AgentDock"). -->
+    <AssemblyTitle>Agent Dock</AssemblyTitle>
     <Version>2.0.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\AgentDock.ico</ApplicationIcon>

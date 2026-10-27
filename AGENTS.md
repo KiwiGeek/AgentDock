@@ -97,7 +97,8 @@ shows a usage overview of every agent with a suggestion of which to use.
   `UPDATEDIR`, `ASSOCCHANGED`), `SHUpdateImage`, `ie4uinit -show`, fresh icon file names, waiting,
   or opening the flyout. Cendio's ThinLinc hit the same wall and gave up (bugzilla.cendio.com bug
   7970). **Restarting Explorer does work**, and the resident Agent Dock survives it. Check the
-  taskbar through UI Automation (the button is named "AgentDock pinned"), capturing just its rectangle.
+  taskbar through UI Automation (the button is named "Agent Dock pinned", or "AgentDock pinned"
+  for a pin made before the exe had a file description), capturing just its rectangle.
 - Verify network parsers against the real service with a throwaway console project in the
   scratchpad that compiles the service file(s) directly, then delete it. Print numbers, never tokens.
   The same works for moving logic: #27 checked the extracted `UsageSuggestion` against the old code
