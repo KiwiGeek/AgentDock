@@ -191,8 +191,7 @@ Details per agent are under Reference; what's still to review per agent is in `t
   measured right. Velopack sets the process's AppUserModelID to `velopack.KiwiGeek.AgentDock`
   (logged at every start); pinning and the flyout still worked with it. When testing, `& AgentDock.exe
   --quit` in PowerShell doesn't wait (it's a GUI exe): use `Start-Process -Wait`, or a start straight
-  after races the exiting copy and just hands off. Still to do: code signing, winget, a CI build on
-  push/PR, and maybe dropping the Windows App SDK's unused AI runtime (`onnxruntime.dll`,
+  after races the exiting copy and just hands off. Still to do: code signing, winget, and maybe dropping the Windows App SDK's unused AI runtime (`onnxruntime.dll`,
   `DirectML.dll`, about 38 MB) from the package.
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
   overview row; the new Cursor, Grok and Copilot drawers; drag to reorder (including with the
@@ -253,7 +252,7 @@ Repo: `KiwiGeek/AgentDock` on GitHub. The `.csproj` is at the repo root (CI depe
 | C# | Type-checks with zero warnings, including Native AOT and CsWinRT analyzers |
 | XAML | Compiled on the owner's machine after one fix (a field name clashed with XAML-generated `_contentLoaded`). Confirm with a clean build |
 | Runtime | Partly run (2026-10-15). See "Verify first" for what passed |
-| CI | Release workflow (`.github/workflows/release.yml`) released v1.0.0 on 2026-10-26. No build on push/PR |
+| CI | `ci.yml` on every push to master and every PR: Debug build and Native AOT publish (x64), both failing on any warning; nothing released (issue #8, 2026-10-26). Release workflow (`release.yml`) released v1.0.0 on 2026-10-26 |
 
 History: first built as WPF, then rewritten in WinUI 3 at the owner's request for a more native look.
 Data files (`agents.json`, `state.json`, icon cache) are compatible across both versions.
@@ -285,7 +284,8 @@ Build and run, then check these in order. Results from the first run (2026-10-15
 10. Jump list shows agents under "Command line" / "Desktop apps" plus "Quit Agent Dock", and entries launch.
 11. Folder picker opens, and picking a folder doesn't hide the flyout.
 12. `dotnet publish -c Release -r win-x64` succeeds with Native AOT.
-13. The GitHub Actions run on push goes green.
+13. The GitHub Actions run on push goes green (`ci.yml`). Both of its steps passed locally with
+    `-warnaserror` on 2026-10-26.
 
 Most likely to need work: 3 (focus), 5 (sizing via `Root.Measure` on a hidden window),
 and `PrepareAsync`'s off-screen warm-up (content may not load from `AppWindow.Show(false)`;
@@ -803,6 +803,7 @@ writing and maintaining an updater isn't worth it. How it fits:
 | `Assets/AppIcons/` | Taskbar icon sources (`appicon-<id>.png`, 1024 px, not shipped) and the built `ico/<id>.ico` (compiled in) |
 | `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
 | `tools/Build-Portraits.ps1` | Builds `Assets/AppIcons/portraits/*.jpg` (the About page's slideshow) from the waifu sources |
+| `.github/workflows/ci.yml` | On a push to master or a PR: Debug build and Native AOT publish (x64), warnings as errors; no release |
 | `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
 | `LICENSE` | GPL-3.0 (see README's "Licence" for the copyright line and third-party marks) |
