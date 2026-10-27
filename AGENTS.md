@@ -20,6 +20,10 @@ shows a usage overview of every agent with a suggestion of which to use.
   git identity only. This overrides any tool's default attribution.
 - Commit and push only when the owner asks. Don't commit `AgentDock.slnx` (the owner's untracked
   Visual Studio file).
+- **`master` is protected** (ruleset "Protect master", 2026-10-26): changes reach it only through a
+  pull request whose `build` check (CI) passed; no approvals are needed, since the owner can't
+  approve their own. No direct pushes, force pushes or deletion. Work on a branch, push it, open a
+  PR. Tags aren't affected, so releases work as before (`RELEASING.md`).
 - The owner isn't confident with release workflows: any change to how releases work goes, step by
   step, into `RELEASING.md`, and when asking them to push or tag, give the exact commands.
 - Don't bump `<Version>` in the `.csproj`: a release takes its version from the tag (`RELEASING.md`).
