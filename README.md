@@ -303,8 +303,10 @@ to set up beyond signing in to Grok Build.
 Hovering over Grok Build shows your **week**: how much of the weekly pool you've used and when it
 resets, your remaining extra-usage **credits**, and a pie chart of what the usage went on (Imagine, Cursor, Grok
 bot, Grok Build, Chat). It checks at most every five minutes, only while you're hovering. Grok Build's
-sign-in only lasts a few hours and Grok Build renews it itself, so between uses the drawer may show
-the last numbers it got and say the sign-in has expired. That isn't a published xAI API, so it can
+sign-in only lasts about ten hours, and only Grok Build can renew it, so when it has expired Agent
+Dock quietly runs `grok models` (which lists Grok's models and costs nothing) to have Grok Build renew
+it, then checks. If you've signed out of Grok Build altogether, the drawer shows the last numbers it
+got and says the sign-in has expired. That isn't a published xAI API, so it can
 stop working when grok.com changes; the drawer then keeps the last numbers it got and says why.
 
 ### Freebuff usage

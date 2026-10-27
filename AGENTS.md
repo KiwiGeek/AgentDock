@@ -135,7 +135,8 @@ sources still to find, #17.
 - [x] **Codex** (`codex`): icon, picture, live usage from Codex's app server, recents, overview.
   Usage per account (`CODEX_HOME`).
 - [x] **Grok Build** (`grok`): icon, picture, usage from grok.com with Grok Build's token, recents,
-  overview. Its token lasts hours, so the drawer often shows saved numbers between Grok runs.
+  overview. Its token lasts about ten hours; when it has expired, Agent Dock has Grok Build renew it
+  (`grok models`, hidden; #31) before checking.
 - [ ] **Freebuff** (`freebuff`): icon, picture (the owner's, added 2026-10-23), usage (daily hours
   from codebuff.com with the CLI's keychain token), recents, overview. Verified 2026-10-23 through UI
   Automation: the row, the drawer, and the overview row, with a live check (30 of 30 hours). Not yet
@@ -1245,8 +1246,16 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   - Only `key` and `expires_at` are read (`ReadToken`, `FileShare.ReadWrite`; of several sessions,
     the one expiring last). **Never refresh it** (Grok Build does; a refresh here would race it),
     never write the file, never log, show or save the token. An expired one sends nothing.
-  - It lasts only hours, so between Grok Build runs the drawer often shows the saved numbers with
-    "Grok Build's sign-in has expired. Run Grok Build to renew it."
+  - It lasts about ten hours (on the owner's PC: written 20:35, expiring 06:35). Until #31 the
+    numbers froze until Grok Build next ran. Now, when the token has expired, `GrokUsage.RenewSignIn`
+    runs **`grok models`** (Grok Build 1.0.62) with no window, no input and a 20 s limit, and reads
+    the token again. Listing models needs the sign-in, so Grok Build refreshes it itself: tested
+    2026-10-26 with a token a week expired, it took 0.7 s, opened no browser, used none of the plan,
+    left no process behind, and grok.com then answered the usage call (HTTP 200). It printed
+    "You are not authenticated" and renewed anyway, so only the token's new expiry counts. If it
+    doesn't renew (signed out for good), it isn't run again for 30 minutes, and the drawer shows the
+    saved numbers with "Grok Build's sign-in has expired. Run Grok Build to renew it." The exe is
+    found on PATH, else in `~\.grok\bin` (where its installer puts it).
   - The old `GrokUsageOfferDismissed` state and the `%LOCALAPPDATA%\AgentDock\WebView2` profile are
     no longer used (the folder isn't deleted by the app).
 - **Source: grok.com, as its usage page asks.** Found by recording what that page fetched, inside
