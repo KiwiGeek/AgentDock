@@ -221,8 +221,41 @@ public static class KnownAgents
                 return $"{wanted}-{n}";
     }
 
-    private static string? CommandName(string? command) =>
-        string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"'));
+    /// <summary>"claude" for "claude", "claude.exe" or a quoted full path to it, lowercased.</summary>
+    public static string? CommandName(string? command) =>
+        string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"')).ToLowerInvariant();
+
+    // Which agent is which, for the drawers, the usage overview, settings and Accounts. By catalog id
+    // first (a renamed or duplicated agent keeps it), else by the CLI's command.
+
+    /// <summary>
+    /// Cursor CLI or the Cursor desktop app (one account, one usage), by catalog id or CLI command.
+    /// The CLI's command can also be plain "agent", so the catalog id matters.
+    /// </summary>
+    public static bool IsCursor(AgentDefinition definition) =>
+        (definition.Catalog ?? definition.Id).ToLowerInvariant() is "cursor" or "cursor-cli"
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "cursor-agent");
+
+    /// <summary>
+    /// GitHub Copilot CLI or GitHub Copilot desktop: one GitHub account (gh's sign-in), so the same
+    /// usage, drawer and overview row. The desktop app is matched by catalog id, having no command.
+    /// </summary>
+    public static bool IsGitHubCopilot(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "github-copilot-desktop", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "copilot");
+
+    /// <summary>Kiro CLI, by catalog id or command (<c>kiro-cli</c>).</summary>
+    public static bool IsKiro(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "kiro", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "kiro-cli");
+
+    /// <summary>
+    /// Freebuff, by catalog id or command. Its daily hours come from the CLI's own sign-in, so a copy
+    /// with another <c>FREEBUFF_CONFIG_DIR</c> is a different account.
+    /// </summary>
+    public static bool IsFreebuff(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "freebuff", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "freebuff");
 }
 
 /// <summary>One of <see cref="KnownAgents.OtherLaunches"/>.</summary>

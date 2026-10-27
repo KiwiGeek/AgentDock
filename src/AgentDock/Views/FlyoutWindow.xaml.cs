@@ -1161,38 +1161,6 @@ public sealed partial class FlyoutWindow : Window
         ((App)Application.Current).OpenSettings(agentId, addAgents, section);
 
     /// <summary>
-    /// Cursor CLI or the Cursor desktop app (one account, one usage), by catalog id or CLI command.
-    /// The CLI's command can also be plain "agent", so the catalog id matters. Also used by settings.
-    /// </summary>
-    internal static bool IsCursor(AgentDefinition definition) =>
-        (definition.Catalog ?? definition.Id).ToLowerInvariant() is "cursor" or "cursor-cli"
-        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "cursor-agent");
-
-    /// <summary>
-    /// GitHub Copilot CLI or GitHub Copilot desktop: one GitHub account (gh's sign-in), so the same
-    /// usage, drawer and overview row. The desktop app is matched by catalog id, having no command.
-    /// Also used by settings.
-    /// </summary>
-    internal static bool IsGitHubCopilot(AgentDefinition definition) =>
-        string.Equals(definition.Catalog ?? definition.Id, "github-copilot-desktop", StringComparison.OrdinalIgnoreCase)
-        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "copilot");
-
-    /// <summary>
-    /// Kiro CLI, by catalog id or command (<c>kiro-cli</c>). Also used by settings.
-    /// </summary>
-    internal static bool IsKiro(AgentDefinition definition) =>
-        string.Equals(definition.Catalog ?? definition.Id, "kiro", StringComparison.OrdinalIgnoreCase)
-        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "kiro-cli");
-
-    /// <summary>
-    /// Freebuff, by catalog id or command. Its daily hours come from the CLI's own sign-in, so a copy
-    /// with another <c>FREEBUFF_CONFIG_DIR</c> is a different account.
-    /// </summary>
-    internal static bool IsFreebuff(AgentDefinition definition) =>
-        string.Equals(definition.Catalog ?? definition.Id, "freebuff", StringComparison.OrdinalIgnoreCase)
-        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "freebuff");
-
-    /// <summary>
     /// Settings changed something (the window saved it already): read the files again, so this
     /// window's own later saves don't write the old values back, and refresh what depends on them.
     /// Safe while the flyout is hidden, which it normally is while settings is open.
@@ -1588,7 +1556,7 @@ public sealed partial class FlyoutWindow : Window
             ShowRecents(item);
             return true;
         }
-        if (IsFreebuff(item.Definition))
+        if (KnownAgents.IsFreebuff(item.Definition))
         {
             _drawerItem = item;
             UsageOffer.IsOpen = false;
@@ -1598,7 +1566,7 @@ public sealed partial class FlyoutWindow : Window
             return true;
         }
         // The CLI and the desktop app share one account, so both show its usage.
-        if (IsCursor(item.Definition))
+        if (KnownAgents.IsCursor(item.Definition))
         {
             _drawerItem = item;
             UsageOffer.IsOpen = false;
@@ -1607,7 +1575,7 @@ public sealed partial class FlyoutWindow : Window
             ShowRecents(item);
             return true;
         }
-        if (IsKiro(item.Definition))
+        if (KnownAgents.IsKiro(item.Definition))
         {
             _drawerItem = item;
             UsageOffer.IsOpen = false;
@@ -1616,7 +1584,7 @@ public sealed partial class FlyoutWindow : Window
             ShowRecents(item);
             return true;
         }
-        if (IsGitHubCopilot(item.Definition))
+        if (KnownAgents.IsGitHubCopilot(item.Definition))
         {
             _drawerItem = item;
             UsageOffer.IsOpen = false;
@@ -1652,7 +1620,7 @@ public sealed partial class FlyoutWindow : Window
             return true;
         }
 
-        switch (account?.Agent ?? CommandName(item.Definition.Command))
+        switch (account?.Agent ?? KnownAgents.CommandName(item.Definition.Command))
         {
             case "claude":
                 return PrepareClaudeDrawer(item, account!);
@@ -1825,7 +1793,7 @@ public sealed partial class FlyoutWindow : Window
 
     private void StartGrokCheck() =>
         StartLiveCheck(GrokCheckKey, GrokUsage.MinInterval, GrokUsage.FetchAsync, GrokUsage.Unreachable,
-            shown => CommandName(shown.Definition.Command) == "grok", ShowGrokCheck);
+            shown => KnownAgents.CommandName(shown.Definition.Command) == "grok", ShowGrokCheck);
 
     /// <summary>Freebuff's account, one per CLI config folder.</summary>
     private static string FreebuffCheckKey(AgentDefinition definition) =>
@@ -1836,17 +1804,17 @@ public sealed partial class FlyoutWindow : Window
         var key = FreebuffCheckKey(definition);
         StartLiveCheck(key, FreebuffUsage.MinInterval, () => FreebuffUsage.FetchAsync(FreebuffUsage.ConfigDirFor(definition)),
             FreebuffUsage.Unreachable,
-            shown => IsFreebuff(shown.Definition) && FreebuffCheckKey(shown.Definition) == key,
+            shown => KnownAgents.IsFreebuff(shown.Definition) && FreebuffCheckKey(shown.Definition) == key,
             () => ShowFreebuffCheck(definition));
     }
 
     private void StartCursorCheck() =>
         StartLiveCheck(CursorCheckKey, CursorUsage.MinInterval, CursorUsage.FetchAsync, CursorUsage.Unreachable,
-            shown => IsCursor(shown.Definition), ShowCursorCheck);
+            shown => KnownAgents.IsCursor(shown.Definition), ShowCursorCheck);
 
     private void StartKiroCheck() =>
         StartLiveCheck(KiroCheckKey, KiroUsage.MinInterval, KiroUsage.FetchAsync, KiroUsage.Unreachable,
-            shown => IsKiro(shown.Definition), ShowKiroCheck);
+            shown => KnownAgents.IsKiro(shown.Definition), ShowKiroCheck);
 
     private void StartCopilotCheck()
     {
@@ -1907,19 +1875,19 @@ public sealed partial class FlyoutWindow : Window
             return saved;
         }
 
-        if (IsCursor(item.Definition))
+        if (KnownAgents.IsCursor(item.Definition))
         {
             var check = Check(CursorCheckKey);
             return new SummaryEntry(CursorCheckKey, item, check?.Result?.Usage ?? SavedFor(CursorCheckKey, CursorUsage.LoadSaved),
                 check?.Running == true, "month");
         }
-        if (IsKiro(item.Definition))
+        if (KnownAgents.IsKiro(item.Definition))
         {
             var check = Check(KiroCheckKey);
             return new SummaryEntry(KiroCheckKey, item, check?.Result?.Usage ?? SavedFor(KiroCheckKey, KiroUsage.LoadSaved),
                 check?.Running == true, "month");
         }
-        if (IsFreebuff(item.Definition))
+        if (KnownAgents.IsFreebuff(item.Definition))
         {
             var key = FreebuffCheckKey(item.Definition);
             var check = Check(key);
@@ -1927,13 +1895,13 @@ public sealed partial class FlyoutWindow : Window
                 check?.Result?.Usage ?? SavedFor(key, () => FreebuffUsage.LoadSaved(FreebuffUsage.ConfigDirFor(item.Definition))),
                 check?.Running == true, "day");
         }
-        if (IsGitHubCopilot(item.Definition))
+        if (KnownAgents.IsGitHubCopilot(item.Definition))
             return new SummaryEntry("copilot", item, null, _copilotFetching && _copilotUsage is null, "month", _copilotUsage);
         // Claude desktop has Claude Code's account, so it shares that row (or has it, if alone).
         var account = UsageAccount.For(item.Definition);
         if (account is { UsesOtherProvider: true } || (!item.IsCli && account is null))
             return null;
-        switch (account?.Agent ?? CommandName(item.Definition.Command))
+        switch (account?.Agent ?? KnownAgents.CommandName(item.Definition.Command))
         {
             case "claude":
             {
@@ -1971,22 +1939,22 @@ public sealed partial class FlyoutWindow : Window
         {
             if (ApiAccountFor(item.Definition) is not null)
                 continue; // its balance, checked above
-            if (IsCursor(item.Definition))
+            if (KnownAgents.IsCursor(item.Definition))
             {
                 StartCursorCheck();
                 continue;
             }
-            if (IsKiro(item.Definition))
+            if (KnownAgents.IsKiro(item.Definition))
             {
                 StartKiroCheck();
                 continue;
             }
-            if (IsFreebuff(item.Definition))
+            if (KnownAgents.IsFreebuff(item.Definition))
             {
                 StartFreebuffCheck(item.Definition);
                 continue;
             }
-            if (IsGitHubCopilot(item.Definition))
+            if (KnownAgents.IsGitHubCopilot(item.Definition))
             {
                 StartCopilotCheck();
                 continue;
@@ -1994,7 +1962,7 @@ public sealed partial class FlyoutWindow : Window
             var account = UsageAccount.For(item.Definition);
             if (account is { UsesOtherProvider: true } || (!item.IsCli && account is null))
                 continue;
-            switch (account?.Agent ?? CommandName(item.Definition.Command))
+            switch (account?.Agent ?? KnownAgents.CommandName(item.Definition.Command))
             {
                 case "claude" when SourceFor(account!) == ClaudeUsageSource.Api:
                     StartClaudeCheck(account!);
@@ -2261,7 +2229,7 @@ public sealed partial class FlyoutWindow : Window
             else
                 bars.Add(new SummaryBar(null, $"{used:N0} {unit}{resets}"));
         }
-        else if (entry.Item is not null && IsFreebuff(entry.Item.Definition))
+        else if (entry.Item is not null && KnownAgents.IsFreebuff(entry.Item.Definition))
         {
             if (entry.Usage?.Allowance is { } allowance)
             {
@@ -2668,7 +2636,7 @@ public sealed partial class FlyoutWindow : Window
             _copilotFetching = false;
         }
         // Still showing Copilot? Fill in what arrived.
-        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && IsGitHubCopilot(item.Definition))
+        if (_drawerOpen && !_drawerClosing && _drawerItem is { } item && KnownAgents.IsGitHubCopilot(item.Definition))
             ShowCopilotUsage();
         else if (_summaryShowing)
             ShowSummary();
@@ -2952,9 +2920,6 @@ public sealed partial class FlyoutWindow : Window
             : $"Updated {when.ToLocalTime():MMM d}";
     }
 
-    /// <summary>"claude" for "claude", "claude.exe" or a quoted full path to it.</summary>
-    internal static string? CommandName(string? command) =>
-        string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"')).ToLowerInvariant();
 
     /// <summary>The script or program a status line command runs, e.g. "waifuops-statusline.ps1".</summary>
     private static string DescribeCommand(string command)
@@ -3037,7 +3002,7 @@ public sealed partial class FlyoutWindow : Window
         var drawer = item is not null && PrepareDrawer(item);
         // Switching an open drawer to another agent (or from the overview): fade its new content in rather than swapping it.
         if (drawer && (fromSummary || (previous is not null
-            && CommandName(previous.Definition.Command) != CommandName(item!.Definition.Command))))
+            && KnownAgents.CommandName(previous.Definition.Command) != KnownAgents.CommandName(item!.Definition.Command))))
             FadeInDrawerContent();
         // The drawer first: the image layout depends on which side it opens.
         if (drawer)

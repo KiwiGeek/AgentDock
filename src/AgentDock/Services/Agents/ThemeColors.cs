@@ -75,7 +75,7 @@ internal static class ThemeColors
         if (Parse(agent.Color) is { } configured)
             return configured;
 
-        foreach (var name in new[] { agent.Catalog, agent.Id, CommandName(agent.Command) })
+        foreach (var name in new[] { agent.Catalog, agent.Id, KnownAgents.CommandName(agent.Command) })
         {
             if (ForBundledBackgroundName(name) is { } color)
                 return color;
@@ -86,9 +86,6 @@ internal static class ThemeColors
 
     /// <summary>Windows Terminal's <c>#RRGGBB</c> form for <c>--tabColor</c> and profile <c>tabColor</c>.</summary>
     public static string ToHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-
-    private static string? CommandName(string? command) =>
-        string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('\"'));
 
     private static Color Hex(int rgb) => Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
 

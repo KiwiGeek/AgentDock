@@ -532,10 +532,10 @@ public sealed partial class SettingsWindow : Window
     private FrameworkElement? AgentSettingsPanelFor(AgentDefinition definition)
     {
         if ((definition.Catalog ?? definition.Id).Equals("aider", StringComparison.OrdinalIgnoreCase)
-            || CommandName(definition.Command) == "aider")
+            || KnownAgents.CommandName(definition.Command) == "aider")
             return AiderSettings;
 
-        return CommandName(definition.Command) switch
+        return KnownAgents.CommandName(definition.Command) switch
         {
             "claude" => ClaudeSettings,
             "grok" => GrokSettings,
@@ -548,19 +548,13 @@ public sealed partial class SettingsWindow : Window
     private IEnumerable<FrameworkElement> AgentSettingsPanels =>
         [ClaudeSettings, GrokSettings, CursorSettings, KiroSettings, CopilotSettings, AiderSettings];
 
-    // Which agent is which is decided in one place, by the flyout's drawer code.
-    private static string? CommandName(string? command) => FlyoutWindow.CommandName(command);
-    private static bool IsCursor(AgentDefinition definition) => FlyoutWindow.IsCursor(definition);
-    private static bool IsKiro(AgentDefinition definition) => FlyoutWindow.IsKiro(definition);
-    private static bool IsFreebuff(AgentDefinition definition) => FlyoutWindow.IsFreebuff(definition);
-    private static bool IsGitHubCopilot(AgentDefinition definition) => FlyoutWindow.IsGitHubCopilot(definition);
 
     private void ShowAgentSettings(AgentDefinition definition)
     {
         _editingAgent = definition;
         _selectedTag = TagAgentPrefix + definition.Id;
         var isCli = definition.Kind == AgentKind.Cli;
-        var command = CommandName(definition.Command);
+        var command = KnownAgents.CommandName(definition.Command);
 
         _settingsToggleReady = false;
         AgentNameBox.Text = definition.Name;
@@ -730,7 +724,7 @@ public sealed partial class SettingsWindow : Window
     private static string LaunchDescription(AgentDefinition definition)
     {
         var model = ((definition.Catalog ?? definition.Id).Equals("aider", StringComparison.OrdinalIgnoreCase)
-                     || CommandName(definition.Command) == "aider") && !string.IsNullOrWhiteSpace(definition.Model)
+                     || KnownAgents.CommandName(definition.Command) == "aider") && !string.IsNullOrWhiteSpace(definition.Model)
             ? $" --model {definition.Model.Trim()}" : "";
         return $"Runs {definition.Command}{(string.IsNullOrWhiteSpace(definition.Arguments) ? "" : " " + definition.Arguments)}{model} in a terminal.";
     }
@@ -960,9 +954,9 @@ public sealed partial class SettingsWindow : Window
         // Linked to an Anthropic key, Claude Code runs on that key, not its plan.
         var onKey = ApiUsage.AccountFor(definition, _settings.ApiAccounts) is { } key
                     && ApiUsage.KeyVariableFor(definition, key.Provider) is not null && ApiUsage.LeavesPlan(definition, key.Provider);
-        var panel = IsCursor(definition) ? CursorSettings
-            : IsKiro(definition) ? KiroSettings
-            : IsGitHubCopilot(definition) ? CopilotSettings
+        var panel = KnownAgents.IsCursor(definition) ? CursorSettings
+            : KnownAgents.IsKiro(definition) ? KiroSettings
+            : KnownAgents.IsGitHubCopilot(definition) ? CopilotSettings
             : account is { UsesOtherProvider: true } || onKey ? null
             : account is { Agent: "claude" } ? ClaudeSettings
             : definition.Kind == AgentKind.Cli ? AgentSettingsPanelFor(definition)

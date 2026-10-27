@@ -36,7 +36,8 @@ public static class AgentIcons
         ExistingFile(definition.Background)
         ?? BundledBackground(definition.Id)
         ?? BundledBackground(definition.Catalog)
-        ?? (definition.Kind == AgentKind.Cli ? BundledBackground(CommandName(definition.Command)) : null);
+        ?? (definition.Kind == AgentKind.Cli ? BundledBackground(KnownAgents.CommandName(definition.Command)) : null);
+
     /// <summary>
     /// The waifu portraits the taskbar icons are made from (the agents' and the Agent Dock host's),
     /// compiled in as JPEGs for the About page's slideshow (tools\Build-Portraits.ps1). Resource
@@ -62,7 +63,7 @@ public static class AgentIcons
         Configured(definition)
         ?? Bundled(definition.Id)
         ?? Bundled(definition.Catalog)
-        ?? (definition.Kind == AgentKind.Cli ? Bundled(CommandName(definition.Command)) : null);
+        ?? (definition.Kind == AgentKind.Cli ? Bundled(KnownAgents.CommandName(definition.Command)) : null);
 
     public static bool IsBundled(string source) => source.StartsWith(BundledPrefix, StringComparison.Ordinal);
 
@@ -122,9 +123,6 @@ public static class AgentIcons
 
     private static string? Bundled(string? name) =>
         !string.IsNullOrWhiteSpace(name) && BundledNames.Contains(name) ? BundledPrefix + name.ToLowerInvariant() : null;
-
-    private static string? CommandName(string? command) =>
-        string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"'));
 
     private static string? Configured(AgentDefinition definition) => ExistingFile(definition.Icon);
 

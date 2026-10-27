@@ -1,5 +1,6 @@
 using System.Globalization;
 using AgentDock.Models;
+using AgentDock.Services.Agents;
 using AgentDock.Services.Usage;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -168,13 +169,13 @@ public sealed partial class SettingsWindow
                 && ApiUsage.LeavesPlan(definition, key.Provider))
                 continue; // Claude Code on an Anthropic key
             PlanGroup? group = null;
-            if (IsCursor(definition))
+            if (KnownAgents.IsCursor(definition))
                 group = Group("cursor", "Cursor", "Cursor CLI's sign-in, for both the CLI and the desktop app");
-            else if (IsKiro(definition))
+            else if (KnownAgents.IsKiro(definition))
                 group = Group("kiro", "Kiro", "Kiro CLI's sign-in (kiro-cli login)");
-            else if (IsGitHubCopilot(definition))
+            else if (KnownAgents.IsGitHubCopilot(definition))
                 group = Group("copilot", "GitHub", "GitHub CLI's sign-in (gh), for Copilot CLI and the desktop app");
-            else if (IsFreebuff(definition))
+            else if (KnownAgents.IsFreebuff(definition))
             {
                 // Like Claude and Codex, a copy with its own config folder is another account.
                 var dir = FreebuffUsage.ConfigDirFor(definition);
@@ -195,7 +196,7 @@ public sealed partial class SettingsWindow
                     : Group(account.Key, account.IsDefault ? "ChatGPT" : $"ChatGPT · {folder}",
                         account.IsDefault ? "Codex's sign-in" : $"Signed in under {account.ConfigDir}");
             }
-            else if (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "grok")
+            else if (definition.Kind == AgentKind.Cli && KnownAgents.CommandName(definition.Command) == "grok")
                 group = Group("grok", "Grok", "Grok Build's sign-in");
             group?.Agents.Add(definition);
         }

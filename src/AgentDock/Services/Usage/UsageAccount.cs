@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using AgentDock.Models;
+using AgentDock.Services.Agents;
 
 namespace AgentDock.Services.Usage;
 
@@ -61,7 +62,7 @@ public sealed class UsageAccount
                 "chatgpt-desktop" => "codex", // the Codex app, named ChatGPT since July 2026
                 _ => null
             }
-            : CommandName(definition.Command);
+            : KnownAgents.CommandName(definition.Command);
         if (agent is not ("claude" or "codex"))
             return null;
 
@@ -113,7 +114,4 @@ public sealed class UsageAccount
             return path.Trim();
         }
     }
-
-    private static string? CommandName(string? command) =>
-        string.IsNullOrWhiteSpace(command) ? null : Path.GetFileNameWithoutExtension(command.Trim().Trim('"')).ToLowerInvariant();
 }
