@@ -472,3 +472,16 @@ cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's ic
 | `Services` | Settings I/O, PATH lookup, launching, agent resolution, IPC, autostart, jump list |
 | `Interop` | Win32 and shell COM declarations, icon extraction, Start menu enumeration |
 | `Assets/Agents` | Built-in agent icons, compiled into the exe as resources |
+
+## Licence
+
+Copyright (C) 2026 Joshua Penman.
+
+Agent Dock is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License](LICENSE), version 3 or (at your option) any later version. It is
+distributed in the hope that it will be useful, but without any warranty; see the licence for
+details.
+
+**Third-party marks.** The agent icons in `Assets/Agents`, and any product logos that appear in
+the hover pictures, belong to their owners. They are included only to identify each agent, and the
+GPL grants no rights to them. AGENTS.md ("Done: agent icons") records where each icon came from.

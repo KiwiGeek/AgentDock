@@ -69,6 +69,9 @@ shows a usage overview of every agent with a suggestion of which to use.
 - Reordering is by dragging only (the Move up/down buttons were removed on request).
 - Gemini CLI was removed (Google stopped serving personal accounts, June 2026); Antigravity CLI
   (`agy`) replaced it.
+- **Licence: GPL-3.0-or-later** (owner's choice, 2026-10-26, over MIT: a fork that ships must stay
+  open). `LICENSE` is the GPL text; README's "Licence" section has the copyright line and the
+  third-party marks note (agent icons and logos in the pictures belong to their owners).
 
 ## Things learned the hard way
 
@@ -773,6 +776,7 @@ writing and maintaining an updater isn't worth it. How it fits:
 | `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
 | `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
+| `LICENSE` | GPL-3.0 (see README's "Licence" for the copyright line and third-party marks) |
 | `AGENTS.md` | This handoff: the owner's rules, lessons learned, which agents are done, and the reference |
 | `tasks.md` | Agreed work not yet started (agents to review, API-credit profiles, custom groups) |
 
