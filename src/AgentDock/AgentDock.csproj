@@ -28,6 +28,13 @@
 
     <!-- Native code: the hand-off copy starts in a few milliseconds. -->
     <PublishAot>true</PublishAot>
+
+    <!--
+      English only (owner, 2026-10-26): leaves out the ~90 language folders of WinUI's own strings
+      (built-in control text such as a text box's Cut / Copy / Paste), which Agent Dock's English UI
+      doesn't need.
+    -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
@@ -58,10 +65,33 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <!--
+      The Windows App SDK's components, not its Microsoft.WindowsAppSDK bundle: the bundle also brings
+      AI and ML (onnxruntime.dll, DirectML.dll), Search, Widgets and DWriteCore, which Agent Dock
+      doesn't use and a self-contained build would ship (about 50 MB; issue #11). Keep these at the
+      versions Microsoft.WindowsAppSDK pins for a release (2.5.1 here). InteractiveExperiences
+      (AppWindow) is named because WinUI asks for 2.1.8, which isn't published, and NuGet's warning
+      about that fails a -warnaserror build; Foundation is the folder picker and the like.
+    -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.3.9" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.3.12" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="Velopack" Version="1.2.161" />
   </ItemGroup>
+
+  <!--
+    English only, for the Windows App SDK's own strings: its self-contained build copies a .mui file
+    per language (~90 folders) with no setting to stop it (SatelliteResourceLanguages covers only
+    .NET's). This drops every .mui outside an en-* folder straight after the SDK adds them.
+  -->
+  <Target Name="KeepEnglishWindowsAppSDKStrings" AfterTargets="AddMicrosoftWindowsAppSDKPayloadFilesFromComponents">
+    <ItemGroup>
+      <_NonEnglishMui Include="@(None)"
+                      Condition="'%(None.Extension)' == '.mui' and !$([System.String]::Copy('%(None.Link)').StartsWith('en-', System.StringComparison.OrdinalIgnoreCase))" />
+      <None Remove="@(_NonEnglishMui)" />
+    </ItemGroup>
+  </Target>
 
   <!--
     DeepSeek Harness plugins (HostedAgents): copied next to the exe so a Debug or

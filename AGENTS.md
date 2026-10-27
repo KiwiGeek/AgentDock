@@ -218,8 +218,8 @@ sources still to find, #17.
   measured right. Velopack sets the process's AppUserModelID to `velopack.KiwiGeek.AgentDock`
   (logged at every start); pinning and the flyout still worked with it. When testing, `& AgentDock.exe
   --quit` in PowerShell doesn't wait (it's a GUI exe): use `Start-Process -Wait`, or a start straight
-  after races the exiting copy and just hands off. Still to do: code signing, winget, and maybe dropping the Windows App SDK's unused AI runtime (`onnxruntime.dll`,
-  `DirectML.dll`, about 38 MB) from the package.
+  after races the exiting copy and just hands off. Still to do: code signing and winget. (The Windows App SDK's unused AI
+  runtime and other languages went in #11: see "Unpackaged, self-contained" under Hard constraints.)
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
   overview row; the new Cursor, Grok and Copilot drawers; drag to reorder (including with the
   two-column list); the look of the width grip and of two columns; the published Native AOT build.
@@ -748,6 +748,17 @@ Shell, icon and jump list code catches broadly (`when ex is not OutOfMemoryExcep
 there degrade to a missing icon or entry, never an error.
 
 **Unpackaged, self-contained Windows App SDK.** No MSIX, nothing for the user to install.
+- **Its components, not the bundle** (issue #11, 2026-10-26): the `.csproj` references
+  `Microsoft.WindowsAppSDK.WinUI`, `.Foundation` and `.InteractiveExperiences` instead of
+  `Microsoft.WindowsAppSDK`, which also brings AI and ML (`onnxruntime.dll`, `DirectML.dll`), Search,
+  Widgets and DWriteCore. When updating, use the versions the bundle pins for that release (see its
+  dependencies on nuget.org). A new feature that needs another component (say, notifications or
+  widgets) means adding that component's package.
+- **English only** (owner, 2026-10-26): `SatelliteResourceLanguages` is `en`, and the
+  `KeepEnglishWindowsAppSDKStrings` target drops the Windows App SDK's non-English `.mui` files,
+  which it copies with no setting to stop it.
+- Together: a release went from 301 files and 184.8 MB to 78 files and 123.3 MB (without the
+  `.pdb`, which Velopack leaves out). A clean Debug build runs without the dropped files.
 
 **Installing and updating: Velopack** (`Services/Updates.cs`; owner's choice, 2026-10-26, over a
 home-made updater, MSIX or Inno Setup). The one NuGet package besides the Windows App SDK, because
