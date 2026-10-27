@@ -2,6 +2,9 @@ using System.Diagnostics;
 using AgentDock.Interop;
 using AgentDock.Models;
 using AgentDock.Services;
+using AgentDock.Services.Agents;
+using AgentDock.Services.Launching;
+using AgentDock.Views;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 

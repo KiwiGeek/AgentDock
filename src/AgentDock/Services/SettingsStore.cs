@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentDock.Models;
+using AgentDock.Services.Agents;
 
 namespace AgentDock.Services;
 

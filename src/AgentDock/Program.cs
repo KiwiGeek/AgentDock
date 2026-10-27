@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using AgentDock.Interop;
 using AgentDock.Services;
+using AgentDock.Services.Usage;
 
 namespace AgentDock;
 

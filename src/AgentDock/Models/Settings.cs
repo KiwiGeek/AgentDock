@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentDock.Services.Agents;
 
 namespace AgentDock.Models;
 
@@ -56,7 +57,7 @@ public sealed class AgentDefinition
     public List<string>? StartMenuNames { get; set; }
 
     /// <summary>
-    /// The known agent (<see cref="Services.KnownAgents"/>) this one was added from, so a renamed or
+    /// The known agent (<see cref="KnownAgents"/>) this one was added from, so a renamed or
     /// duplicated copy keeps its icon, picture and colour, and isn't offered again by a scan.
     /// </summary>
     public string? Catalog { get; set; }
@@ -118,7 +119,7 @@ public sealed class DockSettings
     public List<ApiAccount> ApiAccounts { get; set; } = [];
 
     /// <summary>
-    /// No agents: the user picks them, from a scan of what's installed (<see cref="Services.KnownAgents"/>)
+    /// No agents: the user picks them, from a scan of what's installed (<see cref="KnownAgents"/>)
     /// or by hand. A first run with an empty list offers the scan.
     /// </summary>
     public static DockSettings CreateDefault() => new();
@@ -126,17 +127,17 @@ public sealed class DockSettings
 
 /// <summary>
 /// An API key with a prepaid balance (agents.json; owner's decision, 2026-10-19: the key is stored
-/// here as it is, since this is the user's own tool). <see cref="Services.ApiUsage"/> checks it.
+/// here as it is, since this is the user's own tool). <see cref="Services.Usage.ApiUsage"/> checks it.
 /// </summary>
 public sealed class ApiAccount
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
-    /// <summary>Which service: "deepseek", "anthropic", "openai"… (<see cref="Services.ApiUsage.Providers"/>).</summary>
+    /// <summary>Which service: "deepseek", "anthropic", "openai"… (<see cref="Services.Usage.ApiUsage.Providers"/>).</summary>
     public string Provider { get; set; } = "deepseek";
     /// <summary>
     /// The key agents use (every agent linked to this account gets it, as the variable
-    /// <see cref="Services.ApiUsage.KeyVariableFor"/> names), or <c>%NAME%</c> to read it from Windows'
+    /// <see cref="Services.Usage.ApiUsage.KeyVariableFor"/> names), or <c>%NAME%</c> to read it from Windows'
     /// environment. For DeepSeek it also reads the balance.
     /// </summary>
     public string? ApiKey { get; set; }
@@ -249,7 +250,7 @@ public sealed class UsageWindow
 /// <summary>
 /// An agent's subscription usage, as shown in its drawer. For Claude Code this is also
 /// %LOCALAPPDATA%\AgentDock\claude-usage.json, written by <c>AgentDock.exe --statusline</c>;
-/// for Codex it's asked of Codex's app server and saved in codex-usage.json (<see cref="Services.CodexUsage"/>).
+/// for Codex it's asked of Codex's app server and saved in codex-usage.json (<see cref="Services.Usage.CodexUsage"/>).
 /// </summary>
 public sealed class PlanUsage
 {
@@ -379,7 +380,7 @@ public sealed class DockState
     public string? TaskbarWaifuIcon { get; set; }
 
     /// <summary>
-    /// Newest folder first, per agent id, at most <see cref="Services.RecentLaunches.MaxCount"/>.
+    /// Newest folder first, per agent id, at most <see cref="Services.Agents.RecentLaunches.MaxCount"/>.
     /// Launching one already in the list moves it to the front and shifts the newer ones down.
     /// </summary>
     public Dictionary<string, List<string>> RecentLaunches { get; set; } = [];
@@ -417,7 +418,7 @@ public enum ClaudeUsageSource
 {
     /// <summary>Claude Code's status line, through <c>AgentDock.exe --statusline</c>.</summary>
     [JsonStringEnumMemberName("statusLine")] StatusLine,
-    /// <summary>The usage call Claude Code's /usage makes (<see cref="Services.ClaudeUsageApi"/>).</summary>
+    /// <summary>The usage call Claude Code's /usage makes (<see cref="Services.Usage.ClaudeUsageApi"/>).</summary>
     [JsonStringEnumMemberName("api")] Api
 }
 

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using AgentDock.Interop;
+using AgentDock.Services.Agents;
 
 namespace AgentDock.Services;
 

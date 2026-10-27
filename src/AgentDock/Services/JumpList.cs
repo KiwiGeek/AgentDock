@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using AgentDock.Interop;
 using AgentDock.Models;
+using AgentDock.Services.Agents;
 
 namespace AgentDock.Services;
 

@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using AgentDock.Services.Agents;
+using AgentDock.Services.Launching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 
@@ -42,7 +44,7 @@ public sealed partial class AgentItem : INotifyPropertyChanged
     /// Opens in a folder: every CLI agent, and a desktop app that can (Claude and ChatGPT by link,
     /// Cursor by its exe). These are the agents with presets, recent folders, and the working folder applied.
     /// </summary>
-    public bool TakesFolder => IsCli || Services.KnownAgents.TakesFolder(Definition);
+    public bool TakesFolder => IsCli || KnownAgents.TakesFolder(Definition);
 
     public bool IsAvailable => IsAgentAvailable && (Preset is null || (TakesFolder && FolderExists));
     public double ItemOpacity => IsAvailable ? 1.0 : 0.5;
@@ -71,7 +73,7 @@ public sealed partial class AgentItem : INotifyPropertyChanged
     {
         get
         {
-            var label = Services.KnownAgents.CliSubtitle(Definition)
+            var label = KnownAgents.CliSubtitle(Definition)
                 ?? string.Join(' ', new[] { Definition.Command, Definition.Arguments }.Where(s => !string.IsNullOrWhiteSpace(s)));
             return IsHostedRunning ? $"Running · {label.ToLowerInvariant()}" : label;
         }
@@ -79,19 +81,19 @@ public sealed partial class AgentItem : INotifyPropertyChanged
 
     /// <summary>Whether Agent Dock is hosting this agent's process (no Terminal window).</summary>
     public bool IsHostedRunning =>
-        Services.HostedAgents.IsHosted(Definition)
-        && Services.HostedAgents.IsRunning(Preset?.Agent ?? Definition.Id);
+        HostedAgents.IsHosted(Definition)
+        && HostedAgents.IsRunning(Preset?.Agent ?? Definition.Id);
 
     public Visibility StopVisibility => IsHostedRunning ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>
     /// Where the icon comes from: an image file, a compiled-in icon, or a shell parsing name to
-    /// extract one from. Null shows the glyph. See <see cref="Services.AgentIcons"/>.
+    /// extract one from. Null shows the glyph. See <see cref="AgentIcons"/>.
     /// </summary>
     public string? IconSource { get; init; }
 
     /// <summary>The agent's hover background: its "background" image file, or a compiled-in one.</summary>
-    public string? BackgroundSource => Services.AgentIcons.FindBackground(Definition);
+    public string? BackgroundSource => AgentIcons.FindBackground(Definition);
 
     private string PresetSubtitle =>
         !TakesFolder ? "Presets only work with agents that open in a folder"
@@ -131,8 +133,8 @@ public sealed partial class AgentItem : INotifyPropertyChanged
     /// The row's button: the first of the agent's other ways to open (Claude's new chat, ChatGPT
     /// without a folder). Agent rows only; a preset is about its folder.
     /// </summary>
-    public Services.OtherLaunch? QuickLaunch =>
-        Preset is null && IsAgentAvailable ? Services.KnownAgents.OtherLaunches(Definition).FirstOrDefault() : null;
+    public OtherLaunch? QuickLaunch =>
+        Preset is null && IsAgentAvailable ? KnownAgents.OtherLaunches(Definition).FirstOrDefault() : null;
 
     public Visibility QuickLaunchVisibility =>
         QuickLaunch is null || IsHostedRunning ? Visibility.Collapsed : Visibility.Visible;
