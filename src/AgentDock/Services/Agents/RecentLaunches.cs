@@ -55,17 +55,17 @@ public static class RecentLaunches
 
     /// <summary>
     /// The agents whose drawer lists recent folders: Claude Code, Codex, Grok Build, Freebuff, OpenCode, Aider, Qwen Code,
-    /// Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI, GitHub Copilot CLI, and the desktop apps that open in
-    /// a folder (Claude, ChatGPT, Cursor). Cursor CLI's command can also be plain "agent", so its catalog id counts too;
-    /// DeepSeek Harness's command is <c>dsh</c>, and Kiro's is <c>kiro-cli</c>, so their catalog ids count too. Aider and
-    /// Qwen Code have no usage bars, so their drawer is their recents; Crush and Factory Droid (like Aider, Qwen Code)
-    /// too.
+    /// Crush, Factory Droid, Kiro CLI, Antigravity CLI, DeepSeek Harness, Cursor CLI, GitHub Copilot CLI, Goose, Amp, and
+    /// the desktop apps that open in a folder (Claude, ChatGPT, Cursor). Cursor CLI's command can also be plain "agent",
+    /// so its catalog id counts too; DeepSeek Harness's command is <c>dsh</c>, Kiro's is <c>kiro-cli</c>, and Antigravity's
+    /// is <c>agy</c>, so their catalog ids count too. Agents with no usage bars (Aider, Qwen Code, Crush, Factory Droid,
+    /// Goose, Amp) have their recents as their drawer.
     /// </summary>
     public static bool Records(AgentDefinition agent) =>
         agent.Kind == AgentKind.Cli
             ? Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('"'))?.ToLowerInvariant()
-                  is "claude" or "codex" or "grok" or "freebuff" or "opencode" or "aider" or "qwen" or "crush" or "droid" or "kiro-cli" or "dsh" or "cursor-agent" or "copilot" or "hermes"
-              || (agent.Catalog ?? agent.Id).ToLowerInvariant() is "aider" or "qwen" or "crush" or "droid" or "kiro" or "deepseek" or "cursor-cli" or "freebuff"
+                  is "claude" or "codex" or "grok" or "freebuff" or "opencode" or "aider" or "qwen" or "crush" or "droid" or "kiro-cli" or "agy" or "dsh" or "cursor-agent" or "copilot" or "hermes" or "goose" or "amp"
+              || (agent.Catalog ?? agent.Id).ToLowerInvariant() is "aider" or "qwen" or "crush" or "droid" or "kiro" or "antigravity" or "deepseek" or "cursor-cli" or "freebuff"
             // Desktop apps that open in a folder (Claude, ChatGPT, Cursor).
             : KnownAgents.TakesFolder(agent);
 

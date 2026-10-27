@@ -542,12 +542,14 @@ public sealed partial class SettingsWindow : Window
             "grok" => GrokSettings,
             "cursor-agent" => CursorSettings,
             "kiro-cli" => KiroSettings,
+            "agy" => AntigravitySettings,
+            "amp" => AmpSettings,
             _ => null
         };
     }
 
     private IEnumerable<FrameworkElement> AgentSettingsPanels =>
-        [ClaudeSettings, GrokSettings, CursorSettings, KiroSettings, CopilotSettings, AiderSettings];
+        [ClaudeSettings, GrokSettings, CursorSettings, KiroSettings, AntigravitySettings, AmpSettings, CopilotSettings, FreebuffSettings, AiderSettings];
 
 
     private void ShowAgentSettings(AgentDefinition definition)
@@ -958,6 +960,8 @@ public sealed partial class SettingsWindow : Window
         var panel = KnownAgents.IsCursor(definition) ? CursorSettings
             : KnownAgents.IsKiro(definition) ? KiroSettings
             : KnownAgents.IsGitHubCopilot(definition) ? CopilotSettings
+            // Freebuff's hours and sessions come through the CLI's sign-in, so both rows say so.
+            : KnownAgents.IsFreebuff(definition) ? FreebuffSettings
             : account is { UsesOtherProvider: true } || onKey ? null
             : account is { Agent: "claude" } ? ClaudeSettings
             : definition.Kind == AgentKind.Cli ? AgentSettingsPanelFor(definition)

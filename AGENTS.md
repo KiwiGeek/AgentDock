@@ -141,24 +141,31 @@ sources still to find, #17.
 - [x] **Grok Build** (`grok`): icon, picture, usage from grok.com with Grok Build's token, recents,
   overview. Its token lasts about ten hours; when it has expired, Agent Dock has Grok Build renew it
   (`grok models`, hidden; #31) before checking.
-- [ ] **Freebuff** (`freebuff`): icon, picture (the owner's, added 2026-10-23), usage (daily hours
-  from codebuff.com with the CLI's keychain token), recents, overview. Verified 2026-10-23 through UI
-  Automation: the row, the drawer, and the overview row, with a live check (30 of 30 hours). Not yet
-  verified: the picture by eye, an actual launch and a recent folder.
+- [ ] **Freebuff CLI** (`freebuff`): icon, picture (the owner's, added 2026-10-23), usage (daily
+  hours from codebuff.com with the CLI's keychain token), recents, overview. Verified 2026-10-23
+  through UI Automation: the row, the drawer, and the overview row, with a live check (30 of 30
+  hours). Not yet verified: the picture by eye, an actual launch and a recent folder.
 - [x] **Cursor CLI** (`cursor-agent`, or plain `agent`): icon, picture, usage from cursor.com with
   the CLI's token, recents, overview.
 - [x] **GitHub Copilot CLI** (`copilot`): icon, picture, usage (AI credits) via
   `gh api copilot_internal/user`, recents, overview.
-- [ ] **Antigravity CLI** (`agy`): known agent, icon and picture. Not installed on the owner's PC; no
-  usage, not verified to launch.
+- [ ] **Antigravity CLI** (`agy`): icon, picture, usage (a week per model family, via
+  `agy -p /usage`), recent folders, overview. Verified 2026-10-27 through UI Automation: found on
+  PATH, the drawer ("Gemini models" 98% left, "Claude and GPT models" 100% left, both resetting
+  3 Nov) and the overview row (2%). Not yet verified by eye, or an actual launch and recent folder.
 - [ ] **OpenCode** (`opencode`): icon, picture and recent folders. No usage bars: its providers have
   separate billing and quota systems.
 - [ ] **Aider** (`aider`): icon, picture, model setting, Aider-driven model search and recent folders. No usage bars: it can use arbitrary providers.
 - [ ] **Qwen Code** (`qwen`): icon, picture and recent folders. No usage bars yet.
-- [ ] **Amp** (`amp`): icon and picture only.
+- [ ] **Amp** (`amp`): icon, picture, usage (the credit balance, via `amp usage`), recent
+  folders, overview. Verified 2026-10-27 through UI Automation: the drawer ("Amp usage",
+  "Individual credits: $10.00 remaining") and the overview row (text only). No bars to draw: Amp
+  reports a balance with no limit or reset. Not yet verified by eye.
 - [ ] **Kiro CLI** (`kiro-cli`): icon, picture, usage (monthly credits via `kiro-cli chat /usage`),
   and recent folders. Still to verify by eye: the drawer, overview row, and recents.
-- [ ] **Goose** (`goose`): icon and picture only.
+- [ ] **Goose** (`goose`): icon, picture, and recent folders. No usage bars: it runs on whatever
+  provider you point it at, so there's no plan of its own to read. Verified 2026-10-27: a launch
+  recorded the folder and the drawer listed it.
 - [ ] **Crush** (`crush`): icon, picture, and recent folders. The shared CLI launcher clears
   inherited colour suppression. Optional Hyper balance: link a Hyper account with no key to read
   Crush's current sign-in token, or use a Hyper API key. Ollama works through Crush's `crushrc`.
@@ -188,6 +195,17 @@ sources still to find, #17.
   folder** (`codex://threads/new?path=`, added 2026-10-16), with presets and recent folders. Usage is
   Codex's default account (assumes the app is signed in as the Codex CLI is). Not yet verified by an
   actual launch. A row button and its right-click menu also open the app plainly, without a folder.
+- [ ] **Freebuff** (desktop, `freebuff-desktop`, AUMID `com.freebuff.desktop`, Start menu
+  "Freebuff"): icon (the bare F in a lime→green gradient, 2026-10-27), picture (the owner's, added
+  the same day), Freebuff CLI's usage (one account: shared drawer content, one overview row). It
+  opens **no folder**: its `freebuff://` links are sign-in and Agentic Lab only, and its main
+  process reads no path argument, so a click is the Start menu's launch. Adding it renamed the CLI
+  row to "Freebuff CLI" (`MigrateRenamed`, so existing entries follow unless the user renamed
+  them). Verified 2026-10-27 through UI Automation: the "Freebuff is installed" offer, adding it,
+  the row, the drawer ("Freebuff usage", "Daily", "25 of 30 hours · resets Wed 0:00"), the shared
+  overview row, its settings note and the Accounts group ("Freebuff, used by Freebuff, Freebuff
+  CLI"). An actual launch started Freebuff.exe, but the app was already running in the tray, so its
+  single-instance handoff showed no window: a window surfacing is still to see.
 - [ ] **GitHub Copilot** (desktop, `github-copilot-desktop`, Start menu "GitHub Copilot", GitHub's
   own app): icon, and it **opens a session in the working folder** through Copilot CLI's `copilot app`
   (added 2026-10-19), with presets, recent folders, and Copilot CLI's usage (same GitHub account:
@@ -254,8 +272,8 @@ just above the taskbar button, listing AI agents:
 - **The user chooses the agents** (owner's decision, 2026-10-16). A fresh install has an empty list
   and a welcome offering **Find agents**, which scans for the agents in `Services/Agents/KnownAgents.cs`
   (Claude Code, Codex, Antigravity CLI, Copilot CLI, OpenCode, Aider, Qwen Code, Cursor CLI, Amp, Kiro,
-  Goose, Crush, Factory Droid, Grok Build, Freebuff, Hermes Agent, DeepSeek Harness; Claude, ChatGPT,
-  GitHub Copilot, Microsoft Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
+  Goose, Crush, Factory Droid, Grok Build, Freebuff CLI, Hermes Agent, DeepSeek Harness; Freebuff,
+  Claude, ChatGPT, GitHub Copilot, Microsoft Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
 - Gemini CLI stopped serving personal Google accounts on 2026-06-18 (API keys and Code Assist
   licences still work), so it was removed from the known agents, with its icon and picture (owner,
   2026-10-16). Google moved those users to **Antigravity CLI** (`agy`, id `antigravity`), added the
@@ -855,7 +873,7 @@ Namespaces follow folders (`AgentDock.Views`, `AgentDock.Services.Usage`, …). 
 | `Services/SettingsStore.cs` | `%APPDATA%\AgentDock\agents.json` and `state.json`; atomic writes via temp file |
 | `Services/TaskbarIcon.cs` | The taskbar icon choices, applying one to the pin, restarting File Explorer to show it |
 | `Services/Updates.cs` | Velopack: install/uninstall hooks, applying a downloaded update at start, checking GitHub, the state the About page shows, Restart now |
-| `Services/Agents/KnownAgents.cs` | The agents Agent Dock can find and offer (templates; ids match icons and pictures), and which agent is which (`IsCursor`, `IsKiro`, `IsFreebuff`, `IsGitHubCopilot`, `CommandName`) |
+| `Services/Agents/KnownAgents.cs` | The agents Agent Dock can find and offer (templates; ids match icons and pictures), and which agent is which (`IsCursor`, `IsKiro`, `IsFreebuff`, `IsAntigravity`, `IsGitHubCopilot`, `CommandName`) |
 | `Services/Agents/AgentCatalog.cs` | Definition → resolved item |
 | `Services/Agents/AgentIcons.cs` | Which icon and picture an agent gets; compiled-in lookups; .ico files for the jump list; the portraits |
 | `Services/Agents/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
@@ -875,6 +893,8 @@ Namespaces follow folders (`AgentDock.Views`, `AgentDock.Services.Usage`, …). 
 | `Services/Usage/FreebuffUsage.cs` | Freebuff daily hours from codebuff.com (the CLI's keychain token, read only); last answer saved |
 | `Services/Usage/CursorUsage.cs` | Cursor usage from cursor.com (`/api/usage-summary`, with Cursor CLI's sign-in from `%APPDATA%\cursor\auth.json`) |
 | `Services/Usage/KiroUsage.cs` | Kiro CLI monthly credits, from `kiro-cli chat --no-interactive /usage` (CLI owns the sign-in; no token) |
+| `Services/Usage/AntigravityUsage.cs` | Antigravity CLI's weekly limits per model family, from `agy -p /usage` (CLI owns the sign-in; no token) |
+| `Services/Usage/AmpUsage.cs` | Amp's credit balance, from `amp usage` (CLI owns the sign-in; no token) |
 | `Services/Usage/CopilotUsage.cs` | GitHub Copilot usage this month (AI credits against the plan), via `gh api copilot_internal/user` |
 | `Services/Usage/ApiUsage.cs` | API keys' balances: the DeepSeek check, the 100% logic, which agents seem to use a provider |
 | `Services/Usage/CrushHyperToken.cs` | Crush's Hyper sign-in, read only, for the balance check |
@@ -984,6 +1004,12 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
 - **Recoloured 2026-10-26, at the owner's request:** most icons were black, white or grey, so the
   list was hard to scan. The owner chose to drop each tile and give the bare mark one colour (or a
   gradient), taken from the brand or from that agent's hover picture. Each is a 256 px transparent PNG.
+  - `freebuff-desktop` (2026-10-27, with the desktop client): the same bare F as the CLI's, drawn
+    from the app's own `freebuff-logo.svg` (283 bytes, `src/ui/shell/` in its asar) in a lime→green
+    gradient `#D9F94F`→`#3FAE5B`, at the CLI icon's 12 px margin, so the CLI's flat lime and the
+    desktop's gradient read apart. Its picture (`freebuff-desktop-background.png`, 1672×941: a waifu
+    at a lit desk in a night apartment, the lime freebuff neon sign behind) was the owner's; the
+    banner keeps the CLI's lime `#A2C83F`.
   - Same mark, new colour: `chatgpt-desktop` mint `#10A37F`, `copilot` cyan `#22D3EE`,
     `github-copilot-desktop` purple `#8957E5`→`#C084FC`, `cursor` blue→indigo `#93C5FD`→`#6366F1`
     and `cursor-cli` green `#86EFAC`→`#22C55E` (the cube's shading kept, so the two now differ),
@@ -1147,11 +1173,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   fills the drawer, and leaves it untouched for agents with nothing to show, so a closing drawer
   doesn't go blank.
   - Today: Claude Code (usage, or the setup or update offer), Codex (usage), Grok Build (week,
-    extra usage credits and a pie of what it went on), Freebuff (daily hours), Cursor CLI and Cursor
-    desktop (the billing period), Kiro CLI (monthly credits via `kiro-cli chat /usage`) and GitHub
-    Copilot (AI credits against the plan), plus their presets, matched by command name
-    (`CommandName`), or for Cursor / Kiro / Freebuff by catalog id too (`IsCursor` / `IsKiro` /
-    `IsFreebuff`; Cursor is the only desktop agent with a drawer).
+    extra usage credits and a pie of what it went on), Freebuff (daily hours; CLI and desktop), Cursor
+    CLI and Cursor desktop (the billing period), Kiro CLI (monthly credits via `kiro-cli chat
+    /usage`), Antigravity CLI (a week per model family via `agy -p /usage`) and GitHub Copilot (AI
+    credits against the plan), plus their presets, matched by command name (`CommandName`), or for
+    Cursor / Kiro / Freebuff / Antigravity / Amp by catalog id too (`IsCursor` / `IsKiro` /
+    `IsFreebuff` / `IsAntigravity` / `IsAmp`; Cursor and Freebuff desktop are the desktop apps with a
+    drawer). Amp shows a balance line rather than bars; Goose has neither and its drawer is only its
+    recents.
   - Moving between two drawer agents swaps the content in place.
   - Usage is loaded on the first hover after each show and cached until the next show
     (`ClearUsageCache` in `ReloadData`), so opening stays fast.
@@ -1188,14 +1217,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/Agents/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Freebuff, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI or Copilot CLI (each copy separately) was launched
+- **Recents** (`Services/Agents/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Freebuff CLI, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, Antigravity CLI, DeepSeek Harness, Cursor CLI, Copilot CLI, Goose or Amp (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Freebuff, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI and Copilot CLI (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness / Factory Droid / Kiro / Freebuff also by catalog id, since Cursor's command can be plain `agent`, DeepSeek's is `dsh`, Kiro's is `kiro-cli`, and Freebuff's is `freebuff`). The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Freebuff CLI, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, Antigravity CLI, DeepSeek Harness, Cursor CLI, Copilot CLI, Goose and Amp (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness / Factory Droid / Kiro / Freebuff CLI / Antigravity also by catalog id, since Cursor's command can be plain `agent`, DeepSeek's is `dsh`, Kiro's is `kiro-cli`, Antigravity's is `agy`, and Freebuff's is `freebuff`). The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
@@ -1366,6 +1395,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   kept `authToken` in `credentials.json` (under `default`). Agent Dock reads either, never refreshes
   it, never writes the file, and never logs, shows or saves the token. `FREEBUFF_CONFIG_DIR` is
   honoured per agent, so copies can show their own accounts.
+- **The desktop client** (added 2026-10-27) is that same account: `IsFreebuff` matches
+  `freebuff-desktop`, so its drawer, settings note and overview row are the CLI's (one row, named
+  after whichever comes first in the list). `FREEBUFF_CONFIG_DIR` doesn't reach a desktop app, so it
+  is always the default account. The app's own sign-in, in its Electron profile, isn't read. It
+  opens no folder: no documented or built-in link (its `freebuff://` handler takes sign-in and
+  Agentic Lab links only), no folder argument, and Freebuff CLI has no `freebuff app` equivalent.
+  Verified 2026-10-27 through UI Automation: hovering its row opens that drawer with the CLI's
+  numbers, and the overview keeps one Freebuff row.
 - **Reply:** `freebucks.daily` with `limit`, `spent`, `remaining` and `resetAt` (ISO 8601), and
   `subscription.tierId` for the plan. Five freebucks are one hour (the CLI's own formatter says so);
   `Parse` turns them into hours. `status: "none"` still returns the daily block.
@@ -1391,7 +1428,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   Flyout row, the drawer ("Freebuff usage", "Daily", "30 of 30 hours · resets Sat 0:00") and the
   overview row. The session windows were verified the same way after they were added: "Free sessions
   · day" 0 of 5 resets Sat 3:00, "· week" 0 of 14, "· month" 0 of 40 resets Nov 1. **Not yet
-  verified:** an actual launch and a recent folder; there is no hover picture.
+  verified:** an actual launch, a recent folder, and the picture by eye.
 - **Why the hours can sit still** (owner asked 2026-10-23, after an hour of chat left it at 30 of 30):
   the service really reported `spent: 0` and `dayUsed: 0`, both live and in the saved answer. Freebuff
   measures usage in hours per model where one hour of its cheapest model costs 5 freebucks, so
@@ -1420,6 +1457,59 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   overage caps org accounts omit from `/usage`.
 - Verified 2026-10-21: live `/usage` on the owner's Kiro Free account (0.16 of 50, 0.3%, resets
   2026-11-01). **Not yet verified:** the drawer and overview row by eye.
+
+#### Antigravity usage (`Services/Usage/AntigravityUsage.cs`; 2026-10-27)
+
+- **Source: Antigravity CLI itself**, the same preference as Kiro's and Codex's: the CLI owns the
+  Google sign-in and Agent Dock never reads a token. `agy -p /usage` (print mode; `NO_COLOR` /
+  `TERM=dumb`, no window, 20 s). Google documents `/usage` as an interactive panel, but from 1.1.11
+  on, print mode answers read-only slash commands without starting an agent turn or spending quota.
+  Verified against Antigravity CLI 1.4.8.
+- **Reply:** one tab-separated record per line, naming the model family, the limit, the share left
+  and the reset, e.g. `Gemini Models\tWeekly Limit Remaining\t98%\t2026-11-03T20:55:22Z` and
+  `Claude and GPT models\tWeekly Limit Remaining\t100%\t…`. The parser reads the fields, not the
+  wording: a "remaining" limit is inverted (the bar is the rest used), an ISO instant becomes the
+  reset, and the family name is put in sentence case ("Gemini models") without touching short
+  acronyms like GPT. Only lines with a percentage count, so prose in the same output is ignored.
+- **The model:** each family's week is a bar (`PlanUsage.ModelWeeks`); the tightest also fills the
+  drawer's Week bar (`PlanUsage.SevenDay`), which the overview row and the suggestion compare
+  against other agents. Antigravity reports no session or monthly window, so there's no session
+  bar (`showSession: false`).
+- **Drawer:** "Antigravity usage", the Week bar ("2% · resets 3 Nov") and one bar per family. Saved
+  to `antigravity-usage.json`; at most every 5 minutes, only on hover / overview. Settings shows
+  `AntigravitySettings` on its page. Matched by catalog id or command (`KnownAgents.IsAntigravity`),
+  so a copy renamed to another command still gets it.
+- **Not used:** the Antigravity IDE's quota. These limits are the account's and the editor shares
+  them, but nothing on disk reports them without a CLI call.
+- Verified 2026-10-27 in the owner's drawer and overview through UI Automation (2% of "Gemini
+  models", 0% of "Claude and GPT models", both resetting 3 Nov). **Not yet verified by eye**, or
+  with recents (a launch records the folder, as for every other CLI).
+
+#### Amp usage (`Services/Usage/AmpUsage.cs`; 2026-10-27)
+
+- **Source: Amp CLI itself**, like Kiro's and Antigravity's: the CLI owns the sign-in (Google, OpenAI
+  or Amp itself) and Agent Dock never reads a token. `amp usage` (no window, `NO_COLOR` / `TERM=dumb`,
+  20 s). Verified with Amp CLI on an individual account, signed in: the report is one line,
+  `**Individual credits:** $10 remaining (set up auto-reload to avoid running out) - https://…`.
+- **Not `--details`:** that report is a markdown tables dump (daily cost, per-thread usage) and,
+  per Amp's own note in it, each account/thread lookup counts against 60 an hour. The plain report
+  has the balance, so only it is asked for.
+- **Reply:** every `<name> credits: $X remaining` line, with `**` and ANSI stripped. The individual
+  balance comes first and workspace balances follow on the same line (several workspaces can be
+  signed in); a workspace's balance is never passed off as the user's own. Amounts are formatted as
+  money ("$10.00"). There is no limit, reset date or percentage, so the model has no window: the
+  balance rides on `PlanUsage.Extra.Balance` (`Enabled` false, since there are no bars for it to sit
+  under) and `AmpUsage.CreditsLine` words it.
+- **Drawer:** "Amp usage" and the one line "Individual credits: $10.00 remaining" (as the drawer's
+  "no bars" note), then its recents. Saved to `amp-usage.json`; at most every 5 minutes, only on
+  hover / overview. Settings shows `AmpSettings` on its page, and Accounts lists Amp under Plans.
+- **Overview:** a text-only row (no bar), since there's nothing to fill; with no windows it adds
+  nothing to the suggestion, so Amp is never picked as the best agent to use.
+- **Unverified:** what a paid Amp tier's report adds (agent/orb pools, an Amp Free meter). Only the
+  credit line is parsed; a tier's percentages are ignored rather than guessed at, so its row would
+  show the credits alone.
+- Verified 2026-10-27 in the owner's drawer and overview through UI Automation, and the save file.
+  **Not yet verified by eye.**
 
 #### GitHub Copilot usage (`Services/Usage/CopilotUsage.cs`)
 
@@ -1478,7 +1568,8 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
     the picture is shifted so its subject is centred in the list. The built-in pictures put
     the character about 72% of the way across (`BackdropSubjectX`); new pictures should keep that layout.  Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
-- **Not yet verified by eye:** the Freebuff picture added 2026-10-23. The build embeds all 23.
+- **Not yet verified by eye:** the Freebuff pictures (the CLI's, 2026-10-23, and the desktop's,
+  2026-10-27). The build embeds all 24.
 
 #### API usage (owner's request, 2026-10-19; `Services/Usage/ApiUsage.cs`, `Views/FlyoutWindow.ApiAccounts.cs`)
 

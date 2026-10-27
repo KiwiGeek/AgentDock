@@ -720,6 +720,16 @@
                         <TextBlock Margin="0,0,0,16" Style="{StaticResource NoteTextStyle}"
                                    Text="Kiro's monthly credits come from Kiro CLI itself (kiro-cli chat /usage), using Kiro CLI's own sign-in. To switch accounts, sign in again with kiro-cli login. Agent Dock never reads a token." />
                     </StackPanel>
+                    <StackPanel x:Name="AntigravitySettings" Visibility="Collapsed">
+                        <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Margin="0,0,0,16" Style="{StaticResource NoteTextStyle}"
+                                   Text="Antigravity's weekly limits come from Antigravity CLI itself (agy -p /usage), using Antigravity's own sign-in. It answers with one week per model family. To switch accounts, sign in again in Antigravity. Agent Dock never reads a token." />
+                    </StackPanel>
+                    <StackPanel x:Name="AmpSettings" Visibility="Collapsed">
+                        <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Margin="0,0,0,16" Style="{StaticResource NoteTextStyle}"
+                                   Text="Amp's credit balance comes from Amp CLI itself (amp usage), using Amp CLI's own sign-in. To switch accounts, sign in again with amp login. Agent Dock never reads a token." />
+                    </StackPanel>
                     <StackPanel x:Name="CopilotSettings" Visibility="Collapsed">
                         <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
                         <TextBlock Margin="0,0,0,16" Style="{StaticResource NoteTextStyle}"
@@ -728,6 +738,11 @@
                             <TextBlock Text="Working folder" Style="{StaticResource SectionHeaderStyle}" />
                             <TextBlock x:Name="CopilotFolderNote" Margin="0,0,0,16" Style="{StaticResource NoteTextStyle}" />
                         </StackPanel>
+                    </StackPanel>
+                    <StackPanel x:Name="FreebuffSettings" Visibility="Collapsed">
+                        <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />
+                        <TextBlock Margin="0,0,0,16" Style="{StaticResource NoteTextStyle}"
+                                   Text="Freebuff's daily hours and sessions come from Freebuff's own session endpoint, signed in as Freebuff CLI is (freebuff login), for both the CLI and the desktop app. This is not a published API, and it can stop working." />
                     </StackPanel>
                     <StackPanel x:Name="ClaudeSettings" Visibility="Collapsed">
                         <TextBlock Text="Usage limits" Style="{StaticResource SectionHeaderStyle}" />

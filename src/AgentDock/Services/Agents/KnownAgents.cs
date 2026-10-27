@@ -28,7 +28,8 @@ public static class KnownAgents
         new() { Id = "crush",      Name = "Crush",              Command = "crush" },
         new() { Id = "droid",      Name = "Factory Droid",      Command = "droid" },
         new() { Id = "grok",       Name = "Grok Build",         Command = "grok" },
-        new() { Id = "freebuff",   Name = "Freebuff",           Command = "freebuff" },
+        // The CLI says "Freebuff CLI" so the desktop client below reads apart from it, as Cursor's do.
+        new() { Id = "freebuff",   Name = "Freebuff CLI",       Command = "freebuff" },
         new() { Id = "hermes",     Name = "Hermes Agent",       Command = "hermes" },
         // Serves a web UI and opens it in the browser; Agent Dock hosts the process (HostedAgents).
         new() { Id = "deepseek",   Name = "DeepSeek Harness",   Command = "dsh", Arguments = "web" },
@@ -41,6 +42,10 @@ public static class KnownAgents
         new() { Id = "microsoft-copilot", Name = "Microsoft Copilot", Kind = AgentKind.Desktop, StartMenuNames = ["Copilot", "Microsoft Copilot"] },
         new() { Id = "perplexity",      Name = "Perplexity", Kind = AgentKind.Desktop, StartMenuNames = ["Perplexity"] },
         new() { Id = "cursor",          Name = "Cursor",     Kind = AgentKind.Desktop, StartMenuNames = ["Cursor"] },
+        // Freebuff's desktop client (an Electron app, AUMID com.freebuff.desktop). It has no way in from
+        // outside for a folder: its freebuff:// links are sign-in and Agentic Lab only, and its main
+        // process takes no path argument, so a click opens it as the Start menu does (2026-10-27).
+        new() { Id = "freebuff-desktop", Name = "Freebuff", Kind = AgentKind.Desktop, StartMenuNames = ["Freebuff"] },
     ];
 
     /// <summary>
@@ -166,6 +171,13 @@ public static class KnownAgents
     {
         foreach (var agent in settings.Agents)
         {
+            // The CLI row became "Freebuff CLI" when its desktop client arrived (2026-10-27): same
+            // product, two rows, told apart the way Cursor's are. A name the user chose stays as it is.
+            if (agent.Kind == AgentKind.Cli
+                && string.Equals(agent.Catalog ?? agent.Id, "freebuff", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(agent.Name, "Freebuff", StringComparison.Ordinal))
+                agent.Name = "Freebuff CLI";
+
             // Entries from before the catalog existed have only the id.
             if (!Renamed.TryGetValue(agent.Catalog ?? agent.Id, out var renamed))
                 continue;
@@ -249,12 +261,23 @@ public static class KnownAgents
         string.Equals(definition.Catalog ?? definition.Id, "kiro", StringComparison.OrdinalIgnoreCase)
         || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "kiro-cli");
 
+    /// <summary>Antigravity CLI, by catalog id or command (<c>agy</c>).</summary>
+    public static bool IsAntigravity(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "antigravity", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "agy");
+
+    /// <summary>Amp, by catalog id or command (<c>amp</c>).</summary>
+    public static bool IsAmp(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "amp", StringComparison.OrdinalIgnoreCase)
+        || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "amp");
+
     /// <summary>
-    /// Freebuff, by catalog id or command. Its daily hours come from the CLI's own sign-in, so a copy
-    /// with another <c>FREEBUFF_CONFIG_DIR</c> is a different account.
+    /// Freebuff CLI or its desktop client: one Freebuff account, so the same usage, drawer and overview
+    /// row (as with Cursor's pair). The daily hours come from the CLI's own sign-in, so a copy with
+    /// another <c>FREEBUFF_CONFIG_DIR</c> is a different account.
     /// </summary>
     public static bool IsFreebuff(AgentDefinition definition) =>
-        string.Equals(definition.Catalog ?? definition.Id, "freebuff", StringComparison.OrdinalIgnoreCase)
+        (definition.Catalog ?? definition.Id).ToLowerInvariant() is "freebuff" or "freebuff-desktop"
         || (definition.Kind == AgentKind.Cli && CommandName(definition.Command) == "freebuff");
 }
 
