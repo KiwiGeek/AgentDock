@@ -48,6 +48,8 @@
       1024 px Assets\AppIcons\appicon-<id>.png sources by tools\Build-AppIcons.ps1; the sources
       themselves don't ship. Agent Dock's own icon is the "default" choice.
     -->
+    <!-- The About page's slideshow: JPEGs built from the waifu sources by tools\Build-Portraits.ps1 (about 3 MB). -->
+    <EmbeddedResource Include="Assets\AppIcons\portraits\*.jpg" LogicalName="Portraits.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\AppIcons\ico\*.ico" LogicalName="AppIcons.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Assets\AgentDock.ico" LogicalName="AppIcons.default.ico" />
     <!-- Also loose next to the exe: the pin prompt and settings window load it by path for their window icon. -->

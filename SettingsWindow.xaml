@@ -152,6 +152,20 @@
                                 </StackPanel>
                             </ListViewItem>
                         </ListView>
+
+                        <!-- Last, as in Windows' own Settings. -->
+                        <ListView x:Name="AboutNav" SelectionMode="Single" Margin="0,12,0,0"
+                                  SelectionChanged="StaticNav_SelectionChanged"
+                                  ScrollViewer.VerticalScrollMode="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                            <ListViewItem x:Name="AboutNavItem" Tag="about" Padding="12,8"
+                                          AutomationProperties.Name="About">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <FontIcon Glyph="&#xE946;" FontSize="16" Width="20" />
+                                    <TextBlock Text="About" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </ListViewItem>
+                        </ListView>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -170,6 +184,21 @@
                 <Image x:Name="AgentBackdrop" Grid.RowSpan="2" Stretch="UniformToFill"
                        HorizontalAlignment="Right" VerticalAlignment="Center"
                        Opacity="0.3" IsHitTestVisible="False" Visibility="Collapsed" />
+
+                <!--
+                    The About page's slideshow while waifus are on: every built-in picture in turn, each
+                    fading in over the last while it slowly zooms and pans. Two layers take turns; the
+                    clip (set in code) keeps the zoom inside the pane.
+                -->
+                <Grid x:Name="AboutSlides" Grid.RowSpan="2" IsHitTestVisible="False" Visibility="Collapsed"
+                      SizeChanged="AboutSlides_SizeChanged">
+                    <Image x:Name="AboutSlideA" Stretch="Fill" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <Image.RenderTransform><CompositeTransform /></Image.RenderTransform>
+                    </Image>
+                    <Image x:Name="AboutSlideB" Stretch="Fill" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <Image.RenderTransform><CompositeTransform /></Image.RenderTransform>
+                    </Image>
+                </Grid>
 
                 <!-- The page's title; an API key's page has Accounts in front of it, to go back. -->
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="24,16,24,0">
@@ -381,6 +410,140 @@
                         </Grid>
                         <TextBlock Style="{StaticResource NoteTextStyle}"
                                    Text="Keys are saved in agents.json as you type them. Type %NAME% instead to read one from Windows." />
+                    </StackPanel>
+
+                    <!--
+                        About (issue #4), laid out like Windows' Settings > System > About: what's running,
+                        updates, links, where the data lives, and the licence. Filled in code (ShowAbout).
+                    -->
+                    <StackPanel x:Name="AboutPage" Visibility="Collapsed" Spacing="4">
+                        <StackPanel.Resources>
+                            <Style x:Key="AboutCardStyle" TargetType="Grid">
+                                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+                                <Setter Property="Padding" Value="16,12" />
+                                <Setter Property="MinHeight" Value="64" />
+                                <Setter Property="ColumnSpacing" Value="16" />
+                            </Style>
+                            <Style x:Key="AboutLinkStyle" TargetType="Button">
+                                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Setter Property="Padding" Value="16,12" />
+                                <Setter Property="MinHeight" Value="56" />
+                                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+                            </Style>
+                        </StackPanel.Resources>
+
+                        <!-- What's running. -->
+                        <Grid Style="{StaticResource AboutCardStyle}" Padding="20" ColumnSpacing="20">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Image x:Name="AboutIcon" Width="64" Height="64" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Agent Dock" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock x:Name="AboutVersion" IsTextSelectionEnabled="True" />
+                                <TextBlock x:Name="AboutCopyKind" Style="{StaticResource NoteTextStyle}" />
+                            </StackPanel>
+                            <Button x:Name="AboutCopyButton" Grid.Column="2" VerticalAlignment="Center"
+                                    Click="AboutCopy_Click" AutomationProperties.Name="Copy version details"
+                                    ToolTipService.ToolTip="Copy the version and Windows details, for a bug report">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon x:Name="AboutCopyGlyph" Glyph="&#xE8C8;" FontSize="14" />
+                                    <TextBlock x:Name="AboutCopyText" Text="Copy" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <TextBlock Text="Updates" Style="{StaticResource SectionHeaderStyle}" />
+                        <Grid Style="{StaticResource AboutCardStyle}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="24" VerticalAlignment="Center">
+                                <FontIcon x:Name="UpdateGlyph" Glyph="&#xE895;" FontSize="20" />
+                                <ProgressRing x:Name="UpdateRing" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+                            </Grid>
+                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock x:Name="UpdateTitle" TextWrapping="Wrap" />
+                                <TextBlock x:Name="UpdateDetail" Style="{StaticResource NoteTextStyle}" />
+                                <ProgressBar x:Name="UpdateProgress" Margin="0,6,0,0" Maximum="100" Visibility="Collapsed" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button x:Name="CheckUpdatesButton" Content="Check for updates" Click="CheckUpdates_Click" />
+                                <Button x:Name="RestartUpdateButton" Content="Restart now" Visibility="Collapsed"
+                                        Style="{StaticResource AccentButtonStyle}" Click="RestartUpdate_Click"
+                                        AutomationProperties.HelpText="Closes Agent Dock, applies the update and starts it again." />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Links" Style="{StaticResource SectionHeaderStyle}" />
+                        <Button Style="{StaticResource AboutLinkStyle}" Tag="repo" Click="AboutLink_Click" AutomationProperties.Name="GitHub repository">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE943;" FontSize="18" />
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="GitHub repository" />
+                                    <TextBlock Text="The source code, and every release." Style="{StaticResource NoteTextStyle}" />
+                                </StackPanel>
+                                <FontIcon Grid.Column="2" Glyph="&#xE8A7;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Button>
+                        <Button Style="{StaticResource AboutLinkStyle}" Tag="notes" Click="AboutLink_Click" AutomationProperties.Name="Release notes">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE8A5;" FontSize="18" />
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock x:Name="ReleaseNotesTitle" Text="Release notes" />
+                                    <TextBlock Text="What changed in this version." Style="{StaticResource NoteTextStyle}" />
+                                </StackPanel>
+                                <FontIcon Grid.Column="2" Glyph="&#xE8A7;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Button>
+                        <Button Style="{StaticResource AboutLinkStyle}" Tag="issue" Click="AboutLink_Click" AutomationProperties.Name="Report an issue">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xEBE8;" FontSize="18" />
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Text="Report an issue" />
+                                    <TextBlock Text="Something broken or missing. Copy above puts the version details on the clipboard to paste in." Style="{StaticResource NoteTextStyle}" />
+                                </StackPanel>
+                                <FontIcon Grid.Column="2" Glyph="&#xE8A7;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </Button>
+
+                        <TextBlock Text="Where your data lives" Style="{StaticResource SectionHeaderStyle}" />
+                        <StackPanel x:Name="AboutFoldersHost" Spacing="4" />
+
+                        <TextBlock Text="Licence and credits" Style="{StaticResource SectionHeaderStyle}" />
+                        <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <Expander.Header>
+                                <Grid ColumnSpacing="16" Padding="0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="24" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE82D;" FontSize="18" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="GNU General Public License, version 3 or later" />
+                                        <TextBlock Text="Free software: use it, change it and share it, and keep it free when you do." Style="{StaticResource NoteTextStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Expander.Header>
+                            <StackPanel Spacing="12" Padding="40,0,0,0">
+                                <TextBlock TextWrapping="Wrap"
+                                           Text="Agent Dock is distributed in the hope that it will be useful, but without any warranty; see the licence for details." />
+                                <HyperlinkButton Content="Read the licence" Tag="licence" Click="AboutLink_Click" Padding="0" />
+                                <TextBlock Text="Built with" Style="{StaticResource SectionHeaderStyle}" Margin="0,4,0,0" />
+                                <TextBlock TextWrapping="Wrap" Style="{StaticResource NoteTextStyle}"
+                                           Text="The Windows App SDK and WinUI 3, and .NET with Native AOT, both from Microsoft under the MIT licence. Velopack, for installing and updating, under the MIT licence." />
+                                <TextBlock Text="Trademarks" Style="{StaticResource SectionHeaderStyle}" Margin="0,4,0,0" />
+                                <TextBlock TextWrapping="Wrap" Style="{StaticResource NoteTextStyle}"
+                                           Text="Agent names and logos, including those in the pictures, belong to their owners. They're here only to show which agent is which, and the licence grants no rights to them. Agent Dock isn't made or endorsed by any of them." />
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
 
                     <!-- One API account (opened from Accounts). Built in code. -->

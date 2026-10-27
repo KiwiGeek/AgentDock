@@ -37,6 +37,18 @@ public static class AgentIcons
         ?? BundledBackground(definition.Id)
         ?? BundledBackground(definition.Catalog)
         ?? (definition.Kind == AgentKind.Cli ? BundledBackground(CommandName(definition.Command)) : null);
+    /// <summary>
+    /// The waifu portraits the taskbar icons are made from (the agents' and the Agent Dock host's),
+    /// compiled in as JPEGs for the About page's slideshow (tools\Build-Portraits.ps1). Resource
+    /// names; open with <see cref="OpenPortrait"/>.
+    /// </summary>
+    public static IReadOnlyList<string> Portraits { get; } = typeof(AgentIcons).Assembly.GetManifestResourceNames()
+        .Where(n => n.StartsWith("Portraits.", StringComparison.Ordinal) && n.EndsWith(".jpg", StringComparison.Ordinal))
+        .Order(StringComparer.Ordinal)
+        .ToList();
+
+    public static Stream? OpenPortrait(string name) => typeof(AgentIcons).Assembly.GetManifestResourceStream(name);
+
     public static bool IsBundledBackground(string source) => source.StartsWith(BackgroundPrefix, StringComparison.Ordinal);
 
     public static Stream? OpenBundledBackground(string source) =>
