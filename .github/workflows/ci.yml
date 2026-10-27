@@ -1,0 +1,38 @@
+# Checks every push to master and every pull request: a Debug build and a Native AOT publish, both
+# failing on any warning (the project is meant to be warning-free). Nothing is released or uploaded;
+# the publish only catches trim and AOT warnings a normal build doesn't show, and is thrown away.
+# Releases are release.yml's job, on a version tag. x64 only: release.yml builds ARM64 too.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build (Debug)
+        run: dotnet build AgentDock.csproj -c Debug -warnaserror -nologo
+
+      - name: Publish (Native AOT)
+        shell: pwsh
+        run: |
+          # The AOT linker looks for vswhere.exe on PATH.
+          $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          dotnet publish AgentDock.csproj -c Release -r win-x64 -o publish -warnaserror -nologo

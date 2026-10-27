@@ -16,6 +16,15 @@ release. Installed copies find it there and update themselves.
    git push origin master
    ```
 
+   Then check that the CI run for that push passed (a few minutes after pushing). The newest run
+   should say `completed  success`:
+
+   ```powershell
+   gh run list --workflow ci.yml --branch master --limit 1
+   ```
+
+   If it failed, fix that first: the release would build the same code.
+
 2. Pick the version. Use `MAJOR.MINOR.PATCH` (for example `2.1.0`): bump PATCH for fixes, MINOR for
    new features, MAJOR for big changes. Add a suffix such as `-beta.1` for a test release; it's
    marked as a pre-release, and installed copies ignore it.
