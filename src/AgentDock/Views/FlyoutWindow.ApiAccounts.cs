@@ -1,7 +1,6 @@
 ﻿using AgentDock.Models;
 using AgentDock.Services.Usage;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 
 namespace AgentDock.Views;
 
