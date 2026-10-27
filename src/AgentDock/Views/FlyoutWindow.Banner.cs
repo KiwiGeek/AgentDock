@@ -23,7 +23,7 @@ public sealed partial class FlyoutWindow
     /// <summary>The heart goes with the waifu pictures: shown when they're on.</summary>
     private void UpdateBannerHeart()
     {
-        BannerHeart.Visibility = _state.ShowHoverBackgrounds ? Visibility.Visible : Visibility.Collapsed;
+        BannerHeart.Visibility = _state.WaifuModeEnabled ? Visibility.Visible : Visibility.Collapsed;
         LayoutBanner();
         SyncHearts();
     }

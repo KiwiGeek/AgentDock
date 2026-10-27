@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using AgentDock.Models;
 using AgentDock.Services;
 using AgentDock.Services.Agents;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -37,6 +39,7 @@ public sealed partial class SettingsWindow
         }
         AboutVersion.Text = $"Version {Updates.Version}";
         AboutCopyKind.Text = $"{Updates.CopyKind} · {Updates.Architecture}";
+        SyncUnlockNote();
         ReleaseNotesTitle.Text = Updates.IsInstalled ? $"Release notes for {Updates.Version}" : "Release notes";
         FillAboutFolders();
 
@@ -208,7 +211,7 @@ public sealed partial class SettingsWindow
     private void StartSlideshow()
     {
         StopSlideshow();
-        if (!_state.ShowHoverBackgrounds || AgentIcons.Portraits.Count == 0)
+        if (!_state.WaifuModeEnabled || AgentIcons.Portraits.Count == 0)
             return;
 
         // Shuffled, so each visit starts somewhere new; the whole set plays before anyone repeats.
@@ -377,5 +380,81 @@ public sealed partial class SettingsWindow
         AboutSlides.Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
         LayoutSlide(AboutSlideA);
         LayoutSlide(AboutSlideB);
+    }
+
+    // ---------- The hidden waifu unlock ----------
+
+    private const int UnlockClicks = 7;
+    /// <summary>Clicks further apart than this start the count again.</summary>
+    private static readonly TimeSpan UnlockClickWindow = TimeSpan.FromSeconds(3);
+
+    private int _aboutVersionClicks;
+    private long _aboutVersionClickTicks;
+
+    /// <summary>
+    /// Seven clicks on the version line toggle waifu mode (owner's request, 2026-10-27: hidden, so a
+    /// fresh install never sees it, but discoverable in About; the same seven clicks lock it again,
+    /// owner's request the same day). Unlocking doesn't switch it on: the General page's row appears,
+    /// and its switch starts off. Locking switches the artwork off and hides the row again.
+    /// </summary>
+    private void AboutVersion_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(AboutVersionArea).Properties.IsLeftButtonPressed)
+            return;
+
+        var now = Stopwatch.GetTimestamp();
+        if (now - _aboutVersionClickTicks > UnlockClickWindow.TotalSeconds * Stopwatch.Frequency)
+            _aboutVersionClicks = 0;
+        _aboutVersionClickTicks = now;
+        if (++_aboutVersionClicks < UnlockClicks)
+            return;
+
+        _aboutVersionClicks = 0;
+        if (_state.WaifuModeUnlocked == true)
+            LockWaifus();
+        else
+            UnlockWaifus();
+    }
+
+    /// <summary>Reveals the setting, which starts off: nothing turns on by itself.</summary>
+    private void UnlockWaifus()
+    {
+        UpdateState(state =>
+        {
+            state.WaifuModeUnlocked = true;
+            state.ShowHoverBackgrounds = false;
+        }, SettingsChange.State | SettingsChange.Waifu);
+        FillSettingsPage();
+        SyncUnlockNote();
+    }
+
+    /// <summary>
+    /// Hides the setting and everything it put on screen: the artwork off, a waifu taskbar icon back to
+    /// Agent Dock's own (remembered, so unlocking and switching on again brings it back).
+    /// </summary>
+    private void LockWaifus()
+    {
+        UpdateState(state =>
+        {
+            state.WaifuModeUnlocked = false;
+            state.ShowHoverBackgrounds = false;
+        }, SettingsChange.State | SettingsChange.Waifu);
+        TaskbarIconFollowWaifus();
+        SyncAgentBackdrop();
+        StartSlideshow(); // stops, and lets go of the pictures, now that waifus are off again
+        FillSettingsPage();
+        SyncUnlockNote();
+    }
+
+    /// <summary>
+    /// Says which way the mode is now, and how to change it. Nothing at all on a copy that has never
+    /// been unlocked, so a fresh install gives no hint of the feature.
+    /// </summary>
+    private void SyncUnlockNote()
+    {
+        AboutUnlockedNote.Visibility = _state.WaifuModeUnlocked is null ? Visibility.Collapsed : Visibility.Visible;
+        AboutUnlockedNote.Text = _state.WaifuModeUnlocked == true
+            ? "Waifu mode is unlocked. It's on the General page, under Flyout. Seven clicks on the version line locks it again."
+            : "Waifu mode locked. Seven clicks on the version line unlocks it again.";
     }
 }

@@ -342,22 +342,26 @@ public sealed class DockState
     public bool ClaudeUsageOfferDismissed { get; set; }
 
     /// <summary>
+    /// Waifu mode has been found and unlocked (the About page's version line, clicked seven times).
+    /// Null in every state.json until then, so a fresh install has no trace of the feature.
+    /// </summary>
+    public bool? WaifuModeUnlocked { get; set; }
+
+    /// <summary>
     /// Fade in each agent's picture while the pointer is over it. The settings page writes this.
     /// It lives here because the app saves it, and rewriting agents.json would drop the user's comments.
-    /// Missing from an older state.json means on: the property initializer survives deserialization.
+    /// Off unless unlocked: <see cref="WaifuModeEnabled"/> is what the rest of the app asks.
     /// </summary>
-    public bool ShowHoverBackgrounds { get; set; } = true;
+    public bool ShowHoverBackgrounds { get; set; }
 
-    /// <summary>
-    /// Remember the last few folders each agent was launched in, and offer them again in the drawer.
-    /// Same "missing means on" rule as <see cref="ShowHoverBackgrounds"/>. Claude Code and Codex use it so far.
-    /// </summary>
+    /// <summary>The one gate for every waifu picture, heart and tab background: unlocked and switched on.</summary>
+    [JsonIgnore]
+    public bool WaifuModeEnabled => WaifuModeUnlocked == true && ShowHoverBackgrounds;
+
+    /// <summary>Remember the last few folders each agent was launched in, and offer them again in the drawer. Claude Code and Codex use it so far.</summary>
     public bool RememberRecentLaunches { get; set; } = true;
 
-    /// <summary>
-    /// While the pointer isn't over an agent with usage, the drawer shows every agent's usage in
-    /// brief, to help pick one. Same "missing means on" rule as <see cref="ShowHoverBackgrounds"/>.
-    /// </summary>
+    /// <summary>While the pointer isn't over an agent with usage, the drawer shows every agent's usage in brief, to help pick one.</summary>
     public bool ShowUsageSummary { get; set; } = true;
 
     /// <summary>

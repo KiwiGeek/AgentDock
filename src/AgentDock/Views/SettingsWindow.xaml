@@ -253,7 +253,8 @@
                                           AutomationProperties.Name="Hide unavailable agents"
                                           AutomationProperties.HelpText="Hide agents in your list that aren't installed any more, instead of showing them dimmed." />
                         </Grid>
-                        <Grid Margin="0,0,0,16" ColumnSpacing="12">
+                        <!-- Waifu backgrounds: hidden until it's unlocked from About, so a fresh install never sees it. -->
+                        <Grid x:Name="HoverBackgroundsRow" Margin="0,0,0,16" ColumnSpacing="12" Visibility="Collapsed">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel Spacing="2" VerticalAlignment="Center">
                                 <TextBlock Text="Waifu backgrounds" />
@@ -447,7 +448,11 @@
                             <Image x:Name="AboutIcon" Width="64" Height="64" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                 <TextBlock Text="Agent Dock" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock x:Name="AboutVersion" IsTextSelectionEnabled="True" />
+                                <!-- A transparent strip behind the version: its seven clicks are the hidden unlock. -->
+                                <Border x:Name="AboutVersionArea" Background="Transparent" HorizontalAlignment="Left"
+                                        PointerPressed="AboutVersion_PointerPressed">
+                                    <TextBlock x:Name="AboutVersion" />
+                                </Border>
                                 <TextBlock x:Name="AboutCopyKind" Style="{StaticResource NoteTextStyle}" />
                             </StackPanel>
                             <Button x:Name="AboutCopyButton" Grid.Column="2" VerticalAlignment="Center"
@@ -459,6 +464,10 @@
                                 </StackPanel>
                             </Button>
                         </Grid>
+
+                        <!-- Hidden until waifu mode is found: its text comes from SyncUnlockNote. -->
+                        <TextBlock x:Name="AboutUnlockedNote" Visibility="Collapsed" Margin="0,0,0,4"
+                                   Style="{StaticResource NoteTextStyle}" TextWrapping="Wrap" />
 
                         <TextBlock Text="Updates" Style="{StaticResource SectionHeaderStyle}" />
                         <Grid Style="{StaticResource AboutCardStyle}">

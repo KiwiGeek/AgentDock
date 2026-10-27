@@ -59,7 +59,7 @@ public sealed partial class FlyoutWindow
         else
             ScheduleDrawerClose();
         // The settings page can turn the pictures off. The usage drawer is separate and still opens.
-        if (_state.ShowHoverBackgrounds)
+        if (_state.WaifuModeEnabled)
             FadeBackdrop(item?.BackgroundSource);
     }
 
@@ -69,7 +69,7 @@ public sealed partial class FlyoutWindow
         ScheduleBannerReset();
         // Moving into the drawer should keep the picture. It fades when the drawer actually closes,
         // or straight away when the row had no drawer.
-        if (_state.ShowHoverBackgrounds && !_drawerOpen && _popupsOpen == 0)
+        if (_state.WaifuModeEnabled && !_drawerOpen && _popupsOpen == 0)
             FadeBackdrop(null);
         ScheduleDrawerClose();
     }

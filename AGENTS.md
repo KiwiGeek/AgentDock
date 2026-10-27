@@ -439,7 +439,8 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     keys had their own section in this list; the owner found settings scattered and keys hard to share
     between agents, so they moved into Accounts (design: the "Agent Dock settings redesign" canvas).
   - **General**, in groups (`SectionHeaderStyle`): **Flyout** (Usage overview, Hide unavailable
-    agents, Waifu backgrounds), **Taskbar icon** (see "Taskbar icon"), **Launching** (Terminal and
+    agents, Waifu backgrounds — whose row is collapsed until waifu mode is unlocked, see About
+    below), **Taskbar icon** (see "Taskbar icon"), **Launching** (Terminal and
     Shell, agents.json's `terminal` / `shell`, which had no UI before; Close terminal when agent exits;
     Start with Windows, which also calls `Autostart.Apply` at once), **Recent folders** (Remember
     recents and **Clear recents**). Remember recents is general on purpose (several agents record
@@ -479,6 +480,23 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     bug reports). Then the update card (see "Installing and updating"), links (repo, release notes
     for this tag, a new issue, the licence), the data folders with **Open** (the usage folder too
     when a Debug build keeps it apart), and the licence and credits in an `Expander`.
+    **The hidden unlock** (owner's request, 2026-10-27): seven left clicks on the version line
+    (`AboutVersionArea`, a transparent `Border` behind it — a `TextBlock` can't take the pointer
+    full width) toggle waifu mode, so the same seven clicks lock it again (owner's request the same
+    day). Clicks more than 3 s apart restart the count (`AboutVersion_PointerPressed`). Unlocking
+    isn't switching on: it sets `DockState.WaifuModeUnlocked` and leaves `ShowHoverBackgrounds`
+    false, so the General page's row appears with its switch off. Locking (`LockWaifus`) sets both
+    false, takes a waifu taskbar icon back to Agent Dock's own (remembered in `TaskbarWaifuIcon`,
+    via `TaskbarIconFollowWaifus`), drops the page's picture and slideshow, and hides the row again.
+    Either way the About page says which way it is, with the gesture: "Waifu mode is unlocked. It's
+    on the General page, under Flyout. Seven clicks on the version line locks it again." / "Waifu
+    mode locked. Seven clicks on the version line unlocks it again." (`SyncUnlockNote`, run from
+    `ShowAbout` too). Nothing else in the app hints at it, the note is collapsed on a copy that has
+    never been unlocked, and every waifu surface asks `DockState.WaifuModeEnabled` (unlocked *and*
+    on), so a stale saved value can't leak through while locked.
+    `FlyoutWindow.LockWaifusIfNeeded` (run from `ReloadData`) puts a pre-unlock or hand-edited state
+    back on first start while locked: `ShowHoverBackgrounds` off, and a waifu taskbar icon back to
+    Agent Dock's own.
     **Slideshow** (owner's request, 2026-10-26: "ken burns the fuck out of them"): with waifus on,
     the 25 waifu portraits (`Assets\AppIcons\appicon-waifu-*.png`, the 1024 px taskbar icon
     sources, kept for quality; owner, 2026-10-26) ship as JPEGs, `Assets\AppIcons\portraits\<id>.jpg`
@@ -493,6 +511,14 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     animations off it shows one still portrait. Verified 2026-10-26 by screen captures (with the
     hover pictures it first used): the page's text through UI Automation, and the picture moving
     between frames. **Not yet verified by eye:** the portraits themselves, Copy, the links, Open.
+    The unlock verified 2026-10-27 through UI Automation: six clicks left state.json untouched and
+    showed no note; the seventh wrote `waifuModeUnlocked: true`, showed the note, and put the
+    collapsed row on General with its switch off. Seven clicks again wrote
+    `waifuModeUnlocked: false`, switched `showHoverBackgrounds` off and showed the locked note; the
+    next seven unlocked it again. A first run from a script needs the settings window activated
+    before the clicks land (the first click on an inactive window is swallowed), and two batches of
+    seven inside 3 s count as fourteen clicks, so they toggle twice. The jokes (`WaifuPrompts`) are
+    in US English (owner, 2026-10-27: "mom", "behavior").
   - **Add agents** (`ShowAddAgents`): the scan and a custom command; see "Agent list". Adding from
     the welcome or the offer hides the window when done.
   - **Data:** loads agents.json and state.json on every `Show`; own `ShellIcons`. Changes save at once;
@@ -896,7 +922,7 @@ launched last wrote it.
   session, the footer shows the error with a line number, and nothing that would save it is
   allowed. Schema is documented in `README.md`; keep the two in sync.
 - `%APPDATA%\AgentDock\state.json`: app-managed (current folder, recent folders, cached desktop app ids,
-  whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
+  whether waifu mode was unlocked and whether waifu backgrounds are on, whether Claude's recent launches are remembered, and those
   folders, the dragged list height and width, where Claude usage comes from, the taskbar icon
   choice, and each API account's last balance and 100% amount).
 - `%LOCALAPPDATA%\AgentDock\Icons\`: PNG icon cache.
@@ -1437,8 +1463,9 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - An optional `background` per agent in `agents.json` overrides the built-in one: an image path,
   resolved like `icon` (`AgentIcons.ExistingFile`). Presets inherit it from their agent.
 - **Turned off from the settings page** (gear in the footer): "Waifu backgrounds" writes
-  `DockState.ShowHoverBackgrounds` (`state.json`, default true). A missing property stays on, so
-  older state files keep the pictures. Off skips the fade; the usage drawer still opens.
+  `DockState.ShowHoverBackgrounds` (`state.json`, off unless waifu mode has been unlocked from
+  About and switched on; `WaifuModeEnabled` is the one flag everything reads). Off skips the fade;
+  the usage drawer still opens.
 - **Two layers** (`BackdropLayer`): `HoverImageA`/`B` in `HoverBackdrop`, behind all content, and
   one image per layer across the whole window (see Drawer).
   - Moving to another agent puts its picture on the inactive layer and cross-fades: the new layer

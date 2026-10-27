@@ -160,8 +160,10 @@ After that, manage them in the settings window (the gear in the footer), under *
   backgrounds), **Taskbar icon**, **Launching** (terminal, shell, **Close terminal when agent
   exits**, which closes Agent Dock's tab after a CLI agent finishes instead of leaving a prompt, and
   **Start with Windows**) and **Recent folders**.
-- Turning **Waifu backgrounds** on asks you to confirm, a little differently each time. Turning
-  them off doesn't.
+- **Waifu backgrounds** is hidden until you unlock it: seven clicks on the version line in **About**
+  turns it on, and the same seven clicks locks it again. Unlocking only reveals the setting; it
+  starts off. Turning it on asks you to confirm, a little differently each time. Turning it off
+  doesn't, and locking switches it off too.
 - CLI agents opened in Windows Terminal get a tab titled **Agent · folder**, the agent's icon, and
   (when Agent Dock knows the agent's colour) a matching tab tint, via hidden app-owned profiles in
   Terminal's Fragments folder. With **Waifu backgrounds** on, those tabs also get the selected
@@ -431,8 +433,8 @@ Microsoft Copilot, Crush, Cursor, Cursor CLI,
 DeepSeek, Factory Droid, Freebuff, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity and Qwen), matched
 by agent id or command name. A `background` setting overrides one. With waifus on, the same picture
 also sits behind that agent's page in the settings window. Turn them off with **Waifu backgrounds**
-on the settings page (the gear in the footer), which also hides the hearts on the banner. That
-choice is saved in `state.json`.
+on the settings page (the gear in the footer, and see **About** for unlocking it), which also hides
+the hearts on the banner. That choice is saved in `state.json`.
 
 The banner down the left of the flyout takes on the colour of whichever agent is highlighted: a
 colour picked for its picture when it has one, even if waifu backgrounds are hidden, or one taken
@@ -440,7 +442,8 @@ from its logo otherwise. Black and white logos keep your Windows accent colour. 
 overrides either.
 
 `state.json` in the same folder holds recent folders, the last few folders Claude Code was opened
-in, cached app ids, and whether waifu backgrounds and recent folders are on. Start menu icons are
+in, cached app ids, whether waifu mode was unlocked, and whether waifu backgrounds and recent
+folders are on. Start menu icons are
 cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's icon changes.
 
 ## How it's put together

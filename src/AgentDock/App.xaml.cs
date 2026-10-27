@@ -142,7 +142,7 @@ public partial class App : Application
         if (!item.IsAvailable && !item.IsCli && item.TakesFolder)
             item = AgentCatalog.ResolvePresets([preset],
                 AgentCatalog.Resolve(settings, AgentCatalog.FromStartMenu(StartMenuApps.Load())))[0];
-        if (Launcher.Launch(item, preset.Folder, settings, state.ShowHoverBackgrounds) is { } error)
+        if (Launcher.Launch(item, preset.Folder, settings, state.WaifuModeEnabled) is { } error)
             _flyout?.ShowFlyout(error);
         else
             _flyout?.RememberLaunch(item.Definition, preset.Agent, preset.Folder);
@@ -183,7 +183,7 @@ public partial class App : Application
         }
 
         var folder = state.CurrentFolder ?? FlyoutWindow.DefaultFolder();
-        if (Launcher.Launch(item, folder, settings, state.ShowHoverBackgrounds) is { } error)
+        if (Launcher.Launch(item, folder, settings, state.WaifuModeEnabled) is { } error)
             _flyout?.ShowFlyout(error);
         else
             _flyout?.RememberLaunch(definition, definition.Id, folder);
