@@ -858,7 +858,7 @@ At the repo root:
 | `.github/workflows/ci.yml` | On a push to master or a PR: Debug build and Native AOT publish (x64), warnings as errors; no release |
 | `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
-| `BUILDING.md`, `LOCAL-DEVELOPMENT.md` | Building it yourself (#22 is to keep one of these) |
+| `BUILDING.md` | The dev loop: the Debug build, `tools/Build-And-Run.ps1`, the assets, troubleshooting |
 | `LICENSE` | GPL-3.0 (see README's "Licence" for the copyright line and third-party marks) |
 | `AGENTS.md` | This handoff: the owner's rules, lessons learned, which agents are done, and the reference |
 
