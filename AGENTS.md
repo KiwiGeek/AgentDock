@@ -23,6 +23,14 @@ shows a usage overview of every agent with a suggestion of which to use.
 - The owner isn't confident with release workflows: any change to how releases work goes, step by
   step, into `RELEASING.md`, and when asking them to push or tag, give the exact commands.
 - Don't bump `<Version>` in the `.csproj`: a release takes its version from the tag (`RELEASING.md`).
+  A Debug build shows the `.csproj`'s 2.0.0 on the About page; the owner is fine with that, as long
+  as released builds show the real release number (they do: the workflow passes `-p:Version=<tag>`).
+- **Agreed work is GitHub issues** (`gh issue list`). Give each a type label (`bug`, `enhancement`,
+  `documentation`, `question`), and an `agent: <name>` label for every agent it's about (e.g.
+  `agent: Grok Build`, all one colour, named as in the flyout). An issue that only mentions agents as
+  examples of a general feature gets none. Agents without an open issue have no label yet: create
+  one when it's first needed (`gh label create "agent: Codex" --color 1D76DB --description "About
+  Codex (codex)"`).
 
 **Working on the code**
 
@@ -850,7 +858,7 @@ At the repo root:
 | `.github/workflows/ci.yml` | On a push to master or a PR: Debug build and Native AOT publish (x64), warnings as errors; no release |
 | `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
-| `BUILDING.md`, `LOCAL-DEVELOPMENT.md` | Building it yourself (#22 is to keep one of these) |
+| `BUILDING.md` | The dev loop: the Debug build, `tools/Build-And-Run.ps1`, the assets, troubleshooting |
 | `LICENSE` | GPL-3.0 (see README's "Licence" for the copyright line and third-party marks) |
 | `AGENTS.md` | This handoff: the owner's rules, lessons learned, which agents are done, and the reference |
 

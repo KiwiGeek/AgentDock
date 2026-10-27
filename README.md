@@ -22,7 +22,8 @@ version details for a bug report, and buttons that open the folders your setting
 With waifu backgrounds on, the waifu portraits drift past behind it. Uninstall it from
 **Settings → Apps**.
 
-The rest of this section is for building it yourself.
+The rest of this section is for building it yourself. To work on Agent Dock, see
+[BUILDING.md](BUILDING.md) instead: it covers the Debug build and the build-and-run script.
 
 ## Requirements
 
@@ -36,11 +37,18 @@ The Windows App SDK runtime is bundled into the output, so nothing else needs in
 
 ## Build and pin
 
+To build and run a copy of your own instead of installing a release:
+
 ```powershell
 dotnet publish src\AgentDock\AgentDock.csproj -c Release -r win-x64 -o C:\Tools\AgentDock
 ```
 
-Use `-r win-arm64` on an ARM PC. Then run `C:\Tools\AgentDock\AgentDock.exe`. If it isn't pinned
+Use `-r win-arm64` on an ARM PC. A copy built this way doesn't update itself (only an installed
+copy does), and it's the same Agent Dock as an installed one: same settings, and only one of the two
+runs at a time. A Debug build is different: it's `AgentDock.Dev`, with its own settings, pin and
+flyout, so it runs beside either (see [BUILDING.md](BUILDING.md)).
+
+Then run `C:\Tools\AgentDock\AgentDock.exe`. If it isn't pinned
 yet, it asks you to pin it: right-click its icon on the taskbar and choose **Pin to taskbar**, and
 the window closes by itself. (Windows doesn't let apps pin themselves, so this step is yours.)
 Choosing **Quit** instead closes Agent Dock and removes its sign-in entry, since it can't be opened
