@@ -10,7 +10,7 @@ pwsh -File tools\Build-And-Run.ps1
 ```
 
 It asks whether to rebuild the taskbar icon assets, quits the running copy (the build can't
-overwrite an exe that's in use), builds `AgentDock.csproj`, and starts the new exe with
+overwrite an exe that's in use), builds `src\AgentDock\AgentDock.csproj`, and starts the new exe with
 `--background`. Answer `n` to the question to go straight to the build, or pass `-Assets` /
 `-NoAssets` to skip the question. Run it with PowerShell 7 (`pwsh`): the asset script uses
 `Math.Clamp`, which Windows PowerShell 5.1's compiler doesn't have.
@@ -48,12 +48,11 @@ Get-Process AgentDock -ErrorAction SilentlyContinue |
 # 2. Optional: rebuild the taskbar icon assets.
 .\tools\Build-AppIcons.ps1
 
-# 3. Build the .csproj, not the folder. A bare `dotnet build` picks up AgentDock.slnx, whose
-#    default platform is ARM64, and fails with NETSDK1032.
-dotnet build AgentDock.csproj -nologo -v q
+# 3. Build the project by path. The repo root has no project of its own.
+dotnet build src\AgentDock\AgentDock.csproj -nologo -v q
 
 # 4. Launch the result in the background.
-Start-Process .\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe -ArgumentList '--background'
+Start-Process .\src\AgentDock\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe -ArgumentList '--background'
 ```
 
 ## Where things are

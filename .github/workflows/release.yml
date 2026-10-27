@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json   # the SDK the repo pins
 
       - name: Version from the tag
         id: version
@@ -46,7 +46,7 @@ jobs:
         run: |
           # The AOT linker looks for vswhere.exe on PATH.
           $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
-          dotnet publish AgentDock.csproj -c Release -r ${{ matrix.rid }} -o publish `
+          dotnet publish src/AgentDock/AgentDock.csproj -c Release -r ${{ matrix.rid }} -o publish `
             -p:Version=${{ steps.version.outputs.version }} -nologo
 
       - name: Install vpk
@@ -67,7 +67,7 @@ jobs:
         run: |
           vpk pack --packId KiwiGeek.AgentDock --packVersion ${{ steps.version.outputs.version }} `
             --packTitle "Agent Dock" --packAuthors KiwiGeek --packDir publish --mainExe AgentDock.exe `
-            --icon Assets\AgentDock.ico --runtime ${{ matrix.rid }} --channel ${{ matrix.rid }} `
+            --icon src\AgentDock\Assets\AgentDock.ico --runtime ${{ matrix.rid }} --channel ${{ matrix.rid }} `
             --shortcuts StartMenuRoot -o releases
 
       - uses: actions/upload-artifact@v7
@@ -83,7 +83,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json   # the SDK the repo pins
 
       - uses: actions/download-artifact@v8
         with:

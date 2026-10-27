@@ -25,14 +25,14 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json   # the SDK the repo pins
 
       - name: Build (Debug)
-        run: dotnet build AgentDock.csproj -c Debug -warnaserror -nologo
+        run: dotnet build src/AgentDock/AgentDock.csproj -c Debug -warnaserror -nologo
 
       - name: Publish (Native AOT)
         shell: pwsh
         run: |
           # The AOT linker looks for vswhere.exe on PATH.
           $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
-          dotnet publish AgentDock.csproj -c Release -r win-x64 -o publish -warnaserror -nologo
+          dotnet publish src/AgentDock/AgentDock.csproj -c Release -r win-x64 -o publish -warnaserror -nologo

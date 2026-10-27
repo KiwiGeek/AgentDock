@@ -37,7 +37,7 @@ The Windows App SDK runtime is bundled into the output, so nothing else needs in
 ## Build and pin
 
 ```powershell
-dotnet publish -c Release -r win-x64 -o C:\Tools\AgentDock
+dotnet publish src\AgentDock\AgentDock.csproj -c Release -r win-x64 -o C:\Tools\AgentDock
 ```
 
 Use `-r win-arm64` on an ARM PC. Then run `C:\Tools\AgentDock\AgentDock.exe`. If it isn't pinned
@@ -467,16 +467,23 @@ cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's ic
   JSON, and source-generated COM interop (`LibraryImport`, `GeneratedComInterface`) for the shell,
   icon extraction and the jump list.
 
+The app is in `src/AgentDock`:
+
 | Path | Contents |
 | --- | --- |
 | `Program.cs` | Entry point: forwards to the running instance, or becomes it |
 | `App.xaml(.cs)` | The background instance; handles show / launch / quit requests |
-| `FlyoutWindow.xaml(.cs)` | The flyout |
-| `SettingsWindow.xaml(.cs)` | The settings window (left list: General, Accounts, each agent), opened from the gear |
+| `Views` | The flyout (split into partial files by concern), the settings window, the pin prompt |
+| `Controls` | The grips that drag the flyout's height and width |
 | `Models` | Config/state classes, JSON context, and the `AgentItem` view model |
-| `Services` | Settings I/O, PATH lookup, launching, agent resolution, IPC, autostart, jump list |
+| `Services` | Settings I/O, IPC, autostart, jump list, taskbar icon, updates |
+| `Services/Agents` | The known agents and which is which, resolving them, their icons, colours and recent folders |
+| `Services/Launching` | Starting agents in Windows Terminal or hosted, its profiles, PATH lookup |
+| `Services/Usage` | Each agent's plan usage, API key balances, and the overview's suggestion |
 | `Interop` | Win32 and shell COM declarations, icon extraction, Start menu enumeration |
-| `Assets/Agents` | Built-in agent icons, compiled into the exe as resources |
+| `Assets` | Built-in agent icons and pictures, taskbar icons and portraits, compiled into the exe as resources |
+
+`tools/` has the scripts that build the taskbar icons and portraits, and the DeepSeek Harness plugins.
 
 ## Licence
 

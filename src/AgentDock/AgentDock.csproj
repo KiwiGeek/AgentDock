@@ -1,0 +1,76 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Target framework, nullable and implicit usings: src/Directory.Build.props. -->
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>AgentDock</RootNamespace>
+    <AssemblyName>AgentDock</AssemblyName>
+    <Product>Agent Dock</Product>
+    <!-- The exe's file description: what the taskbar pin and Task Manager call it (else "AgentDock"). -->
+    <AssemblyTitle>Agent Dock</AssemblyTitle>
+    <Version>2.0.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\AgentDock.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+
+    <!-- WinUI 3, unpackaged, with the Windows App SDK runtime bundled (no separate install). -->
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+
+    <!-- Program.cs provides Main, so the click hand-off can run before any WinUI code loads. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+
+    <!-- Native code: the hand-off copy starts in a few milliseconds. -->
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Agent icons and hover backgrounds, compiled into the exe; see Services/AgentIcons.cs.
+      Icons: Assets\Agents\<agent id>.png, named "AgentIcons.<agent id>.png".
+      Backgrounds: Assets\Agents\<agent id>-background.png, named "AgentBackgrounds.<agent id>-background.png".
+    -->
+    <EmbeddedResource Include="Assets\Agents\*.png" Exclude="Assets\Agents\*-background.png"
+                      LogicalName="AgentIcons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\Agents\*-background.png" LogicalName="AgentBackgrounds.%(Filename)%(Extension)" />
+    <!-- The Windows App SDK would otherwise also copy them next to the exe as loose files. -->
+    <Content Remove="Assets\Agents\*.png" />
+
+    <!--
+      Taskbar icon choices (Services/TaskbarIcon.cs), named "AppIcons.<id>.ico". Built from the
+      1024 px Assets\AppIcons\appicon-<id>.png sources by tools\Build-AppIcons.ps1; the sources
+      themselves don't ship. Agent Dock's own icon is the "default" choice.
+    -->
+    <!-- The About page's slideshow: JPEGs built from the waifu sources by tools\Build-Portraits.ps1 (about 3 MB). -->
+    <EmbeddedResource Include="Assets\AppIcons\portraits\*.jpg" LogicalName="Portraits.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\AppIcons\ico\*.ico" LogicalName="AppIcons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Assets\AgentDock.ico" LogicalName="AppIcons.default.ico" />
+    <!-- Also loose next to the exe: the pin prompt and settings window load it by path for their window icon. -->
+    <Content Include="Assets\AgentDock.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Remove="Assets\AppIcons\**" />
+    <None Remove="Assets\AppIcons\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
+  </ItemGroup>
+
+  <!--
+    DeepSeek Harness plugins (HostedAgents): copied next to the exe so a Debug or
+    published run can pass the patch overlay without depending on the repo checkout.
+  -->
+  <ItemGroup>
+    <None Include="..\..\tools\dsh-plugins\**\*"
+          CopyToOutputDirectory="PreserveNewest"
+          Link="dsh-plugins\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

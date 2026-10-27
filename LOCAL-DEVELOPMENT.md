@@ -1,6 +1,6 @@
 # Local development
 
-Run these commands from the repository root in PowerShell 7 (`pwsh`). The icon builder uses .NET APIs not available in Windows PowerShell 5.1. The batch file `local-build.bat` runs the same sequence: stop Agent Dock, rebuild taskbar icon assets, build the project, and start the local Debug copy in the background. It locates `pwsh.exe` through PowerShell's command lookup, including Windows App execution aliases.
+Run these commands from the repository root in PowerShell 7 (`pwsh`). The icon builder uses .NET APIs not available in Windows PowerShell 5.1. `tools\Build-And-Run.ps1` runs the same sequence: stop Agent Dock, optionally rebuild taskbar icon assets, build the project, and start the local Debug copy in the background.
 
 ## Build taskbar icon assets
 
@@ -27,7 +27,7 @@ Build the project file, not the repository folder: building the folder can selec
 
 ```powershell
 $root = (Get-Location).Path
-$exe = Join-Path $root 'bin/Debug/net10.0-windows10.0.26100.0/win-x64/AgentDock.exe'
+$exe = Join-Path $root 'src/AgentDock/bin/Debug/net10.0-windows10.0.26100.0/win-x64/AgentDock.exe'
 
 # Stop the old copy before building so the executable is not locked.
 Get-Process AgentDock -ErrorAction SilentlyContinue | ForEach-Object { & $_.Path --quit }
@@ -36,7 +36,7 @@ Get-Process AgentDock -ErrorAction SilentlyContinue | Stop-Process -Force
 & "$root/tools/Build-AppIcons.ps1" -Root $root
 if ($LASTEXITCODE -ne 0) { throw 'Building taskbar icon assets failed.' }
 
-dotnet build "$root/AgentDock.csproj" -nologo -v q
+dotnet build "$root/src/AgentDock/AgentDock.csproj" -nologo -v q
 if ($LASTEXITCODE -ne 0) { throw 'Building Agent Dock failed.' }
 
 Start-Process $exe -ArgumentList '--background'

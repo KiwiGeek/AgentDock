@@ -15,7 +15,7 @@
     instead of opening a flyout nobody asked for. Run the exe with no arguments to open it.
 
 .PARAMETER Assets
-    Rebuild the taskbar icon assets (Assets\AppIcons\appicon-<id>.png into Assets\AppIcons\ico\)
+    Rebuild the taskbar icon assets (src\AgentDock\Assets\AppIcons\appicon-<id>.png into its ico\)
     without asking.
 
 .PARAMETER NoAssets
@@ -33,8 +33,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path $PSScriptRoot -Parent
-$project = Join-Path $root 'AgentDock.csproj'
-$exe = Join-Path $root 'bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe'
+$project = Join-Path $root 'src\AgentDock\AgentDock.csproj'
+$exe = Join-Path $root 'src\AgentDock\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe'
 
 if ($Assets -and $NoAssets) { throw 'Pass either -Assets or -NoAssets, not both.' }
 

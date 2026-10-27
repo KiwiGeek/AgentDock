@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    Builds the taskbar icon choices: Assets\AppIcons\appicon-<id>.png (1024 px sources) into
-    Assets\AppIcons\ico\<id>.ico, which the app compiles in (see Services\TaskbarIcon.cs).
+    Builds the taskbar icon choices: src\AgentDock\Assets\AppIcons\appicon-<id>.png (1024 px
+    sources) into src\AgentDock\Assets\AppIcons\ico\<id>.ico, which the app compiles in (see
+    Services\TaskbarIcon.cs).
 
 .DESCRIPTION
     Each .ico holds PNG frames at the sizes Windows asks for on the taskbar, Start menu and
@@ -16,7 +17,7 @@ param([string]$Root = (Split-Path $PSScriptRoot -Parent))
 Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
-$sources = Join-Path $Root 'Assets\AppIcons'
+$sources = Join-Path $Root 'src\AgentDock\Assets\AppIcons'
 $output = Join-Path $sources 'ico'
 New-Item -ItemType Directory -Force $output | Out-Null
 $sizes = 16, 20, 24, 32, 40, 48, 64, 256

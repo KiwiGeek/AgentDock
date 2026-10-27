@@ -2,8 +2,9 @@
 
 Read this before changing anything. The first sections are the catch-up: the owner's rules, lessons
 learned, and where each agent stands. **Reference** below is the detail: architecture, every
-decision, and what has and hasn't been verified. `tasks.md` is agreed work not yet started. Keep
-both current: when a decision changes or something gets verified, update them in the same commit.
+decision, and what has and hasn't been verified. Agreed work not yet started is in the repo's
+GitHub issues (`gh issue list`; `tasks.md` moved there on 2026-10-26). Keep both current: when a
+decision changes or something gets verified, update this file in the same commit, and the issue.
 
 Agent Dock is a Windows 11 taskbar flyout (WinUI 3, unpackaged, Native AOT, C#) that launches AI
 agents: CLI agents in Windows Terminal in a chosen folder, desktop agents directly. On hover, a
@@ -28,15 +29,16 @@ shows a usage overview of every agent with a suggestion of which to use.
 - **After every build, stop any running Agent Dock and relaunch the new build**, so the owner sees
   the change at once:
   ```powershell
-  $exe = "W:\AgentDock\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe"
+  $exe = "W:\AgentDock\src\AgentDock\bin\Debug\net10.0-windows10.0.26100.0\win-x64\AgentDock.exe"
   Get-Process AgentDock -ErrorAction SilentlyContinue | ForEach-Object { & $_.Path --quit }
   Get-Process AgentDock -ErrorAction SilentlyContinue | Stop-Process -Force
-  dotnet build W:\AgentDock\AgentDock.csproj -nologo -v q
+  dotnet build W:\AgentDock\src\AgentDock\AgentDock.csproj -nologo -v q
   Start-Process $exe -ArgumentList '--background'
   ```
-- **Build the `.csproj`, not the folder.** A bare `dotnet build` picks up `AgentDock.slnx`, whose
-  default platform is ARM64, and fails with NETSDK1032. `-p:Platform=x64` "works" but builds into
-  `bin\x64\Debug`, which isn't the copy Claude Code's status line runs.
+- **Build `src\AgentDock\AgentDock.csproj` by path.** The repo root has no project (since #27), and
+  the owner's untracked `AgentDock.slnx`, when it's there, defaults to ARM64 and fails with
+  NETSDK1032. `-p:Platform=x64` "works" but builds into `bin\x64\Debug`, which isn't the copy
+  Claude Code's status line runs.
 - Primary stack is C#, with ReSharper. Built-in WinUI controls only (no Telerik, no new NuGet
   packages without a clear reason).
 - Hard constraints (details under Reference → "Hard constraints"): Native AOT (no reflection, no `dynamic`, JSON only via
@@ -52,7 +54,7 @@ shows a usage overview of every agent with a suggestion of which to use.
 **Product decisions**
 
 - **The user chooses their agents.** A fresh install has an empty list; Find agents offers the
-  known ones (`Services/KnownAgents.cs`). Known agents that weren't found can still be added
+  known ones (`Services/Agents/KnownAgents.cs`). Known agents that weren't found can still be added
   ("Not found on this PC"), and are looked for again on every open (PATH is re-read from the
   registry each show).
 - **Usage may read a CLI's own sign-in token** (owner's decision, 2026-10-16) when that's the only
@@ -96,15 +98,27 @@ shows a usage overview of every agent with a suggestion of which to use.
   `UPDATEDIR`, `ASSOCCHANGED`), `SHUpdateImage`, `ie4uinit -show`, fresh icon file names, waiting,
   or opening the flyout. Cendio's ThinLinc hit the same wall and gave up (bugzilla.cendio.com bug
   7970). **Restarting Explorer does work**, and the resident Agent Dock survives it. Check the
-  taskbar through UI Automation (the button is named "AgentDock pinned"), capturing just its rectangle.
+  taskbar through UI Automation (the button is named "Agent Dock pinned", or "AgentDock pinned"
+  for a pin made before the exe had a file description), capturing just its rectangle.
 - Verify network parsers against the real service with a throwaway console project in the
   scratchpad that compiles the service file(s) directly, then delete it. Print numbers, never tokens.
+  The same works for moving logic: #27 checked the extracted `UsageSuggestion` against the old code
+  on 200,000 random overviews.
+- Every Debug build is `AgentDock.Dev`, wherever it was built, so a Debug copy from another
+  checkout (an agent's working copy, say) holds the Debug lock: your relaunch hands off to it and
+  exits. Check the running copy's path (`Get-Process AgentDock | Select Path`) before trusting a
+  relaunch. Don't kill a copy you didn't start.
+- To find unused usings, build once with `-p:EnforceCodeStyleInBuild=true
+  -p:GenerateDocumentationFile=true` and IDE0005 at warning in a temporary `.editorconfig`, and repeat:
+  it reports in waves. It only sees Debug, so a using needed under `#if !DEBUG` (as in
+  `Autostart.cs`) is flagged wrongly; a Release publish catches mistakes.
 
 ## Agents: where each one stands
 
 "Done" means everything that applies is built and verified against the real service: found and
 launched, built-in icon and hover picture, usage in the drawer and the overview, recent folders.
-Details per agent are under Reference; what's still to review per agent is in `tasks.md`.
+Details per agent are under Reference; what's still to verify per agent is issue #16, and usage
+sources still to find, #17.
 
 ### Command line
 
@@ -225,7 +239,7 @@ just above the taskbar button, listing AI agents:
   `--profile` rather than risking a failed launch (title and colour still apply).
 - **Desktop agents** launch directly.
 - **The user chooses the agents** (owner's decision, 2026-10-16). A fresh install has an empty list
-  and a welcome offering **Find agents**, which scans for the agents in `Services/KnownAgents.cs`
+  and a welcome offering **Find agents**, which scans for the agents in `Services/Agents/KnownAgents.cs`
   (Claude Code, Codex, Antigravity CLI, Copilot CLI, OpenCode, Aider, Qwen Code, Cursor CLI, Amp, Kiro,
   Goose, Crush, Factory Droid, Grok Build, Freebuff, Hermes Agent, DeepSeek Harness; Claude, ChatGPT,
   GitHub Copilot, Microsoft Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
@@ -243,7 +257,8 @@ it asks the user to pin it and quits if they decline (see "Pin prompt" below). T
 the taskbar icon shows the same agents as a jump list. The two goals that drive most decisions:
 **looks native to Windows 11**, and **opens fast**.
 
-Repo: `KiwiGeek/AgentDock` on GitHub. The `.csproj` is at the repo root (CI depends on that).
+Repo: `KiwiGeek/AgentDock` on GitHub. The project is `src/AgentDock/AgentDock.csproj` (moved from the
+repo root for #27); both workflows, the build scripts and the image scripts in `tools/` name that path.
 
 ### Status
 
@@ -294,6 +309,7 @@ there's a 2-second timeout fallback).
 ### Build, run, publish
 
 ```powershell
+cd src\AgentDock                             # or pass --project src\AgentDock to each
 dotnet run                                   # Debug, JIT, centred on screen
 dotnet run -- --quit                         # stop the background instance
 $env:AGENTDOCK_PIN_CHECK = "1"; dotnet run   # Debug with the pin prompt (skipped in Debug otherwise)
@@ -341,7 +357,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   are intercepted to hide; only `Quit` closes it (`App.IsExiting`).
 - `startWithWindows` (default true) writes `HKCU\...\Run\AgentDock = "<exe>" --background`.
 
-#### Flyout behaviour (`FlyoutWindow.xaml.cs`)
+#### Flyout behaviour (`Views/FlyoutWindow*.cs`)
 
 - `AppWindow` with `OverlappedPresenter`: no title bar, not resizable, always on top,
   `IsShownInSwitchers = false` (no taskbar button, not in Alt+Tab). `DesktopAcrylicBackdrop`.
@@ -504,7 +520,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   - Verified by screenshot (2026-10-16): dark theme, translucent fill, sideways heart, white text.
     **Not yet verified:** the colour change on hover, the heart animation, light theme.
 
-#### Pin prompt (`PinPromptWindow.xaml(.cs)`, `Interop/TaskbarPins.cs`)
+#### Pin prompt (`Views/PinPromptWindow.xaml(.cs)`, `Interop/TaskbarPins.cs`)
 
 - The taskbar icon is the only way to open the flyout, so `App.StartAsync` calls
   `PinPromptWindow.EnsurePinnedAsync()` before building the flyout. Declining (the Quit button or
@@ -636,7 +652,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
   `AgentList_DragItemsCompleted`); in the flyout, agents not shown in that list keep their places
   (`ReorderShown`). Presets save to presets.json, refused while it can't be read. Dragging is the
   only way to reorder (no Move up/down). Not yet verified by an actual drag.
-- **Usage per account** (`Services/UsageAccount.cs`): the account is the config folder from the
+- **Usage per account** (`Services/Usage/UsageAccount.cs`): the account is the config folder from the
   agent's `env` (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`, `%NAME%` expanded, full path), else the default.
   `UsageAccount.Key` keys every cache, so copies on one account share numbers and accounts never mix.
   - **Claude desktop** (catalog `claude-desktop`) is Claude Code's default account, and **ChatGPT
@@ -673,7 +689,7 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
 - Start menu enumeration: `SHCreateItemFromParsingName("shell:AppsFolder")` →
   `BindToHandler(BHID_EnumItems)` → `IEnumShellItems`. Name = `SIGDN_NORMALDISPLAY`,
   launch id = `SIGDN_PARENTRELATIVEPARSING`.
-- Icon source, decided by `Services/AgentIcons.cs`, in order:
+- Icon source, decided by `Services/Agents/AgentIcons.cs`, in order:
   1. The agent's `icon` setting (an image file, or an exe/dll).
   2. A compiled-in icon. `Assets/Agents/<name>.png` files are `EmbeddedResource`s named
      `AgentIcons.<name>.png`, with `Content Remove` so no loose copies ship. They match by agent id,
@@ -752,63 +768,91 @@ writing and maintaining an updater isn't worth it. How it fits:
 
 ### Files
 
+The app is `src/AgentDock/` (moved from the repo root for #27); paths in the first table are under it.
+Namespaces follow folders (`AgentDock.Views`, `AgentDock.Services.Usage`, …). The windows' folder is
+`Views`, not `Windows`, because an `AgentDock.Windows` namespace would shadow WinRT's `Windows.*`.
+
 | Path | Purpose |
 | --- | --- |
+| `AgentDock.csproj`, `app.manifest` | The project (resources, packages, the DeepSeek plugins copied next to the exe); the manifest |
 | `Program.cs` | Entry point: hand-off or become resident |
-| `App.xaml(.cs)` | Resident instance; dispatches `DockCommand`s; jump-list launches |
-| `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard (settings are not here; see `SettingsWindow`) |
-| `SettingsWindow.xaml(.cs)` | The settings window: master-detail (General, Accounts, each agent with drag reorder), Add agents, taskbar icon; saves at once and notifies the flyout |
-| `SettingsWindow.ApiAccounts.cs` | The settings window's Accounts page, each API key's page, the agent page's Account choice, and its own balance checks |
-| `SettingsWindow.About.cs` | The settings window's About page: version, updates, links, folders, licence, and the waifu portrait slideshow |
-| `Models/SettingsChange.cs` | Flags saying what a settings change touched, so the flyout refreshes only that |
-| `ResizeGrip.cs` | The strip that drags the flyout's height (shows the up-down cursor) |
-| `PinPromptWindow.xaml(.cs)` | Startup prompt asking the user to pin Agent Dock; waits for the pin |
+| `App.xaml(.cs)` | Resident instance; dispatches `DockCommand`s; jump-list launches; Restart now |
+| `Views/FlyoutWindow.xaml(.cs)` | The flyout: its fields, show/hide, data, setting up the list, reordering, folders, actions and keys |
+| `Views/FlyoutWindow.Banner.cs` | The banner down the list's left edge: its gradient, the agent's colour, the hearts |
+| `Views/FlyoutWindow.Presets.cs` | Presets: rows, menu, renaming and saving |
+| `Views/FlyoutWindow.Usage.cs` | The drawer's usage: each agent's checks, the bars, extras and breakdown, the status line offer |
+| `Views/FlyoutWindow.Overview.cs` | The usage overview: one row per account, and the suggestion's wording (`UsageSuggestion` decides) |
+| `Views/FlyoutWindow.Recents.cs` | Recent folders under the drawer's usage |
+| `Views/FlyoutWindow.Drawer.cs` | Opening and closing the drawer, and holding it while a pop-up is open (`HoldWhileOpen`) |
+| `Views/FlyoutWindow.Backdrop.cs` | The hover picture behind the flyout |
+| `Views/FlyoutWindow.Placement.cs` | Where the flyout opens, its open animation, the width and height grips |
+| `Views/FlyoutWindow.ApiAccounts.cs` | API usage in the flyout: the checks and the drawer (the settings side is in `SettingsWindow.ApiAccounts.cs`) |
+| `Views/SettingsWindow.xaml(.cs)` | The settings window: master-detail (General, Accounts, each agent with drag reorder), Add agents, taskbar icon; saves at once and notifies the flyout |
+| `Views/SettingsWindow.ApiAccounts.cs` | The Accounts page, each API key's page, the agent page's Account choice, and its own balance checks |
+| `Views/SettingsWindow.About.cs` | The About page: version, updates, links, folders, licence, and the waifu portrait slideshow |
+| `Views/SettingsWindow.Waifu.cs` | The joke asked once more when Waifu backgrounds are turned on |
+| `Views/PinPromptWindow.xaml(.cs)` | Startup prompt asking the user to pin Agent Dock; waits for the pin |
+| `Controls/ResizeGrip.cs` | The strips that drag the flyout's height and width (their cursors) |
 | `Models/Settings.cs` | `AgentDefinition`, `DockSettings` (+ defaults), `DockState`, `DockJsonContext` |
 | `Models/AgentItem.cs` | View model for an agent row (`INotifyPropertyChanged`); `FolderItem` |
-| `Services/SettingsStore.cs` | `%APPDATA%\AgentDock\agents.json` and `state.json`; atomic writes via temp file |
-| `Services/AgentCatalog.cs` | Definition → resolved item |
-| `Services/KnownAgents.cs` | The agents Agent Dock can find and offer (templates; ids match icons and pictures) |
-| `Services/UsageAccount.cs` | Whose plan an agent's usage belongs to (its config folder); per-account usage files; `UsageFetch` |
-| `Models/AgentListRow.cs` | A row in the settings page's draggable agent list |
-| `Services/PathResolver.cs` | PATH/PATHEXT lookup |
-| `Services/Launcher.cs` | Starts agents and plain shells |
-| `Services/HostedAgents.cs` | CLI agents run with no Terminal window (DeepSeek Harness); Stop from the row; killed on quit; `--patch` + browser open for launch-folder workspace |
-| `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: open the launch folder; `agentdock-waifu`: serve her PNG and soften theme fills when Waifu backgrounds is on) |
-| `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
-| `Services/Autostart.cs` | HKCU Run entry |
+| `Models/AgentListRow.cs` | A row in the settings window's draggable agent list |
+| `Models/SettingsChange.cs` | Flags saying what a settings change touched, so the flyout refreshes only that |
+| `Models/TaskbarIconChoice.cs` | An icon in the settings window's taskbar icon picker |
 | `Services/AppIdentity.cs` | The name, folders and lock that keep a Debug build apart from an installed copy |
-| `Services/Updates.cs` | Velopack: install/uninstall hooks, applying a downloaded update at start, checking GitHub, the state the About page shows, Restart now |
+| `Services/Autostart.cs` | HKCU Run entry |
+| `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
 | `Services/JumpList.cs` | Taskbar jump list |
+| `Services/SettingsStore.cs` | `%APPDATA%\AgentDock\agents.json` and `state.json`; atomic writes via temp file |
+| `Services/TaskbarIcon.cs` | The taskbar icon choices, applying one to the pin, restarting File Explorer to show it |
+| `Services/Updates.cs` | Velopack: install/uninstall hooks, applying a downloaded update at start, checking GitHub, the state the About page shows, Restart now |
+| `Services/Agents/KnownAgents.cs` | The agents Agent Dock can find and offer (templates; ids match icons and pictures), and which agent is which (`IsCursor`, `IsKiro`, `IsFreebuff`, `IsGitHubCopilot`, `CommandName`) |
+| `Services/Agents/AgentCatalog.cs` | Definition → resolved item |
+| `Services/Agents/AgentIcons.cs` | Which icon and picture an agent gets; compiled-in lookups; .ico files for the jump list; the portraits |
+| `Services/Agents/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
+| `Services/Agents/RecentLaunches.cs` | The last few folders each agent was launched in (state.json) |
+| `Services/Agents/AiderModels.cs` | Aider's model search, through Aider itself |
+| `Services/Launching/Launcher.cs` | Starts agents and plain shells |
+| `Services/Launching/TerminalProfiles.cs` | Windows Terminal's hidden profiles for Agent Dock's tabs (icon, colour, waifu picture), in the Fragments folder |
+| `Services/Launching/HostedAgents.cs` | CLI agents run with no Terminal window (DeepSeek Harness); Stop from the row; killed on quit; `--patch` + browser open for launch-folder workspace |
+| `Services/Launching/PathResolver.cs` | PATH/PATHEXT lookup |
+| `Services/Usage/UsageAccount.cs` | Whose plan an agent's usage belongs to (its config folder); per-account usage files; `UsageFetch` |
+| `Services/Usage/UsageSuggestion.cs` | The overview's suggestion: each candidate's windows, its capacity, the pick and alternatives (pure) |
+| `Services/Usage/ClaudeStatusLine.cs` | `--statusline` mode, saved Claude usage, and setting up Claude Code's status line |
+| `Services/Usage/ClaudeUsageApi.cs` | "Ask Claude directly": the one usage GET, its token handling, rate limits and parser |
+| `Services/Usage/ClaudeConfig.cs` | Claude Code's config folder (`CLAUDE_CONFIG_DIR` or `~\.claude`), shared |
+| `Services/Usage/CodexUsage.cs` | Codex plan usage, asked live of Codex's app server; last answer saved |
+| `Services/Usage/GrokUsage.cs` | Grok Build usage from grok.com (gRPC-web, with Grok Build's own sign-in from `~\.grok\auth.json`) |
+| `Services/Usage/FreebuffUsage.cs` | Freebuff daily hours from codebuff.com (the CLI's keychain token, read only); last answer saved |
+| `Services/Usage/CursorUsage.cs` | Cursor usage from cursor.com (`/api/usage-summary`, with Cursor CLI's sign-in from `%APPDATA%\cursor\auth.json`) |
+| `Services/Usage/KiroUsage.cs` | Kiro CLI monthly credits, from `kiro-cli chat --no-interactive /usage` (CLI owns the sign-in; no token) |
+| `Services/Usage/CopilotUsage.cs` | GitHub Copilot usage this month (AI credits against the plan), via `gh api copilot_internal/user` |
+| `Services/Usage/ApiUsage.cs` | API keys' balances: the DeepSeek check, the 100% logic, which agents seem to use a provider |
+| `Services/Usage/CrushHyperToken.cs` | Crush's Hyper sign-in, read only, for the balance check |
 | `Interop/Win32.cs` | Win32 P/Invoke and structs |
 | `Interop/ShellCom.cs` | Shell COM interfaces, GUIDs, constants |
 | `Interop/StartMenuApps.cs` | All-apps enumeration; `RunOnStaThread` helper |
 | `Interop/ShellIcons.cs` | Icon loading: compiled-in, image files, and shell extraction with a PNG cache |
-| `Services/AgentIcons.cs` | Which icon an agent gets; compiled-in icon lookup; .ico files for the jump list |
-| `Services/ClaudeStatusLine.cs` | `--statusline` mode, saved Claude usage, and setting up Claude Code's status line |
-| `Services/ClaudeUsageApi.cs` | "Ask Claude directly": the one usage GET, its token handling, rate limits and parser |
-| `Services/ClaudeConfig.cs` | Claude Code's config folder (`CLAUDE_CONFIG_DIR` or `~\.claude`), shared |
-| `Services/CodexUsage.cs` | Codex plan usage, asked live of Codex's app server; last answer saved |
-| `Services/ThemeColors.cs` | The banner's colour per agent: hand-picked for built-in pictures, or worked out from an image |
-| `Services/GrokUsage.cs` | Grok Build usage from grok.com (gRPC-web, with Grok Build's own sign-in from `~\.grok\auth.json`) |
-| `Services/FreebuffUsage.cs` | Freebuff daily hours from codebuff.com (the CLI's keychain token, read only); last answer saved |
-| `Services/CursorUsage.cs` | Cursor usage from cursor.com (`/api/usage-summary`, with Cursor CLI's sign-in from `%APPDATA%\cursor\auth.json`) |
-| `Services/KiroUsage.cs` | Kiro CLI monthly credits, from `kiro-cli chat --no-interactive /usage` (CLI owns the sign-in; no token) |
-| `Services/CopilotUsage.cs` | GitHub Copilot usage this month (AI credits against the plan), via `gh api copilot_internal/user` |
-| `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
 | `Interop/TaskbarPins.cs` | Whether an exe is pinned (reads the taskbar's pin shortcuts), and setting a pin's icon |
-| `Services/ApiUsage.cs` | API keys' balances: the DeepSeek check, the 100% logic, which agents seem to use a provider |
-| `FlyoutWindow.ApiAccounts.cs` | API usage in the flyout: the checks and the drawer (the settings section is in `SettingsWindow.ApiAccounts.cs`) |
-| `Services/TaskbarIcon.cs` | The taskbar icon choices, applying one to the pin, restarting File Explorer to show it |
-| `Models/TaskbarIconChoice.cs` | An icon in the settings page's taskbar icon picker |
-| `Assets/AppIcons/` | Taskbar icon sources (`appicon-<id>.png`, 1024 px, not shipped) and the built `ico/<id>.ico` (compiled in) |
+| `Assets/Agents/*.png` | Built-in agent icons (`<id>.png`) and hover backgrounds (`<id>-background.png`), compiled in as resources |
+| `Assets/AppIcons/` | Taskbar icon sources (`appicon-<id>.png`, 1024 px, not shipped), the built `ico/<id>.ico` and `portraits/<id>.jpg` (compiled in) |
+
+At the repo root:
+
+| Path | Purpose |
+| --- | --- |
+| `src/Directory.Build.props` | What every project under `src/` shares: target framework, nullable, implicit usings |
+| `global.json` | The pinned .NET SDK; both workflows install it |
+| `.editorconfig` | The house style for the IDE (not enforced in the build) |
+| `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: open the launch folder; `agentdock-waifu`: serve her PNG and soften theme fills when Waifu backgrounds is on) |
 | `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
 | `tools/Build-Portraits.ps1` | Builds `Assets/AppIcons/portraits/*.jpg` (the About page's slideshow) from the waifu sources |
+| `tools/Build-And-Run.ps1` | Stop, build and relaunch the Debug copy |
 | `.github/workflows/ci.yml` | On a push to master or a PR: Debug build and Native AOT publish (x64), warnings as errors; no release |
 | `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
+| `BUILDING.md`, `LOCAL-DEVELOPMENT.md` | Building it yourself (#22 is to keep one of these) |
 | `LICENSE` | GPL-3.0 (see README's "Licence" for the copyright line and third-party marks) |
 | `AGENTS.md` | This handoff: the owner's rules, lessons learned, which agents are done, and the reference |
-| `tasks.md` | Agreed work not yet started (agents to review, API-credit profiles, custom groups) |
 
 ### Config and data
 
@@ -940,7 +984,7 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
 
 #### Built: Claude usage limits (replaces the owner's dead WaifuOps status line)
 
-`Services/ClaudeStatusLine.cs` and `Services/ClaudeUsageApi.cs`, plus the drawer in `FlyoutWindow`.
+`Services/Usage/ClaudeStatusLine.cs` and `Services/Usage/ClaudeUsageApi.cs`, plus the drawer in `FlyoutWindow` (`Views/FlyoutWindow.Usage.cs`).
 Two sources, chosen on Claude Code's settings page (`DockState.ClaudeUsageSource`, `"statusLine"`
 or `"api"` in state.json; missing means the status line). Both save to the same file, per account:
 `claude-usage.json` for the default, `claude-usage-<hash>.json` for another (see "Usage per account" under Agent list).
@@ -1094,7 +1138,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Freebuff, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI or Copilot CLI (each copy separately) was launched
+- **Recents** (`Services/Agents/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Freebuff, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, DeepSeek Harness, Cursor CLI or Copilot CLI (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
@@ -1141,7 +1185,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Verified by the owner (popup version):** the drawer opens on hover without hiding the flyout.
   The single-window version (the window itself grows) is not yet verified.
 
-#### Codex usage (`Services/CodexUsage.cs`)
+#### Codex usage (`Services/Usage/CodexUsage.cs`)
 
 - **Source: Codex itself, live** (owner's decision, 2026-10-16: the only route, no setting, no
   other fallbacks). `codex -s read-only -a never app-server` is the local JSON-RPC interface Codex's
@@ -1179,7 +1223,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - **Verified by the owner (2026-10-15):** the Codex picture, drawer, cross-fade between agents, and
   the seam overlap.
 
-#### Grok Build usage (`Services/GrokUsage.cs`; owner's request, 2026-10-16)
+#### Grok Build usage (`Services/Usage/GrokUsage.cs`; owner's request, 2026-10-16)
 
 - **No CLI source.** Grok Build 1.0.60 has no usage command or call: `grok usage` is one session's
   tokens and cost, its status line gets only context and tokens, and it only learns of a limit from
@@ -1223,7 +1267,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   the real `GrokUsage.FetchAsync` in a throwaway console project (deleted): 100%, resets Wed 21 Oct
   11:11, $1.50, the breakdown. **Not yet verified:** the drawer with the new route, the pie on screen.
 
-#### Cursor usage (`Services/CursorUsage.cs`; owner's request, 2026-10-16)
+#### Cursor usage (`Services/Usage/CursorUsage.cs`; owner's request, 2026-10-16)
 
 - **No CLI source.** Cursor CLI (2026.10.16) has no usage command; `about` / `status` give only the
   plan tier and email, and `/usage` is interactive only.
@@ -1252,7 +1296,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Verified 2026-10-16 through the real `CursorUsage.FetchAsync` (throwaway console project, deleted):
   Pro+, 12.7% total, Auto + Composer 13.7%, API 1.6%, resets 10 Nov. **Not yet verified:** the drawer.
 
-#### Freebuff usage (`Services/FreebuffUsage.cs`; 2026-10-23)
+#### Freebuff usage (`Services/Usage/FreebuffUsage.cs`; 2026-10-23)
 
 - **Source: Freebuff's own session endpoint**, the one its CLI polls:
   `GET https://www.codebuff.com/api/v1/freebuff/session` with `Authorization: Bearer <token>`.
@@ -1299,7 +1343,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   Flash is the model that chat ran on. Don't treat the hours as a clock that runs while Freebuff is
   open.
 
-#### Kiro usage (`Services/KiroUsage.cs`; 2026-10-21)
+#### Kiro usage (`Services/Usage/KiroUsage.cs`; 2026-10-21)
 
 - **Source: Kiro CLI itself** (same preference as Codex's app server and Copilot's `gh api`: the CLI
   owns the sign-in, Agent Dock never reads a token). `kiro-cli chat --no-interactive /usage`
@@ -1319,7 +1363,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Verified 2026-10-21: live `/usage` on the owner's Kiro Free account (0.16 of 50, 0.3%, resets
   2026-11-01). **Not yet verified:** the drawer and overview row by eye.
 
-#### GitHub Copilot usage (`Services/CopilotUsage.cs`)
+#### GitHub Copilot usage (`Services/Usage/CopilotUsage.cs`)
 
 - **No local source:** Copilot CLI (1.0.98) keeps no quota. `~/.copilot/logs` have nothing, and
   `data.db` only has `session_context_usage` (context window). It has no usage command for scripts:
@@ -1377,7 +1421,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   flyout resets it.
 - **Not yet verified by eye:** the Freebuff picture added 2026-10-23. The build embeds all 23.
 
-#### API usage (owner's request, 2026-10-19; `Services/ApiUsage.cs`, `FlyoutWindow.ApiAccounts.cs`)
+#### API usage (owner's request, 2026-10-19; `Services/Usage/ApiUsage.cs`, `Views/FlyoutWindow.ApiAccounts.cs`)
 
 - **Accounts:** `DockSettings.ApiAccounts` in agents.json: id (`ApiUsage.NewId`: the provider, then
   "-2"…), name, provider (`ApiUsage.Providers`, an `ApiProvider` each: DeepSeek and Hyper have
@@ -1493,5 +1537,5 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - More of the settings page. It exists (gear in the footer): general settings, the agent list
   (add, remove, duplicate, rename, arguments, environment variables, drag to reorder), and per-agent
   pages. Only Claude Code has real settings there; Codex and Copilot have none.
-- Usage for the agents not done yet (see "Agents: where each one stands" and `tasks.md`), and for the Claude and
+- Usage for the agents not done yet (see "Agents: where each one stands" and #17), and for the Claude and
   ChatGPT desktop apps from their CLI counterparts' accounts.
