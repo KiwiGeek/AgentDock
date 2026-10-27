@@ -106,7 +106,7 @@ public sealed partial class SettingsWindow : Window
 
     /// <summary>
     /// Shows the window, reading the settings and state files again.
-    /// <paramref name="section"/> is general, agents or api (picks a sensible left-list item).
+    /// <paramref name="section"/> is general, agents, api or about (picks a sensible left-list item).
     /// With <paramref name="agentId"/> it selects that agent; with <paramref name="addAgents"/>,
     /// Add agents (from the flyout's welcome or offer).
     /// </summary>
@@ -148,6 +148,7 @@ public sealed partial class SettingsWindow : Window
             "agents" when _settings.Agents.Count > 0 => TagAgentPrefix + _settings.Agents[0].Id,
             "agents" => TagAddAgents,
             "api" or "accounts" => TagAccounts,
+            "about" => TagAbout,
             _ => TagGeneral
         };
 
@@ -166,6 +167,7 @@ public sealed partial class SettingsWindow : Window
         CommitEditors();
         // Moves the focus off any box (an API key, say) so its LostFocus saves it.
         HoverBackgroundsSwitch.Focus(FocusState.Programmatic);
+        StopSlideshow();
         AppWindow.Hide();
     }
 
@@ -286,7 +288,7 @@ public sealed partial class SettingsWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>General, Accounts, or Add agents was chosen in the left list.</summary>
+    /// <summary>General, Accounts, Add agents or About was chosen in the left list.</summary>
     private void StaticNav_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_navReady || sender is not ListView list || list.SelectedItem is not ListViewItem { Tag: string tag })
@@ -363,6 +365,7 @@ public sealed partial class SettingsWindow : Window
             : tag == TagAccounts || tag.StartsWith(TagApiPrefix, StringComparison.Ordinal) ? AccountsNavItem
             : null;
         AddAgentsNav.SelectedItem = tag == TagAddAgents ? AddAgentsNavItem : null;
+        AboutNav.SelectedItem = tag == TagAbout ? AboutNavItem : null;
 
         if (tag.StartsWith(TagAgentPrefix, StringComparison.Ordinal))
         {
@@ -402,6 +405,11 @@ public sealed partial class SettingsWindow : Window
             ShowAccounts();
             return;
         }
+        else if (tag == TagAbout)
+        {
+            ShowAbout();
+            return;
+        }
         else if (tag.StartsWith(TagAgentPrefix, StringComparison.Ordinal)
                  && _settings.Agents.FirstOrDefault(a => a.Id.Equals(tag[TagAgentPrefix.Length..], StringComparison.OrdinalIgnoreCase)) is { } agent)
         {
@@ -435,7 +443,9 @@ public sealed partial class SettingsWindow : Window
     {
         foreach (var panel in AgentSettingsPanels)
             panel.Visibility = Visibility.Collapsed;
-        GeneralPage.Visibility = AgentEditor.Visibility = AddAgentsPage.Visibility = ApiPage.Visibility = AccountsPage.Visibility = Visibility.Collapsed;
+        GeneralPage.Visibility = AgentEditor.Visibility = AddAgentsPage.Visibility = ApiPage.Visibility = AccountsPage.Visibility
+            = AboutPage.Visibility = Visibility.Collapsed;
+        StopSlideshow();
         // Only an API key's page has Accounts in front of its title.
         AccountsCrumb.Visibility = AccountsCrumbChevron.Visibility = Visibility.Collapsed;
     }

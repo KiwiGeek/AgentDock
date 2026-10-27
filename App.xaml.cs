@@ -98,6 +98,16 @@ public partial class App : Application
     /// <summary>Tells the flyout what settings changed, so it refreshes what it already built.</summary>
     private void NotifySettingsChanged(SettingsChange change) => _flyout?.NotifySettingsChanged(change);
 
+    /// <summary>
+    /// The About page's Restart now: hands the downloaded update to Velopack, which applies it once
+    /// this process exits and starts the new version, then quits the usual way.
+    /// </summary>
+    public void RestartToUpdate()
+    {
+        if (Updates.ApplyOnExit())
+            Quit();
+    }
+
     private void Quit()
     {
         IsExiting = true;

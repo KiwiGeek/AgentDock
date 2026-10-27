@@ -15,7 +15,12 @@ Download `KiwiGeek.AgentDock-win-x64-Setup.exe` (or `-win-arm64-` on an ARM PC) 
 only, without an admin prompt, and adds Agent Dock to the Start menu. Then pin it (see below).
 
 Agent Dock updates itself: it checks GitHub a few times a day, downloads a new version in the
-background, and switches to it the next time it starts. Uninstall it from **Settings → Apps**.
+background, and switches to it the next time it starts. **Settings → About** shows the version you're
+running and what the updater is doing, with **Check for updates**, and **Restart now** once a new
+version is downloaded. It also has links to the release notes and issues, a **Copy** button with the
+version details for a bug report, and buttons that open the folders your settings and data live in.
+With waifu backgrounds on, the waifu portraits drift past behind it. Uninstall it from
+**Settings → Apps**.
 
 The rest of this section is for building it yourself.
 

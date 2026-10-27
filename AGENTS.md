@@ -442,6 +442,28 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     picture sits behind the page (`SyncAgentBackdrop`, same opacity as the flyout). Agent-specific
     panels: Claude's usage source, Grok / Cursor / Copilot notes, Aider model + search
     (`AgentSettingsPanelFor` / `UpdateAgentPanel`).
+  - **About** (`SettingsWindow.About.cs`, issue #4; owner's choice, 2026-10-26, of four mock-ups:
+    laid out like Windows' Settings > System > About), last in the left list (`AboutNav`), or
+    `section: "about"`. A card with the icon, version (`Updates.Version`, the assembly's informational
+    version, so the release tag; a Debug build shows the csproj's) and the kind of copy (installed,
+    portable or Debug, and the architecture), with **Copy** (version, copy, Windows version, for
+    bug reports). Then the update card (see "Installing and updating"), links (repo, release notes
+    for this tag, a new issue, the licence), the data folders with **Open** (the usage folder too
+    when a Debug build keeps it apart), and the licence and credits in an `Expander`.
+    **Slideshow** (owner's request, 2026-10-26: "ken burns the fuck out of them"): with waifus on,
+    the 25 waifu portraits (`Assets\AppIcons\appicon-waifu-*.png`, the 1024 px taskbar icon
+    sources, kept for quality; owner, 2026-10-26) ship as JPEGs, `Assets\AppIcons\portraits\<id>.jpg`
+    (about 3 MB in all instead of 25), built by `tools\Build-Portraits.ps1` (crops each to its
+    largest fully opaque rectangle, 784×782, since JPEG has no transparency; quality 88) and compiled
+    in as `Portraits.*` (`AgentIcons.Portraits`). Rerun the script after changing a waifu source.
+    They cycle in a shuffled order behind the page at 0.15 opacity (owner: more transparent than the
+    agent pages' 0.3): a new one every 9 s, fading in over 1.8 s while its 12 s zoom (108–135%, in
+    or out) and drift run towards the face (`SlideSubject`), on two layers that take turns.
+    `LayoutSlide` covers the pane and centres the face; the drift stays within what the zoom leaves
+    spare. It stops (and drops the pictures) when the page or window hides; with Windows'
+    animations off it shows one still portrait. Verified 2026-10-26 by screen captures (with the
+    hover pictures it first used): the page's text through UI Automation, and the picture moving
+    between frames. **Not yet verified by eye:** the portraits themselves, Copy, the links, Open.
   - **Add agents** (`ShowAddAgents`): the scan and a custom command; see "Agent list". Adding from
     the welcome or the offer hides the window when done.
   - **Data:** loads agents.json and state.json on every `Show`; own `ShellIcons`. Changes save at once;
@@ -715,8 +737,13 @@ writing and maintaining an updater isn't worth it. How it fits:
   (after taking the mutex, before WinUI), which applies a downloaded update and restarts with the
   same arguments.
 - **Checking:** the resident copy checks a minute after start, then every 6 hours, and only
-  downloads. So an update lands at the next start (sign-in, or Quit and click). There's no
-  "restart to update" in the UI yet.
+  downloads. So an update lands at the next start (sign-in, or Quit and click), or sooner from
+  Settings → About's **Restart now** (`App.RestartToUpdate`: `Updates.ApplyOnExit` hands the
+  pending update to Velopack's `WaitExitThenApplyUpdates`, restarting with no arguments, so the new
+  copy opens the flyout; then the normal `Quit`, so hosted agents stop). `Updates` keeps its state
+  (`Status`, `LastChecked`, `PendingVersion`, `Progress`, `Error`, the `Changed` event) for that page,
+  and `CheckNowAsync` is shared by the timer and **Check for updates** (one at a time). **Not yet
+  verified** in an installed copy: the page's update states and Restart now.
 - **Channels:** one per architecture (`win-x64`, `win-arm64`); a copy keeps the one it was
   installed from. `GithubSource` ignores pre-releases.
 - A Debug build or a portable copy has `IsInstalled` false, and all of this does nothing.
@@ -732,6 +759,7 @@ writing and maintaining an updater isn't worth it. How it fits:
 | `FlyoutWindow.xaml(.cs)` | The flyout UI, placement, show/hide, keyboard (settings are not here; see `SettingsWindow`) |
 | `SettingsWindow.xaml(.cs)` | The settings window: master-detail (General, Accounts, each agent with drag reorder), Add agents, taskbar icon; saves at once and notifies the flyout |
 | `SettingsWindow.ApiAccounts.cs` | The settings window's Accounts page, each API key's page, the agent page's Account choice, and its own balance checks |
+| `SettingsWindow.About.cs` | The settings window's About page: version, updates, links, folders, licence, and the waifu portrait slideshow |
 | `Models/SettingsChange.cs` | Flags saying what a settings change touched, so the flyout refreshes only that |
 | `ResizeGrip.cs` | The strip that drags the flyout's height (shows the up-down cursor) |
 | `PinPromptWindow.xaml(.cs)` | Startup prompt asking the user to pin Agent Dock; waits for the pin |
@@ -749,7 +777,7 @@ writing and maintaining an updater isn't worth it. How it fits:
 | `Services/Ipc.cs` | `DockCommand`, named pipe client/server |
 | `Services/Autostart.cs` | HKCU Run entry |
 | `Services/AppIdentity.cs` | The name, folders and lock that keep a Debug build apart from an installed copy |
-| `Services/Updates.cs` | Velopack: install/uninstall hooks, applying a downloaded update at start, checking GitHub |
+| `Services/Updates.cs` | Velopack: install/uninstall hooks, applying a downloaded update at start, checking GitHub, the state the About page shows, Restart now |
 | `Services/JumpList.cs` | Taskbar jump list |
 | `Interop/Win32.cs` | Win32 P/Invoke and structs |
 | `Interop/ShellCom.cs` | Shell COM interfaces, GUIDs, constants |
@@ -774,6 +802,7 @@ writing and maintaining an updater isn't worth it. How it fits:
 | `Models/TaskbarIconChoice.cs` | An icon in the settings page's taskbar icon picker |
 | `Assets/AppIcons/` | Taskbar icon sources (`appicon-<id>.png`, 1024 px, not shipped) and the built `ico/<id>.ico` (compiled in) |
 | `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
+| `tools/Build-Portraits.ps1` | Builds `Assets/AppIcons/portraits/*.jpg` (the About page's slideshow) from the waifu sources |
 | `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
 | `LICENSE` | GPL-3.0 (see README's "Licence" for the copyright line and third-party marks) |
