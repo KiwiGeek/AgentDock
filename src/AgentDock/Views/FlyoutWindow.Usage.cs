@@ -105,6 +105,24 @@ public sealed partial class FlyoutWindow
             ShowRecents(item);
             return true;
         }
+        if (KnownAgents.IsAntigravity(item.Definition))
+        {
+            _drawerItem = item;
+            UsageOffer.IsOpen = false;
+            StartAntigravityCheck();
+            ShowAntigravityCheck();
+            ShowRecents(item);
+            return true;
+        }
+        if (KnownAgents.IsAmp(item.Definition))
+        {
+            _drawerItem = item;
+            UsageOffer.IsOpen = false;
+            StartAmpCheck();
+            ShowAmpCheck();
+            ShowRecents(item);
+            return true;
+        }
         if (KnownAgents.IsGitHubCopilot(item.Definition))
         {
             _drawerItem = item;
@@ -296,10 +314,12 @@ public sealed partial class FlyoutWindow
             ShowSummary();
     }
 
-    /// <summary>Grok, Cursor and Kiro have one account each, their CLI's sign-in.</summary>
+    /// <summary>Grok, Cursor, Kiro, Antigravity and Amp have one account each, their CLI's sign-in.</summary>
     private const string GrokCheckKey = "grok";
     private const string CursorCheckKey = "cursor";
     private const string KiroCheckKey = "kiro";
+    private const string AntigravityCheckKey = "antigravity";
+    private const string AmpCheckKey = "amp";
 
     // Each starts its agent's check unless one is running or fresh, and fills the drawer if it's
     // still on that agent when the answer comes (else the overview, if that's showing).
@@ -336,6 +356,14 @@ public sealed partial class FlyoutWindow
     private void StartKiroCheck() =>
         StartLiveCheck(KiroCheckKey, KiroUsage.MinInterval, KiroUsage.FetchAsync, KiroUsage.Unreachable,
             shown => KnownAgents.IsKiro(shown.Definition), ShowKiroCheck);
+
+    private void StartAntigravityCheck() =>
+        StartLiveCheck(AntigravityCheckKey, AntigravityUsage.MinInterval, AntigravityUsage.FetchAsync, AntigravityUsage.Unreachable,
+            shown => KnownAgents.IsAntigravity(shown.Definition), ShowAntigravityCheck);
+
+    private void StartAmpCheck() =>
+        StartLiveCheck(AmpCheckKey, AmpUsage.MinInterval, AmpUsage.FetchAsync, AmpUsage.Unreachable,
+            shown => KnownAgents.IsAmp(shown.Definition), ShowAmpCheck);
 
     private void StartCopilotCheck()
     {
@@ -390,6 +418,33 @@ public sealed partial class FlyoutWindow
                 ? $"{used.ToString("0.##", counts)} of {limit.ToString("0.##", counts)} · resets {ResetTime(DateTimeOffset.FromUnixTimeSeconds(week.ResetsAt))}"
                 : $"{used.ToString("0.##", counts)} of {limit.ToString("0.##", counts)}";
         }
+    }
+
+    /// <summary>
+    /// Antigravity's model quotas: a week per model family, which <see cref="AntigravityUsage.Parse"/>
+    /// turns into the tightest as the main Week bar plus a labelled bar per family.
+    /// </summary>
+    private void ShowAntigravityCheck()
+    {
+        var check = _liveChecks.GetValueOrDefault(AntigravityCheckKey);
+        if (!_savedUsage.TryGetValue(AntigravityCheckKey, out var saved))
+            _savedUsage[AntigravityCheckKey] = saved = AntigravityUsage.LoadSaved();
+        ShowCheckedUsage("Antigravity usage", check?.Result?.Usage ?? saved, check?.Running == true, check?.Result?.Problem,
+            AntigravityUsage.Checking, AntigravityUsage.NoWindows, AntigravityUsage.ShowingSaved, showSession: false);
+    }
+
+    /// <summary>
+    /// Amp's credit balance: no percentage and no reset window, so it's one line rather than a bar
+    /// (<see cref="AmpUsage.CreditsLine"/>).
+    /// </summary>
+    private void ShowAmpCheck()
+    {
+        var check = _liveChecks.GetValueOrDefault(AmpCheckKey);
+        if (!_savedUsage.TryGetValue(AmpCheckKey, out var saved))
+            _savedUsage[AmpCheckKey] = saved = AmpUsage.LoadSaved();
+        var usage = check?.Result?.Usage ?? saved;
+        ShowCheckedUsage("Amp usage", usage, check?.Running == true, check?.Result?.Problem,
+            AmpUsage.Checking, AmpUsage.CreditsLine(usage) ?? AmpUsage.NoWindows, AmpUsage.ShowingSaved, showSession: false);
     }
 
     private void ShowGrokCheck()

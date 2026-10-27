@@ -173,6 +173,10 @@ public sealed partial class SettingsWindow
                 group = Group("cursor", "Cursor", "Cursor CLI's sign-in, for both the CLI and the desktop app");
             else if (KnownAgents.IsKiro(definition))
                 group = Group("kiro", "Kiro", "Kiro CLI's sign-in (kiro-cli login)");
+            else if (KnownAgents.IsAntigravity(definition))
+                group = Group("antigravity", "Antigravity", "Antigravity CLI's sign-in, shared with the Antigravity editor");
+            else if (KnownAgents.IsAmp(definition))
+                group = Group("amp", "Amp", "Amp CLI's sign-in (amp login); credits left, no reset date");
             else if (KnownAgents.IsGitHubCopilot(definition))
                 group = Group("copilot", "GitHub", "GitHub CLI's sign-in (gh), for Copilot CLI and the desktop app");
             else if (KnownAgents.IsFreebuff(definition))
@@ -182,7 +186,7 @@ public sealed partial class SettingsWindow
                 var isDefault = string.Equals(dir, FreebuffUsage.ConfigDirFor(null), StringComparison.OrdinalIgnoreCase);
                 group = Group("freebuff|" + dir.ToLowerInvariant(),
                     isDefault ? "Freebuff" : $"Freebuff · {Path.GetFileName(dir)}",
-                    isDefault ? "Freebuff CLI's sign-in; daily hours" : $"Signed in under {dir}");
+                    isDefault ? "Freebuff CLI's sign-in; daily hours, for the CLI and the desktop app" : $"Signed in under {dir}");
             }
             else if (UsageAccount.For(definition) is { } account)
             {
@@ -209,7 +213,7 @@ public sealed partial class SettingsWindow
         var groups = PlanGroups();
         PlansNote.Text = groups.Count > 0
             ? "Usage comes from each agent's own sign-in, so nothing is stored here. Choose one for its usage settings."
-            : "None of your agents has a plan whose usage Agent Dock reads (Claude Code, Codex, Grok Build, Freebuff, Cursor, Kiro or GitHub Copilot).";
+            : "None of your agents has a plan whose usage Agent Dock reads (Claude Code, Codex, Grok Build, Freebuff, Cursor, Kiro, Antigravity, Amp or GitHub Copilot).";
         foreach (var group in groups)
         {
             var first = group.Agents[0];

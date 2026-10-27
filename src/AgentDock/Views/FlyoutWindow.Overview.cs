@@ -76,6 +76,19 @@ public sealed partial class FlyoutWindow
             return new SummaryEntry(KiroCheckKey, item, check?.Result?.Usage ?? SavedFor(KiroCheckKey, KiroUsage.LoadSaved),
                 check?.Running == true, "month");
         }
+        if (KnownAgents.IsAntigravity(item.Definition))
+        {
+            var check = Check(AntigravityCheckKey);
+            return new SummaryEntry(AntigravityCheckKey, item,
+                check?.Result?.Usage ?? SavedFor(AntigravityCheckKey, AntigravityUsage.LoadSaved),
+                check?.Running == true, "week");
+        }
+        if (KnownAgents.IsAmp(item.Definition))
+        {
+            var check = Check(AmpCheckKey);
+            return new SummaryEntry(AmpCheckKey, item, check?.Result?.Usage ?? SavedFor(AmpCheckKey, AmpUsage.LoadSaved),
+                check?.Running == true, "week");
+        }
         if (KnownAgents.IsFreebuff(item.Definition))
         {
             var key = FreebuffCheckKey(item.Definition);
@@ -136,6 +149,16 @@ public sealed partial class FlyoutWindow
             if (KnownAgents.IsKiro(item.Definition))
             {
                 StartKiroCheck();
+                continue;
+            }
+            if (KnownAgents.IsAntigravity(item.Definition))
+            {
+                StartAntigravityCheck();
+                continue;
+            }
+            if (KnownAgents.IsAmp(item.Definition))
+            {
+                StartAmpCheck();
                 continue;
             }
             if (KnownAgents.IsFreebuff(item.Definition))
@@ -299,6 +322,18 @@ public sealed partial class FlyoutWindow
             }
             else
                 bars.Add(new SummaryBar(null, $"{used:N0} {unit}{resets}"));
+        }
+        else if (entry.Item is not null && KnownAgents.IsAmp(entry.Item.Definition))
+        {
+            // A balance with no limit and no reset: text only, no bar (Amp reports nothing else).
+            if (AmpUsage.CreditsLine(entry.Usage) is { } credits)
+                bars.Add(new SummaryBar(null, credits));
+            else if (entry.Checking)
+                bars.Add(new SummaryBar(null, "Checking…"));
+            else if (entry.Problem is { } problem)
+                bars.Add(new SummaryBar(null, problem));
+            else
+                return null;
         }
         else if (entry.Item is not null && KnownAgents.IsFreebuff(entry.Item.Definition))
         {
