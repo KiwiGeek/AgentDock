@@ -6,18 +6,25 @@ release. Installed copies find it there and update themselves.
 
 ## Cut a release
 
-1. Make sure `master` has everything you want in the release, and is pushed:
+1. Make sure everything you want in the release is merged into `master` on GitHub. `master` is
+   protected, so changes only get there through pull requests that passed CI; you can't push to it
+   directly. Then bring your own copy of `master` up to date, since that's the commit you'll tag:
+
+   ```powershell
+   git checkout master
+   ```
+
+   ```powershell
+   git pull
+   ```
 
    ```powershell
    git status
    ```
 
-   ```powershell
-   git push origin master
-   ```
-
-   Then check that the CI run for that push passed (a few minutes after pushing). The newest run
-   should say `completed  success`:
+   `git status` should say your branch is up to date with `origin/master` and there's nothing to
+   commit. Then check that the CI run for the last merge passed (a few minutes after merging). The
+   newest run should say `completed  success`:
 
    ```powershell
    gh run list --workflow ci.yml --branch master --limit 1
