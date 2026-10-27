@@ -11,7 +11,7 @@ desktop, GitHub Copilot CLI. Everything below is still to do.
 
 ## Review the agents Agent Dock knows (added 2026-10-16)
 
-These are in `Services/KnownAgents.cs` (offered by Find agents, not added by default). For each:
+These are in `Services/Agents/KnownAgents.cs` (offered by Find agents, not added by default). For each:
 confirm the command (or Start menu name), keep or remove it, and look for a usage source.
 
 | Id | Name | Command / Start menu name | Hover background | Notes |
