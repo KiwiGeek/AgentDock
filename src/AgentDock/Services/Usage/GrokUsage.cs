@@ -1,7 +1,10 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using AgentDock.Models;
+using AgentDock.Services.Launching;
 
 namespace AgentDock.Services.Usage;
 
@@ -13,10 +16,14 @@ namespace AgentDock.Services.Usage;
 /// watching grok.com's usage page; any failure is "no data", never an error.
 /// </summary>
 /// <remarks>
-/// The token is read-only to Agent Dock: it's never refreshed (Grok Build does that, and a refresh
-/// here would race it), the file is never written, and the token is never logged, shown or saved.
-/// An expired token sends nothing. It's short-lived (hours), so the drawer can fall back to the last
-/// saved numbers until Grok Build next runs.
+/// The token is read-only to Agent Dock: it's never refreshed here (a refresh here would race Grok
+/// Build's, and its refresh token is single-use), the file is never written, and the token is never
+/// logged, shown or saved. An expired token sends nothing. It lasts about ten hours, so when it has
+/// expired, Agent Dock asks Grok Build to renew it, by running <c>grok models</c> hidden
+/// (<see cref="RenewSignIn"/>; issue #31): listing models needs the sign-in, so Grok Build refreshes
+/// it itself, in under a second, without a browser or any of the plan's usage. Then the token is
+/// read again. If that doesn't renew it (signed out for good), the drawer falls back to the last
+/// saved numbers, as before.
 /// </remarks>
 public static class GrokUsage
 {
@@ -31,7 +38,12 @@ public static class GrokUsage
     /// <summary>How long an answer stands before the drawer asks again.</summary>
     public static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(5);
 
+    /// <summary>After a renewal that didn't renew, how long before trying again, so a signed-out Grok Build isn't run every check.</summary>
+    private static readonly TimeSpan RenewRetry = TimeSpan.FromMinutes(30);
+
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private static readonly Lock RenewGate = new();
+    private static DateTimeOffset _lastFailedRenew = DateTimeOffset.MinValue;
 
     private static string UsagePath { get; } =
         Path.Combine(AppIdentity.SharedLocalFolder, "grok-usage.json");
@@ -57,6 +69,8 @@ public static class GrokUsage
         try
         {
             var (token, problem) = ReadToken(DateTimeOffset.UtcNow);
+            if (problem == SignInExpired && RenewSignIn())
+                (token, problem) = ReadToken(DateTimeOffset.UtcNow);
             if (token is null)
                 return new UsageFetch(null, problem);
 
@@ -84,6 +98,58 @@ public static class GrokUsage
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return new UsageFetch(null, Unreachable);
+        }
+    }
+
+    /// <summary>
+    /// Has Grok Build renew its expired sign-in: runs <c>grok models</c> with no window, no input and
+    /// a time limit, and ignores what it prints (it can say "You are not authenticated" and renew
+    /// anyway). True when it ran, so the token is worth reading again; whether it renewed is up to
+    /// that read. Not again for <see cref="RenewRetry"/> after one that didn't renew.
+    /// </summary>
+    private static bool RenewSignIn()
+    {
+        lock (RenewGate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (now - _lastFailedRenew < RenewRetry)
+                return false;
+            // The installer puts it in ~\.grok\bin, which may not be on the resident process's PATH.
+            var exe = PathResolver.Find("grok")
+                      ?? Path.Combine(Path.GetDirectoryName(AuthPath)!, "bin", "grok.exe");
+            if (!File.Exists(exe))
+                return false;
+
+            var start = new ProcessStartInfo(exe)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            start.ArgumentList.Add("models");
+            try
+            {
+                using var process = Process.Start(start);
+                if (process is null)
+                    return false;
+                process.StandardInput.Close(); // nothing to answer a prompt with
+                _ = process.StandardOutput.ReadToEndAsync();
+                _ = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(20_000))
+                {
+                    try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                }
+            }
+            catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+            {
+                return false;
+            }
+
+            if (ReadToken(DateTimeOffset.UtcNow).Problem == SignInExpired)
+                _lastFailedRenew = now;
+            return true;
         }
     }
 
