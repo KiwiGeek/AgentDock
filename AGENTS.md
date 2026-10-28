@@ -93,6 +93,11 @@ shows a usage overview of every agent with a suggestion of which to use.
   windows. Screen captures of it then show whatever is on top; `PrintWindow` on a 200% monitor came
   out scaled wrong. **Check the UI through UI Automation instead** (rows and bars have automation
   names, e.g. "Open Codex: 1% session · resets 16:08 · 0% week · resets Mon 1:58").
+- **A WinUI `ToggleSwitch` driven by `TogglePattern.Toggle()` can flip on screen while the app's
+  `Toggled` handler never runs** (2026-10-28: the switch read Off, state.json still said true, and
+  the next look read On again). Click it like a person would: `SetForegroundWindow`, `SetCursorPos`
+  to the switch's `BoundingRectangle` centre, then `mouse_event` down and up. That wrote the
+  setting every time.
 - Opening the flyout from a script: run the exe with no arguments (it hands off to the resident
   copy over the pipe). A second run within 600 ms of a hide counts as a toggle.
 - `gh api` from Git Bash: no leading slash (MSYS rewrites it into a file path).
@@ -267,8 +272,9 @@ just above the taskbar button, listing AI agents:
   colour). Tab icons need a profile (`wt` has no `--icon`), so Agent Dock keeps hidden app-owned
   profiles in `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDock` (Store Terminal reads
   that folder too; a settings.json `"import"` key is not a real Terminal setting) with each agent's
-  `icon`, `tabColor`, and `suppressApplicationTitle`. With Waifu backgrounds on, those profiles also
-  get the agent's picture; turning Waifus off drops only the pictures. It prepares profiles before
+  `icon`, `tabColor`, and `suppressApplicationTitle`. With Waifu backgrounds on (and **Waifu in
+  terminals and Harness** not switched off), those profiles also get the agent's picture; otherwise
+  only the pictures go. It prepares profiles before
   launch, touches settings.json so Terminal reloads, and waits briefly; until then it opens without
   `--profile` rather than risking a failed launch (title and colour still apply).
 - **Desktop agents** launch directly.
@@ -461,7 +467,8 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     between agents, so they moved into Accounts (design: the "Agent Dock settings redesign" canvas).
   - **General**, in groups (`SectionHeaderStyle`): **Flyout** (Usage overview, Hide unavailable
     agents, Waifu backgrounds — whose row is collapsed until waifu mode is unlocked, see About
-    below), **Taskbar icon** (see "Taskbar icon"), **Launching** (Terminal and
+    below — and under it **Waifu in terminals and Harness**, whose row only shows while Waifu
+    backgrounds is on), **Taskbar icon** (see "Taskbar icon"), **Launching** (Terminal and
     Shell, agents.json's `terminal` / `shell`, which had no UI before; Close terminal when agent exits;
     Start with Windows, which also calls `Autostart.Apply` at once), **Recent folders** (Remember
     recents and **Clear recents**). Remember recents is general on purpose (several agents record
@@ -472,6 +479,18 @@ click pinned icon ──▶ AgentDock.exe #2 ──"Show\n" over named pipe─�
     default button). Backing out puts the switch back; turning them off never asks. Verified
     2026-10-20 through UI Automation: the prompt opened, backing out left state.json and Terminal's
     fragments untouched.
+    **Waifu in terminals and Harness** (owner's request, 2026-10-28, issue #40) is the second switch:
+    `DockState.ShowWaifuInApps` in state.json, on by default so an older copy behaves the same, and
+    `DockState.WaifuInAppsEnabled` (waifus on *and* this on) is what the rest of the app asks. Off
+    drops the pictures from Terminal's fragment profiles (icon and tab colour stay) and starts
+    DeepSeek Harness without the waifu `--patch` or `AGENTDOCK_WAIFU_PATH`. The flyout's pictures,
+    the banner hearts, the About slideshow and the waifu taskbar icons don't look at it. The saved
+    value survives locking waifus. Verified 2026-10-28 through UI Automation and the files/processes
+    themselves: with Waifu backgrounds on the row and its switch appear; switching it off wrote
+    `showWaifuInApps: false`, left 0 of 17 fragment profiles with a background and no waifu patch
+    on the `dsh` command line, while icons and `tabColor` stayed; switching it back on restored all
+    17 pictures and the `agentdock-waifu.patch.yml` argument. With Waifu backgrounds off the switch
+    isn't in the automation tree at all, and the fragment has no pictures.
   - **Accounts** (`ShowAccounts`, `SettingsWindow.ApiAccounts.cs`): **Plans**, the user's agents
     grouped by the sign-in their usage comes from (`PlanGroups`: Claude and Codex per `UsageAccount`,
     one each for Cursor, GitHub, Grok and Freebuff; agents on another provider or on an Anthropic key
@@ -916,7 +935,7 @@ At the repo root:
 | `src/Directory.Build.props` | What every project under `src/` shares: target framework, nullable, implicit usings |
 | `global.json` | The pinned .NET SDK; both workflows install it |
 | `.editorconfig` | The house style for the IDE (not enforced in the build) |
-| `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: open the launch folder; `agentdock-waifu`: serve her PNG and soften theme fills when Waifu backgrounds is on) |
+| `tools/dsh-plugins/` | DeepSeek Harness plugins shipped with the build (`agentdock-workspace`: open the launch folder; `agentdock-waifu`: serve her PNG and soften theme fills while Waifu backgrounds and Waifu in terminals and Harness are both on) |
 | `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
 | `tools/Build-Portraits.ps1` | Builds `Assets/AppIcons/portraits/*.jpg` (the About page's slideshow) from the waifu sources |
 | `tools/Build-And-Run.ps1` | Stop, build and relaunch the Debug copy |
@@ -1557,8 +1576,10 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   resolved like `icon` (`AgentIcons.ExistingFile`). Presets inherit it from their agent.
 - **Turned off from the settings page** (gear in the footer): "Waifu backgrounds" writes
   `DockState.ShowHoverBackgrounds` (`state.json`, off unless waifu mode has been unlocked from
-  About and switched on; `WaifuModeEnabled` is the one flag everything reads). Off skips the fade;
-  the usage drawer still opens.
+  About and switched on; `WaifuModeEnabled` is the flag every surface inside Agent Dock reads).
+  Off skips the fade; the usage drawer still opens. The pictures **inside** the tools (Terminal's
+  tab backgrounds and DeepSeek Harness) ask `WaifuInAppsEnabled` instead, so the second switch can
+  turn just those off; see General above.
 - **Two layers** (`BackdropLayer`): `HoverImageA`/`B` in `HoverBackdrop`, behind all content, and
   one image per layer across the whole window (see Drawer).
   - Moving to another agent puts its picture on the inactive layer and cross-fades: the new layer

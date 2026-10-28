@@ -277,8 +277,9 @@ public sealed partial class FlyoutWindow : Window
         StatusText.Text = _settingsError ?? _presetsError ?? "";
         Autostart.Apply(_settings.StartWithWindows);
 
-        // Icon and tab colour profiles always; waifu pictures only while waifus are unlocked and on.
-        TerminalProfiles.Prepare(_settings.Agents, _state.WaifuModeEnabled);
+        // Icon and tab colour profiles always; waifu pictures only while waifus are unlocked, on, and
+        // her pictures in the tools aren't switched off.
+        TerminalProfiles.Prepare(_settings.Agents, _state.WaifuInAppsEnabled);
 
         UpdateBannerHeart();
         _bannerColorSource = null;
@@ -654,7 +655,7 @@ public sealed partial class FlyoutWindow : Window
     private void Launch(AgentItem item, string? folder = null)
     {
         var dir = folder ?? item.Preset?.Folder ?? CurrentFolder;
-        if (Launcher.Launch(item, dir, _settings, _state.WaifuModeEnabled) is { } error)
+        if (Launcher.Launch(item, dir, _settings, _state.WaifuInAppsEnabled) is { } error)
             SetStatus(error);
         else
         {
@@ -768,7 +769,7 @@ public sealed partial class FlyoutWindow : Window
         if (change.HasFlag(SettingsChange.Waifu))
         {
             // Terminal's pictures follow at once; the heart and hover pictures wait for the next open.
-            TerminalProfiles.Prepare(_settings.Agents, _state.WaifuModeEnabled);
+            TerminalProfiles.Prepare(_settings.Agents, _state.WaifuInAppsEnabled);
             if (AppWindow.IsVisible)
                 UpdateBannerHeart();
         }

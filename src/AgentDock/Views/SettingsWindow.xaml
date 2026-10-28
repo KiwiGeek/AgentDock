@@ -267,6 +267,20 @@
                                           AutomationProperties.Name="Waifu backgrounds"
                                           AutomationProperties.HelpText="Show a picture behind the flyout while the pointer is over an agent." />
                         </Grid>
+                        <!-- Her picture inside the tools themselves; needs Waifu backgrounds on, so it hides with them. -->
+                        <Grid x:Name="WaifuInAppsRow" Margin="0,0,0,16" ColumnSpacing="12" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Waifu in terminals and Harness" />
+                                <TextBlock Text="Show her picture behind CLI tabs and in DeepSeek Harness."
+                                           Style="{StaticResource NoteTextStyle}" />
+                            </StackPanel>
+                            <ToggleSwitch x:Name="WaifuInAppsSwitch" Grid.Column="1" MinWidth="0"
+                                          VerticalAlignment="Center" OffContent="" OnContent=""
+                                          Toggled="WaifuInAppsSwitch_Toggled"
+                                          AutomationProperties.Name="Waifu in terminals and Harness"
+                                          AutomationProperties.HelpText="Show her picture behind CLI tabs and in DeepSeek Harness. The rest of waifu mode isn't affected." />
+                        </Grid>
 
                         <TextBlock Text="Taskbar icon" Style="{StaticResource SectionHeaderStyle}" />
                         <StackPanel Margin="0,0,0,16" Spacing="8">

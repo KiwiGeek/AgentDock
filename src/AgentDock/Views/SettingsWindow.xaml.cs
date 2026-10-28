@@ -1098,6 +1098,8 @@ public sealed partial class SettingsWindow : Window
         _settingsToggleReady = false;
         HoverBackgroundsRow.Visibility = _state.WaifuModeUnlocked == true ? Visibility.Visible : Visibility.Collapsed;
         HoverBackgroundsSwitch.IsOn = _state.WaifuModeEnabled;
+        SyncWaifuInAppsRow();
+        WaifuInAppsSwitch.IsOn = _state.ShowWaifuInApps;
         CloseTerminalOnExitSwitch.IsOn = _settings.CloseTerminalWhenAgentExits;
         RecentFoldersSwitch.IsOn = _state.RememberRecentLaunches;
         UsageSummarySwitch.IsOn = _state.ShowUsageSummary;
@@ -1136,10 +1138,29 @@ public sealed partial class SettingsWindow : Window
             return;
         }
         UpdateState(state => state.ShowHoverBackgrounds = on, SettingsChange.State | SettingsChange.Waifu);
-        // Terminal's pictures follow now; icon/colour profiles stay either way.
-        TerminalProfiles.Prepare(_settings.Agents, includeBackgrounds: on);
+        SyncWaifuInAppsRow(); // its switch needs waifus on
+        // Terminal's pictures follow now, unless her pictures in the tools are switched off;
+        // icon/colour profiles stay either way.
+        TerminalProfiles.Prepare(_settings.Agents, includeBackgrounds: _state.WaifuInAppsEnabled);
         TaskbarIconFollowWaifus();
         SyncAgentBackdrop(); // the agent page's own picture, if one is open
+    }
+
+    /// <summary>Shown only while Waifu backgrounds is on, since it only takes things away from that.</summary>
+    private void SyncWaifuInAppsRow() =>
+        WaifuInAppsRow.Visibility = _state.WaifuModeEnabled ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
+    /// Her picture inside the tools themselves. Terminals follow at once; DeepSeek Harness picks it
+    /// up the next time it's started, since the running page was told about it when it launched.
+    /// </summary>
+    private void WaifuInAppsSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsToggleReady || _state.ShowWaifuInApps == WaifuInAppsSwitch.IsOn)
+            return;
+        var on = WaifuInAppsSwitch.IsOn;
+        UpdateState(state => state.ShowWaifuInApps = on, SettingsChange.State | SettingsChange.Waifu);
+        TerminalProfiles.Prepare(_settings.Agents, includeBackgrounds: _state.WaifuInAppsEnabled);
     }
 
     private void CloseTerminalOnExitSwitch_Toggled(object sender, RoutedEventArgs e)

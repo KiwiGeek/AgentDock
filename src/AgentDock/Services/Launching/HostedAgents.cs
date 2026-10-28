@@ -76,7 +76,7 @@ public static class HostedAgents
     /// <c>AGENTDOCK_WORKSPACE</c> and opened in the browser UI via the shipped dsh plugin
     /// (<c>tools/dsh-plugins</c>). Returns null on success, or a short message on failure.
     /// </summary>
-    public static string? Start(AgentItem item, string folder, DockSettings settings, bool waifuBackgrounds = false)
+    public static string? Start(AgentItem item, string folder, DockSettings settings, bool waifuInApps = false)
     {
         if (!IsHosted(item.Definition))
             return null;
@@ -96,7 +96,7 @@ public static class HostedAgents
             // Prefer node + bin.js so the process we track is the real server (not a cmd.exe that
             // can exit while leaving node behind). Fall back to cmd for odd installs.
             var start = BuildStartInfo(exe, item.Definition.Arguments, folder);
-            ApplyDeepSeekLaunch(start, folder, waifuBackgrounds);
+            ApplyDeepSeekLaunch(start, folder, waifuInApps);
             ApplyEnvironment(start, ApiUsage.EnvironmentFor(item.Definition, settings.ApiAccounts));
             // Capture the printed "dsh web: http://…/?token=…" line — without the token the
             // browser gets 401, and we need to add agentdock_workspace onto that same URL.
@@ -180,10 +180,10 @@ public static class HostedAgents
     /// <c>--patch</c> is a top-level dsh flag and must come <em>before</em> the profile; a bare
     /// <c>web</c> argument is rewritten to <c>--profile web</c> so that ordering stays valid.
     /// </summary>
-    private static void ApplyDeepSeekLaunch(ProcessStartInfo start, string folder, bool waifuBackgrounds)
+    private static void ApplyDeepSeekLaunch(ProcessStartInfo start, string folder, bool waifuInApps)
     {
         start.Environment["AGENTDOCK_WORKSPACE"] = Path.GetFullPath(folder);
-        if (waifuBackgrounds && FindWaifuPng() is { } png)
+        if (waifuInApps && FindWaifuPng() is { } png)
             start.Environment["AGENTDOCK_WAIFU_PATH"] = png;
 
         var args = start.ArgumentList;
@@ -197,7 +197,7 @@ public static class HostedAgents
             args.Insert(at + 1, workspace);
             at += 2;
         }
-        if (waifuBackgrounds && FindPluginPatch("agentdock-waifu.patch.yml") is { } waifu)
+        if (waifuInApps && FindPluginPatch("agentdock-waifu.patch.yml") is { } waifu)
         {
             args.Insert(at, "--patch");
             args.Insert(at + 1, waifu);

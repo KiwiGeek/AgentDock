@@ -106,7 +106,7 @@ CLI agents run inside a shell (`pwsh -NoExit -Command claude`, for example), so 
 shims work and you land back at a prompt in the folder when the agent exits. DeepSeek Harness
 is different: Agent Dock runs `dsh web` itself (no Terminal tab), opens the browser UI on the
 folder you chose (as a Harness workspace), and shows **Stop** on the row while it's running.
-With **Waifu backgrounds** on, her picture also becomes the Harness page background.
+With **Waifu backgrounds** on (and **Waifu in terminals and Harness** left on, which is the default), her picture also becomes the Harness page background.
 For every CLI agent, Agent Dock clears an inherited `NO_COLOR` setting and corrects `TERM=dumb`
 inside its Terminal tab, so the agent can render its normal colours. Environment variables set
 explicitly on an agent's page still take precedence. Crush can use local Ollama models: add an
@@ -157,17 +157,24 @@ After that, manage them in the settings window (the gear in the footer), under *
   you select the returned identifier; it is not a check of which models your account can use.
   Duplicate the entry when you want a second ready-to-use model.
 - **General** is in groups: **Flyout** (usage overview, hiding unavailable agents, waifu
-  backgrounds), **Taskbar icon**, **Launching** (terminal, shell, **Close terminal when agent
+  backgrounds and, once those are on, waifu pictures in terminals and Harness), **Taskbar icon**,
+  **Launching** (terminal, shell, **Close terminal when agent
   exits**, which closes Agent Dock's tab after a CLI agent finishes instead of leaving a prompt, and
   **Start with Windows**) and **Recent folders**.
 - **Waifu backgrounds** is hidden until you unlock it: seven clicks on the version line in **About**
   turns it on, and the same seven clicks locks it again. Unlocking only reveals the setting; it
   starts off. Turning it on asks you to confirm, a little differently each time. Turning it off
   doesn't, and locking switches it off too.
+- **Waifu in terminals and Harness** appears under it while Waifu backgrounds is on, and starts on:
+  it decides whether her picture goes inside the tools as well (CLI tabs in Windows Terminal and
+  DeepSeek Harness's page). Switching it off leaves the flyout, the settings page, the banner's
+  hearts and the taskbar icons exactly as they were. Terminals follow at once; Harness picks it up
+  the next time it's started.
 - CLI agents opened in Windows Terminal get a tab titled **Agent · folder**, the agent's icon, and
   (when Agent Dock knows the agent's colour) a matching tab tint, via hidden app-owned profiles in
   Terminal's Fragments folder. With **Waifu backgrounds** on, those tabs also get the selected
-  agent's picture. Turning Waifus off removes only the pictures; icon and colour stay. Your other
+  agent's picture, unless **Waifu in terminals and Harness** is switched off. Turning Waifus off
+  removes only the pictures; icon and colour stay. Your other
   profiles are left alone. If Terminal has not loaded a profile yet, the agent opens with title and
   colour from the launch line, but without the icon until the next try.
 - **Taskbar icon** picks the picture on Agent Dock's pinned taskbar button: Agent Dock's own, seven
@@ -456,7 +463,9 @@ DeepSeek, Factory Droid, Freebuff, Freebuff desktop, Goose, Grok, Hermes, Kiro, 
 and Qwen), matched by agent id or command name. A `background` setting overrides one. With waifus on, the same picture
 also sits behind that agent's page in the settings window. Turn them off with **Waifu backgrounds**
 on the settings page (the gear in the footer, and see **About** for unlocking it), which also hides
-the hearts on the banner. That choice is saved in `state.json`.
+the hearts on the banner. Her pictures inside terminals and Harness have their own switch, **Waifu
+in terminals and Harness**, so the flyout can keep them while the tools stay plain. Both choices
+are saved in `state.json`.
 
 The banner down the left of the flyout takes on the colour of whichever agent is highlighted: a
 colour picked for its picture when it has one, even if waifu backgrounds are hidden, or one taken
@@ -464,8 +473,8 @@ from its logo otherwise. Black and white logos keep your Windows accent colour. 
 overrides either.
 
 `state.json` in the same folder holds recent folders, the last few folders Claude Code was opened
-in, cached app ids, whether waifu mode was unlocked, and whether waifu backgrounds and recent
-folders are on. Start menu icons are
+in, cached app ids, whether waifu mode was unlocked, whether waifu backgrounds and recent
+folders are on, and whether her pictures also go inside terminals and Harness. Start menu icons are
 cached under `%LOCALAPPDATA%\AgentDock\Icons`; delete that folder if an app's icon changes.
 
 ## How it's put together

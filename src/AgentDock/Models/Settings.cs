@@ -354,9 +354,21 @@ public sealed class DockState
     /// </summary>
     public bool ShowHoverBackgrounds { get; set; }
 
-    /// <summary>The one gate for every waifu picture, heart and tab background: unlocked and switched on.</summary>
+    /// <summary>The one gate for every waifu picture and heart inside Agent Dock: unlocked and switched on.</summary>
     [JsonIgnore]
     public bool WaifuModeEnabled => WaifuModeUnlocked == true && ShowHoverBackgrounds;
+
+    /// <summary>
+    /// Put her inside the tools too: CLI tabs in Windows Terminal, and DeepSeek Harness's page. The
+    /// second switch on the General page, shown only while <see cref="ShowHoverBackgrounds"/> is on.
+    /// On unless turned off, so a copy from before this setting looks the same. The saved value
+    /// survives locking waifus, ready for the next unlock.
+    /// </summary>
+    public bool ShowWaifuInApps { get; set; } = true;
+
+    /// <summary>The gate for terminals and Harness: waifus on, and their injection not switched off.</summary>
+    [JsonIgnore]
+    public bool WaifuInAppsEnabled => WaifuModeEnabled && ShowWaifuInApps;
 
     /// <summary>Remember the last few folders each agent was launched in, and offer them again in the drawer. Claude Code and Codex use it so far.</summary>
     public bool RememberRecentLaunches { get; set; } = true;
