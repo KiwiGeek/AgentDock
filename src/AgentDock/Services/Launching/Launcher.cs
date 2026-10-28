@@ -8,8 +8,12 @@ namespace AgentDock.Services.Launching;
 
 public static class Launcher
 {
-    /// <summary>Launches an agent. Returns null on success, or a message describing what went wrong.</summary>
-    public static string? Launch(AgentItem item, string folder, DockSettings settings, bool waifuBackgrounds = false)
+    /// <summary>
+    /// Launches an agent. Returns null on success, or a message describing what went wrong.
+    /// <paramref name="waifuInApps"/> is Waifu in terminals and Harness: it only reaches agents Agent
+    /// Dock hosts itself (DeepSeek's picture arrives through the launch, not the Terminal profile).
+    /// </summary>
+    public static string? Launch(AgentItem item, string folder, DockSettings settings, bool waifuInApps = false)
     {
         if (!item.IsAvailable)
             return item.Subtitle;
@@ -26,7 +30,7 @@ public static class Launcher
 
                 // DeepSeek Harness and similar: no Terminal window; Agent Dock owns the process.
                 if (HostedAgents.IsHosted(item.Definition))
-                    return HostedAgents.Start(item, folder, settings, waifuBackgrounds);
+                    return HostedAgents.Start(item, folder, settings, waifuInApps);
 
                 var command = string.Join(' ', new[] { item.Definition.Command, item.Definition.Arguments,
                         AiderModelArgument(item.Definition) }
