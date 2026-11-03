@@ -281,7 +281,9 @@ sources still to find, #17.
   after races the exiting copy and just hands off. **v1.0.4** (2026-10-27) went out the same way, first
   try: the work reached `master` through PR #38 after CI passed, the tag was pushed from that merge
   commit, both architectures built and published in about 7 minutes, and the deltas are 5.7 MB (x64)
-  and 6.0 MB (ARM64). Still to do: code signing and winget. (The Windows App SDK's unused AI
+  and 6.0 MB (ARM64). **v1.1.0** (2026-11-03, Junie) kept to that shape: PR #42 after CI passed in
+  2m50s, the tag from the merge commit, both architectures published in 5m23s, deltas 5.5 MB (x64)
+  and 5.8 MB (ARM64). Still to do: code signing and winget. (The Windows App SDK's unused AI
   runtime and other languages went in #11: see "Unpackaged, self-contained" under Hard constraints.)
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
   overview row; the new Cursor, Grok and Copilot drawers; drag to reorder (including with the
@@ -344,7 +346,7 @@ repo root for #27); both workflows, the build scripts and the image scripts in `
 | C# | Type-checks with zero warnings, including Native AOT and CsWinRT analyzers |
 | XAML | Compiled on the owner's machine after one fix (a field name clashed with XAML-generated `_contentLoaded`). Confirm with a clean build |
 | Runtime | Partly run (2026-10-15). See "Verify first" for what passed |
-| CI | `ci.yml` on every push to master and every PR: Debug build and Native AOT publish (x64), both failing on any warning; nothing released (issue #8, 2026-10-26). Release workflow (`release.yml`) released v1.0.0 on 2026-10-26, and v1.0.4 on 2026-10-27 |
+| CI | `ci.yml` on every push to master and every PR: Debug build and Native AOT publish (x64), both failing on any warning; nothing released (issue #8, 2026-10-26). Release workflow (`release.yml`) released v1.0.0 on 2026-10-26, v1.0.4 on 2026-10-27, and v1.1.0 on 2026-11-03 |
 
 History: first built as WPF, then rewritten in WinUI 3 at the owner's request for a more native look.
 Data files (`agents.json`, `state.json`, icon cache) are compatible across both versions.
