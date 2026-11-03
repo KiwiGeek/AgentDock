@@ -69,14 +69,15 @@ shows a usage overview of every agent with a suggestion of which to use.
   known ones (`Services/Agents/KnownAgents.cs`). Known agents that weren't found can still be added
   ("Not found on this PC"), and are looked for again on every open (PATH is re-read from the
   registry each show).
-- **Usage may read a CLI's own sign-in token** (owner's decision, 2026-10-16) when that's the only
-  practical route: Cursor CLI's and Grok Build's `auth.json`, and Freebuff CLI's Windows Credential
-  Manager item. Rules for any token: read only; never
-  refresh it (refresh tokens are single-use and the CLI would be signed out); never write the file;
-  never log, show or save the token; an expired token sends nothing. Prefer a route where the agent
-  or another CLI does the sign-in (Codex's app server, `gh api`), and keep using those where they exist.
+- **Usage may read or probe a CLI's own sign-in** (owner's decision, 2026-10-16; widened
+  2026-11-03: probe and use a CLI's own keys whenever they give an answer, rather than routing
+  around them): Cursor CLI's and Grok Build's `auth.json`, Freebuff CLI's Windows Credential Manager
+  item, and anything else a CLI signs in with. Rules for any token: read only; never refresh it
+  (refresh tokens are single-use and the CLI would be signed out); never write the file; never log,
+  show or save the token; an expired token sends nothing.
 - **Claude's direct usage check** is one GET of the user's own limits, off by default, with the
-  terms caveat stated in the UI. Don't widen it (no other endpoint, no refresh, no cookies).
+  terms caveat stated in the UI. Other endpoints, and the CLI's own key against them, may be probed
+  (owner, 2026-11-03), under the token rules above; browser cookies stay out of it.
 - Drawer and overview behaviour the owner corrected: the usage overview shows only while **no agent**
   is pointed at; hovering an agent without a drawer (e.g. Claude or ChatGPT desktop) closes the
   drawer and shrinks the window.
@@ -109,6 +110,32 @@ shows a usage overview of every agent with a suggestion of which to use.
   which made the redirect look like a bad token).
 - A failed C# compile makes the XAML compiler report misleading WMC0909/WMC1509 errors; fix the C#
   error first.
+- **Junie CLI's Windows shim breaks under PowerShell 7** (2026-11-03): `~/.local/bin/junie.bat` runs
+  Windows PowerShell 5.1 for a `Set-Acl` when it makes its private restart directory. PowerShell 7
+  puts its own module folder in `PSModulePath` for its children, and Agent Dock launches agents
+  inside `pwsh`, so 5.1 autoloads PowerShell 7's `Microsoft.PowerShell.Security`, fails with
+  "member … is already present", and the launch dies with "Could not create a private restart
+  directory" (exit 1). **Don't patch the shim**: Junie's updater rewrites it, so the patch comes
+  back off. `KnownAgents.EnvironmentRepairs` points that shell's `PSModulePath` at Windows
+  PowerShell 5.1's own modules instead. Drop it once Junie's shim clears `PSModulePath` itself —
+  its other PowerShell calls already do.
+- **A JVM TUI garbles when the tab's writer and decoder disagree on the page** (2026-11-03). Junie
+  renders correctly when `junie` is typed at a command prompt, but garbled (`ÔÇª` for `…`, layout
+  drifting sideways as it repaints) when Agent Dock launched her. Read her tab's buffer (recipe
+  below): it held **UTF-8 bytes** (`U+00D4 U+00C7 U+00F6` = `E2 80 94`, the em dash) decoded as the
+  OEM page 850 — the writer said UTF-8, the decoder said 850.
+  - `Shell = "cmd"` alone did **not** fix it: the tab still held UTF-8 bytes under 850. Clearing
+    `TERM` (Agent Dock set `TERM=xterm-256color` for cmd), and stripping `LANG`/`NO_COLOR` from the
+    app's own environment, changed nothing.
+  - What fixes it: `chcp 65001 >nul` in the tab *before* the agent starts, so both sides are UTF-8
+    (`KnownAgents.NeedsUtf8Console` → `Launcher.BuildShell`). Verified 2026-11-03 by reading her tab:
+    `GetConsoleOutputCP()` = 65001, one real `U+2014`, no `U+00D4`/`U+00C7`.
+  - **Earlier notes here said `chcp 65001` failed**: that attempt left the check unreliable (see
+    below) and chased `[Console]::OutputEncoding` and `-Dstdout.encoding` through `JAVA_TOOL_OPTIONS`
+    instead, both of which made it worse. Re-measure rather than trusting those two bullets.
+  - To read what a console really holds: `AttachConsole(pid)` + `CreateFile("CONOUT$")` +
+    `ReadConsoleOutputCharacter` (`GetStdHandle` gives you your own pipe). Compare code points: a
+    literal `—` in a probe script gets re-encoded on the way in, which made early checks lie.
 - **A pinned taskbar icon can't be refreshed live** (tested 2026-10-19). Changing the icon of the
   pin's shortcut (`User Pinned\TaskBar\AgentDock.lnk`) showed on the taskbar only 2 times in about
   12. None of these made it reliable: `SHChangeNotify` (`UPDATEITEM` with or without `FLUSH`,
@@ -162,6 +189,16 @@ sources still to find, #17.
   separate billing and quota systems.
 - [ ] **Aider** (`aider`): icon, picture, model setting, Aider-driven model search and recent folders. No usage bars: it can use arbitrary providers.
 - [ ] **Qwen Code** (`qwen`): icon, picture and recent folders. No usage bars yet.
+- [ ] **Junie** (`junie`): icon, picture, recent folders, and a launch that works (2026-11-03,
+  after the `PSModulePath` repair in "Things learned"). No usage bars yet: JetBrains keeps the credit
+  balance in the CLI's interactive `/stats` panel (aliases `/usage`, `/quota`), there's no headless
+  command for it (JUNIE-5895), and her own sign-in hasn't been probed for a quota endpoint (allowed
+  since 2026-11-03, but it needs a signed-in session to record). Verified 2026-11-03: the row ("Junie,
+  junie" through UI Automation); a launch that leaves her TUI running in Windows Terminal, in `cmd`
+  rather than the configured shell, with the tab switched to UTF-8 (`chcp 65001`); and her tab's own
+  text read back (`GetConsoleOutputCP` 65001, a real em dash, no mojibake), which the `cmd` shell
+  alone did not fix (see "Things learned"). Not yet verified: the drawer, a recent folder, the icon
+  and picture by eye.
 - [ ] **Amp** (`amp`): icon, picture, usage (the credit balance, via `amp usage`), recent
   folders, overview. Verified 2026-10-27 through UI Automation: the drawer ("Amp usage",
   "Individual credits: $10.00 remaining") and the overview row (text only). No bars to draw: Amp
@@ -281,7 +318,7 @@ just above the taskbar button, listing AI agents:
 - **The user chooses the agents** (owner's decision, 2026-10-16). A fresh install has an empty list
   and a welcome offering **Find agents**, which scans for the agents in `Services/Agents/KnownAgents.cs`
   (Claude Code, Codex, Antigravity CLI, Copilot CLI, OpenCode, Aider, Qwen Code, Cursor CLI, Amp, Kiro,
-  Goose, Crush, Factory Droid, Grok Build, Freebuff CLI, Hermes Agent, DeepSeek Harness; Freebuff,
+  Goose, Crush, Factory Droid, Grok Build, Freebuff CLI, Hermes Agent, Junie, DeepSeek Harness; Freebuff,
   Claude, ChatGPT, GitHub Copilot, Microsoft Copilot, Perplexity and Cursor desktop) and adds the ones ticked. See "Agent list" below.
 - Gemini CLI stopped serving personal Google accounts on 2026-06-18 (API keys and Code Assist
   licences still work), so it was removed from the known agents, with its icon and picture (owner,
@@ -1044,6 +1081,9 @@ Built-in icons are compiled in (see "Shell interop"). Where each one came from (
   - Tile keyed out, mark kept: `kiro` is the bare ghost in the tile's purple `#9046FF` (eyes
     `#1E1033`); `hyper` is the bare H in a deeper pink (`#FF6AF0`, shaded to `#B0209E`) so it holds up
     on light themes. Hyper's lime went with the tile.
+  - `junie` (2026-11-03): the owner's own picture of JetBrains' green Junie mark (1024 px), scaled
+    to 256 px like the rest. Her green `#3FC94A` in `ThemeColors` is that mark and the neon sign in
+    her hover picture.
 
 #### Built: presets (an agent pinned to a folder, for work that repeats)
 
@@ -1100,8 +1140,9 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
   `CLAUDE_CODE_CUSTOM_OAUTH_URL` or `https://api.anthropic.com`). Anthropic's terms describe
   subscription OAuth as for Claude Code and claude.ai and say third-party apps may not take those
   credentials; the owner chose to offer it anyway, off by default, with that stated in the UI and
-  README. **Don't widen it** past this single GET of the user's own limits: no other endpoint, no
-  POST, no profile call, no claude.ai endpoint, no browser or Claude Desktop cookies.
+  README. **Probing further is allowed** (owner, 2026-11-03): other endpoints, and the CLI's own key
+  against them, may be tried when they would give a better answer. What stays out is anything that
+  changes state on the account, and browser or Claude Desktop cookies.
   - **Token:** `CLAUDE_CODE_OAUTH_TOKEN` if set (no expiry check), else `.credentials.json` in
     `ClaudeConfig.Directory` (shared with the status-line setup), read with `FileShare.ReadWrite`.
     Only `claudeAiOauth.accessToken` (or a root `accessToken`) and `expiresAt` (Unix ms) are read.
@@ -1239,14 +1280,14 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
 - Leaving the row or the drawer starts a 250 ms close timer, so the pointer can move into the
   drawer to click Set up or a recent folder. The whole column keeps it open, including the empty
   area under the usage (`Background="Transparent"`, or that area wouldn't receive the pointer).
-- **Recents** (`Services/Agents/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Freebuff CLI, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, Antigravity CLI, DeepSeek Harness, Cursor CLI, Copilot CLI, Goose or Amp (each copy separately) was launched
+- **Recents** (`Services/Agents/RecentLaunches.cs`): the last five folders Claude Code, Codex, Grok Build, Freebuff CLI, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, Antigravity CLI, Junie, DeepSeek Harness, Cursor CLI, Copilot CLI, Goose or Amp (each copy separately) was launched
   in, under the usage. Clicking one launches that agent there. Launching a folder already in the
   list moves it to the front and shifts the ones above it down. At most five are stored, and the
   drawer shows only as many as fit under the usage without scrolling. Stored in `state.json`
   (`recentLaunches`, keyed by agent id) so `agents.json` isn't rewritten. The settings page calls
   the switch "Remember recents" (`rememberRecentLaunches`, default on; a missing property stays on).
   Off hides the list and stops recording; the saved folders stay for when it's turned back on.
-  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Freebuff CLI, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, Antigravity CLI, DeepSeek Harness, Cursor CLI, Copilot CLI, Goose and Amp (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness / Factory Droid / Kiro / Freebuff CLI / Antigravity also by catalog id, since Cursor's command can be plain `agent`, DeepSeek's is `dsh`, Kiro's is `kiro-cli`, Antigravity's is `agy`, and Freebuff's is `freebuff`). The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
+  Presets share their agent's list. Recorded for Claude Code, Codex, Grok Build, Freebuff CLI, OpenCode, Aider, Qwen Code, Crush, Factory Droid, Kiro CLI, Antigravity CLI, Junie, DeepSeek Harness, Cursor CLI, Copilot CLI, Goose and Amp (`RecentLaunches.Records`, which takes the definition: by command name, or for Cursor CLI / DeepSeek Harness / Factory Droid / Kiro / Freebuff CLI / Antigravity also by catalog id, since Cursor's command can be plain `agent`, DeepSeek's is `dsh`, Kiro's is `kiro-cli`, Antigravity's is `agy`, and Freebuff's is `freebuff`). The Claude, ChatGPT and Cursor desktop apps record them too (they open in a folder); other desktop apps have none.
   Each folder's context menu (right-click, Shift+F10, menu key) has "Remove from recents"
   (`RecentLaunches.Forget`). Removing the last folder closes the drawer if there's no usage to show.
 - **Pop-ups hold the hover state** (`HoldWhileOpen`, `_popupsOpen`): every menu or flyout opened over
@@ -1593,7 +1634,7 @@ or `"api"` in state.json; missing means the status line). Both save to the same 
     the character about 72% of the way across (`BackdropSubjectX`); new pictures should keep that layout.  Images are cached per path; the fade is skipped when Windows animations are off; hiding the
   flyout resets it.
 - **Not yet verified by eye:** the Freebuff pictures (the CLI's, 2026-10-23, and the desktop's,
-  2026-10-27). The build embeds all 24.
+  2026-10-27). The build embeds all 25.
 
 #### API usage (owner's request, 2026-10-19; `Services/Usage/ApiUsage.cs`, `Views/FlyoutWindow.ApiAccounts.cs`)
 
