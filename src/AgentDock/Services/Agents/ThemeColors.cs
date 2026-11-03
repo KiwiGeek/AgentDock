@@ -37,6 +37,7 @@ internal static class ThemeColors
         ["goose"] = Hex(0x4C6B3A),           // green shorts
         ["grok"] = Hex(0xC81E32),            // red neon and hair streaks on black
         ["hermes"] = Hex(0x1F6B4A),          // green top
+        ["junie"] = Hex(0x3FC94A),           // her green mark and the neon sign behind it
         ["kiro"] = Hex(0x7B4FD0),            // violet
         ["opencode"] = Hex(0x2E9E6A),        // green neon
         ["perplexity"] = Hex(0x1F7F8A),      // teal top

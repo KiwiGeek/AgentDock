@@ -39,9 +39,13 @@ public static class Launcher
                 var profile = TerminalProfiles.TryGetReadyProfile(item.Definition);
                 // Same colour the flyout banner uses when known; null means Terminal's default tab.
                 var tabColor = ThemeColors.ForAgent(item.Definition) is { } color ? ThemeColors.ToHex(color) : null;
-                // An agent linked to an API account also gets that key's variable (ApiUsage.EnvironmentFor).
-                StartInTerminal(item.Definition.Name, command, folder, item.Definition.Shell ?? settings.Shell, settings.Terminal,
-                    ApiUsage.EnvironmentFor(item.Definition, settings.ApiAccounts), settings.CloseTerminalWhenAgentExits, profile, tabColor);
+                // An agent linked to an API account also gets that key's variable, and some agents need
+                // the shell repaired before they will start (KnownAgents.EnvironmentRepairs).
+                // An agent's own shell wins, then one it needs (Junie: cmd), then the global setting.
+                var shell = item.Definition.Shell ?? KnownAgents.DefaultShell(item.Definition) ?? settings.Shell;
+                StartInTerminal(item.Definition.Name, command, folder, shell, settings.Terminal,
+                    LaunchEnvironment(item.Definition, settings), settings.CloseTerminalWhenAgentExits, profile, tabColor,
+                    KnownAgents.NeedsUtf8Console(item.Definition));
             }
             else if (KnownAgents.FolderLink(item.Definition) is { } link)
             {
@@ -123,6 +127,23 @@ public static class Launcher
         string.Equals(agent.Catalog, "aider", StringComparison.OrdinalIgnoreCase)
         || string.Equals(Path.GetFileNameWithoutExtension(agent.Command?.Trim().Trim('\"')), "aider", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// What the agent's shell starts with: the repairs its installer or shim needs, then the API key
+    /// of the account it runs on. The agent's own environment variables (or the key's) win over a
+    /// repair, so a user who has set the same name keeps their value.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string>? LaunchEnvironment(AgentDefinition agent, DockSettings settings)
+    {
+        var repairs = KnownAgents.EnvironmentRepairs(agent);
+        var env = ApiUsage.EnvironmentFor(agent, settings.ApiAccounts);
+        if (repairs.Count == 0)
+            return env;
+        var merged = new Dictionary<string, string>(repairs, StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, value) in env ?? new Dictionary<string, string>())
+            merged[name] = value;
+        return merged;
+    }
+
     /// <summary>Opens a plain shell in the folder, no agent.</summary>
     public static string? OpenShell(string folder, DockSettings settings)
     {
@@ -144,9 +165,10 @@ public static class Launcher
     /// left at a prompt in the folder when the agent exits.
     /// </summary>
     private static void StartInTerminal(string? title, string? command, string folder, string shellSetting, string terminalSetting,
-        IReadOnlyDictionary<string, string>? env = null, bool closeWhenDone = false, string? profile = null, string? tabColor = null)
+        IReadOnlyDictionary<string, string>? env = null, bool closeWhenDone = false, string? profile = null, string? tabColor = null,
+        bool utf8Console = false)
     {
-        var (shellExe, shellArgs) = BuildShell(shellSetting, command, env, closeWhenDone);
+        var (shellExe, shellArgs) = BuildShell(shellSetting, command, env, closeWhenDone, utf8Console);
         var wt = terminalSetting.Equals("console", StringComparison.OrdinalIgnoreCase) ? null : PathResolver.Find("wt.exe");
 
         ProcessStartInfo psi;
@@ -191,7 +213,7 @@ public static class Launcher
     }
 
     private static (string Exe, List<string> Args) BuildShell(string shellSetting, string? command,
-        IReadOnlyDictionary<string, string>? env = null, bool closeWhenDone = false)
+        IReadOnlyDictionary<string, string>? env = null, bool closeWhenDone = false, bool utf8Console = false)
     {
         var shell = shellSetting.ToLowerInvariant() switch
         {
@@ -214,10 +236,14 @@ public static class Launcher
         var clearNoColor = command is not null && variables.All(v => !v.Key.Equals("NO_COLOR", StringComparison.OrdinalIgnoreCase));
         var correctTerm = command is not null && variables.All(v => !v.Key.Equals("TERM", StringComparison.OrdinalIgnoreCase));
 
+
         if (shell == "cmd")
         {
             // cmd expands %NAME% itself. "set "N=v"" keeps trailing spaces and & out of trouble.
             var prefix = string.Concat(variables.Select(v => $"set \"{v.Key}={v.Value.Replace("\"", "")}\" && "));
+            // One page for the writer and the decoder; both the console and the agent use UTF-8 after this.
+            if (utf8Console)
+                prefix = "chcp 65001 >nul && " + prefix;
             if (clearNoColor)
                 prefix += "set \"NO_COLOR=\" && ";
             if (correctTerm)

@@ -31,6 +31,10 @@ public static class KnownAgents
         // The CLI says "Freebuff CLI" so the desktop client below reads apart from it, as Cursor's do.
         new() { Id = "freebuff",   Name = "Freebuff CLI",       Command = "freebuff" },
         new() { Id = "hermes",     Name = "Hermes Agent",       Command = "hermes" },
+        // JetBrains' agent. Its usage is in the interactive /stats panel only, with no headless command yet.
+        // cmd, plus a tab switched to UTF-8 (NeedsUtf8Console): her JVM writes UTF-8, so a tab
+        // decoding the OEM page garbles her text and drifts her TUI sideways.
+        new() { Id = "junie",      Name = "Junie",              Command = "junie", Shell = "cmd" },
         // Serves a web UI and opens it in the browser; Agent Dock hosts the process (HostedAgents).
         new() { Id = "deepseek",   Name = "DeepSeek Harness",   Command = "dsh", Arguments = "web" },
 
@@ -47,6 +51,46 @@ public static class KnownAgents
         // process takes no path argument, so a click opens it as the Start menu does (2026-10-27).
         new() { Id = "freebuff-desktop", Name = "Freebuff", Kind = AgentKind.Desktop, StartMenuNames = ["Freebuff"] },
     ];
+
+    /// <summary>
+    /// Variables an agent's shell must be given for the agent to start at all, by catalog id. The
+    /// agent's own settings still win (<see cref="Launcher"/> merges these first).
+    /// <para>
+    /// Junie: her Windows shim (<c>~/.local/bin/junie.bat</c>) runs Windows PowerShell 5.1 for a
+    /// <c>Set-Acl</c> when it makes its private restart directory. PowerShell 7 puts its own module
+    /// folder in <c>PSModulePath</c> for its children, and Agent Dock starts agents inside pwsh, so
+    /// 5.1 autoloads 7's <c>Microsoft.PowerShell.Security</c>, fails ("member … is already present")
+    /// and the launch dies with "Could not create a private restart directory" (2026-11-03).
+    /// Pointing the shell at 5.1's own modules leaves its cmdlets working and 5.1's first. Patching
+    /// the shim locally doesn't last: Junie's updater rewrites it. Drop this once her shim clears
+    /// <c>PSModulePath</c> itself, as its other PowerShell calls already do.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> EnvironmentRepairs(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "junie", StringComparison.OrdinalIgnoreCase)
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["PSModulePath"] = @"%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules"
+            }
+            : new Dictionary<string, string>();
+
+    /// <summary>
+    /// The shell an agent has to run in when it has none of its own and the global setting is pwsh.
+    /// Junie's JVM writes the console's own page, so she needs cmd: PowerShell 7 leaves the tab
+    /// declaring UTF-8 while the terminal decodes the OEM page, which turns her `…` into `ÔÇª` and
+    /// drifts her layout. A shell saved on the agent's own page still wins.
+    /// </summary>
+    public static string? DefaultShell(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "junie", StringComparison.OrdinalIgnoreCase) ? "cmd" : null;
+
+    /// <summary>
+    /// Whether the tab has to be switched to UTF-8 before the agent starts. Junie's JVM writes UTF-8
+    /// into the tab, which the OEM page (850) decodes as `ÔÇª` and drifts sideways; one code page for
+    /// both sides fixes it, and it stays right whether or not she also reads the page (measured
+    /// 2026-11-03: the tab's buffer held UTF-8 bytes under 850).
+    /// </summary>
+    public static bool NeedsUtf8Console(AgentDefinition definition) =>
+        string.Equals(definition.Catalog ?? definition.Id, "junie", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// A clearer row subtitle than the raw command, for known CLIs whose command line is opaque

@@ -108,7 +108,10 @@ is different: Agent Dock runs `dsh web` itself (no Terminal tab), opens the brow
 folder you chose (as a Harness workspace), and shows **Stop** on the row while it's running.
 With **Waifu backgrounds** on (and **Waifu in terminals and Harness** left on, which is the default), her picture also becomes the Harness page background.
 For every CLI agent, Agent Dock clears an inherited `NO_COLOR` setting and corrects `TERM=dumb`
-inside its Terminal tab, so the agent can render its normal colours. Environment variables set
+inside its Terminal tab, so the agent can render its normal colours. Junie gets `cmd` and a tab
+switched to UTF-8 (`chcp 65001`) rather than pwsh: her JVM writes UTF-8, so a tab decoding the
+OEM page turns her `…` into `ÔÇª` and drifts her layout sideways.
+Environment variables set
 explicitly on an agent's page still take precedence. Crush can use local Ollama models: add an
 Ollama provider in Crush's own `crushrc` and select a model from Crush's model picker. Agent Dock
 does not configure or charge for the model.
@@ -136,7 +139,7 @@ moment longer.
 The flyout shows only the agents you've chosen. The first time it opens, it offers to **Find
 agents**: Agent Dock looks for the agents it knows about (Claude Code, Codex, Antigravity CLI, GitHub
 Copilot CLI, OpenCode, Aider, Qwen Code, Cursor, Amp, Kiro, Goose, Crush, Factory Droid, Grok
-Build, Freebuff CLI, Hermes Agent, DeepSeek Harness, and the Freebuff, Claude, ChatGPT, GitHub Copilot,
+Build, Freebuff CLI, Hermes Agent, Junie, DeepSeek Harness, and the Freebuff, Claude, ChatGPT, GitHub Copilot,
 Microsoft Copilot, Perplexity and Cursor desktop apps), lists the ones installed, and adds the ones you leave ticked. **Not now** starts
 you with an empty list.
 
@@ -272,7 +275,7 @@ earlier keeps working alongside it. Asking directly also shows any per-model wee
 Sonnet's) as extra bars, and your extra usage when it's turned on. Under the title, the drawer names
 the model your last session used, when the status line has reported it.
 
-The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, Freebuff CLI's, OpenCode's, Aider's, Qwen Code's, Crush's, Factory Droid's, Kiro CLI's, Antigravity CLI's, Goose's, Amp's, DeepSeek Harness's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
+The drawer also lists the last five folders you opened Claude Code in, under the usage (Codex's, Grok Build's, Freebuff CLI's, OpenCode's, Aider's, Qwen Code's, Crush's, Factory Droid's, Kiro CLI's, Antigravity CLI's, Junie's, Goose's, Amp's, DeepSeek Harness's, Cursor CLI's and GitHub Copilot CLI's drawers do the same for them). Click one
 to open the agent there again. Opening a folder that's already in the list moves it to the top
 and shifts the others down. At most five are kept, and only as many as fit in the drawer.
 Right-click a folder there (or press Shift+F10) and choose **Remove from recents** to drop it.
@@ -451,7 +454,7 @@ on a plan has room left. The balance comes from DeepSeek's documented
 
 Icons for the built-in agents are compiled into Agent Dock. They match by agent id (`claude`,
 `codex`, `antigravity`, `copilot`, `opencode`, `aider`, `qwen`, `cursor-cli`, `amp`, `kiro`, `goose`,
-`crush`, `droid`, `grok`, `freebuff`, `hermes`, `deepseek`, `claude-desktop`, `chatgpt-desktop`,
+`crush`, `droid`, `grok`, `freebuff`, `hermes`, `junie`, `deepseek`, `claude-desktop`, `chatgpt-desktop`,
 `github-copilot-desktop`, `microsoft-copilot`, `perplexity`, `cursor`, `freebuff-desktop`), or for CLI agents by command name, so `"command": "claude"` gets the Claude icon
 under any id. An `icon` setting overrides that. Desktop apps without either use the icon the Start
 menu shows. Anything else gets a plain terminal or app symbol.
@@ -459,7 +462,7 @@ menu shows. Anything else gets a plain terminal or app symbol.
 Hover pictures are built in the same way, as `Assets\Agents\<agent id>-background.png` (currently
 Aider, Amp, Antigravity CLI, ChatGPT, Claude, Claude Code, Codex, GitHub Copilot CLI, GitHub Copilot,
 Microsoft Copilot, Crush, Cursor, Cursor CLI,
-DeepSeek, Factory Droid, Freebuff, Freebuff desktop, Goose, Grok, Hermes, Kiro, OpenCode, Perplexity
+DeepSeek, Factory Droid, Freebuff, Freebuff desktop, Goose, Grok, Hermes, Junie, Kiro, OpenCode, Perplexity
 and Qwen), matched by agent id or command name. A `background` setting overrides one. With waifus on, the same picture
 also sits behind that agent's page in the settings window. Turn them off with **Waifu backgrounds**
 on the settings page (the gear in the footer, and see **About** for unlocking it), which also hides
