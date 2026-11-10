@@ -103,6 +103,10 @@ signs: `AgentDock.exe`, Velopack's own exes and `Setup.exe`. The Windows App SDK
 carry Microsoft's signature and are left alone (`tools\Sign-File.ps1` skips anything already
 signed). The **Check signatures** step fails the release if anything that ships isn't signed.
 
+Each architecture is built on its own runner, but both are packed and signed on the x64 one
+(the **pack** jobs): the signing tools only run on x64. That's why a release shows a *publish* job
+and a *pack* job per architecture.
+
 SmartScreen trusts the name, not the certificate (which Azure replaces every few days), so the
 "Windows protected your PC" warning fades over the first releases rather than at once.
 
