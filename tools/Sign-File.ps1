@@ -22,23 +22,38 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# vpk shows only standard output when this fails, so everything here goes there.
+function Fail([string] $message) {
+    Write-Output "Sign-File.ps1: $message"
+    exit 1
+}
+
+if (-not (Test-Path -LiteralPath $Path)) { Fail "no such file: $Path" }
 if ((Get-AuthenticodeSignature -LiteralPath $Path).Status -eq 'Valid') {
-    Write-Host "Already signed, left alone: $(Split-Path $Path -Leaf)"
+    Write-Output "Already signed, left alone: $(Split-Path $Path -Leaf)"
     exit 0
 }
 
-# vpk's tool store: ~\.dotnet\tools\.store\vpk\<version>\vpk\<version>\vendor\signing.
-$store = Join-Path $HOME '.dotnet\tools\.store\vpk'
-$signing = Get-ChildItem $store -Directory -ErrorAction SilentlyContinue |
+# vpk's tool store: <tools>\.store\vpk\<version>\vpk\<version>\vendor\signing. <tools> is wherever
+# `dotnet tool install -g` put vpk (found through the vpk command itself), else ~\.dotnet\tools.
+$stores = @()
+$vpk = Get-Command vpk -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($vpk) { $stores += Join-Path (Split-Path $vpk.Source) '.store\vpk' }
+$stores += Join-Path $HOME '.dotnet\tools\.store\vpk'
+$stores += Join-Path $env:USERPROFILE '.dotnet\tools\.store\vpk'
+$signing = $stores | Select-Object -Unique | Where-Object { Test-Path $_ } |
+    ForEach-Object { Get-ChildItem $_ -Directory } |
     Sort-Object { [version]($_.Name -replace '-.*$', '') } -Descending |
     ForEach-Object { Join-Path $_.FullName "vpk\$($_.Name)\vendor\signing" } |
     Where-Object { Test-Path (Join-Path $_ 'signtool.exe') } |
     Select-Object -First 1
 if (-not $signing) {
-    Write-Error "vpk's signtool.exe wasn't found under $store. Install vpk as a global tool."
+    Fail "vpk's signtool.exe wasn't found under $($stores -join ', '). Install vpk as a global tool."
 }
 
-& (Join-Path $signing 'signtool.exe') sign /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
+$output = & (Join-Path $signing 'signtool.exe') sign /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 `
     /dlib (Join-Path $signing 'Azure.CodeSigning.Dlib.dll') /dmdf (Join-Path $PSScriptRoot 'signing.json') `
-    $Path
-exit $LASTEXITCODE
+    $Path 2>&1
+$code = $LASTEXITCODE
+$output | ForEach-Object { Write-Output "$_" }
+if ($code) { Fail "signtool exited with $code ($signing)" }
