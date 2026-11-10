@@ -17,7 +17,8 @@ env:
   REPO_URL: https://github.com/${{ github.repository }}
 
 jobs:
-  build:
+  # Native AOT compiles on each architecture's own runner, so ARM64 doesn't need to cross-compile.
+  publish:
     strategy:
       fail-fast: false   # one architecture failing shouldn't hide whether the other works
       matrix:
@@ -25,8 +26,40 @@ jobs:
           - rid: win-x64
             runner: windows-latest
           - rid: win-arm64
-            runner: windows-11-arm   # native ARM64, so Native AOT doesn't need to cross-compile
+            runner: windows-11-arm
     runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json   # the SDK the repo pins
+
+      - name: Publish (Native AOT)
+        shell: pwsh
+        run: |
+          # The AOT linker looks for vswhere.exe on PATH.
+          $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          dotnet publish src/AgentDock/AgentDock.csproj -c Release -r ${{ matrix.rid }} -o publish `
+            -p:Version=$version -nologo
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: publish-${{ matrix.rid }}
+          path: publish
+
+  # Packing and signing both run on x64. vpk's signing tools (signtool and the Artifact Signing
+  # plug-in) are x64 only, and on the windows-11-arm runner signtool exited with 3 and no output
+  # (v1.1.1-beta.4). vpk packs any architecture from any machine, and signing doesn't care which
+  # CPU a binary is for.
+  pack:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [win-x64, win-arm64]
+    runs-on: windows-latest
     # Signing. The `release` environment only runs from v* tags, and Azure trusts only this repo's
     # `release` environment, so nothing but a release tag can sign. Its variables are the signing
     # identity's ids (not secrets). See RELEASING.md, "Code signing".
@@ -41,6 +74,11 @@ jobs:
         with:
           global-json-file: global.json   # the SDK the repo pins
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: publish-${{ matrix.rid }}
+          path: publish
+
       - name: Version from the tag
         id: version
         shell: pwsh
@@ -48,14 +86,6 @@ jobs:
           $version = '${{ github.ref_name }}'.TrimStart('v')
           "version=$version" >> $env:GITHUB_OUTPUT
           "pre=$($version.Contains('-'))".ToLower() >> $env:GITHUB_OUTPUT
-
-      - name: Publish (Native AOT)
-        shell: pwsh
-        run: |
-          # The AOT linker looks for vswhere.exe on PATH.
-          $env:PATH += ";${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
-          dotnet publish src/AgentDock/AgentDock.csproj -c Release -r ${{ matrix.rid }} -o publish `
-            -p:Version=${{ steps.version.outputs.version }} -nologo
 
       - name: Install vpk
         run: dotnet tool install -g vpk --version ${{ env.VPK_VERSION }}
@@ -110,7 +140,7 @@ jobs:
           path: releases
 
   release:
-    needs: build
+    needs: pack
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
