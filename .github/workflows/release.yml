@@ -26,6 +26,13 @@ jobs:
           - rid: win-arm64
             runner: windows-11-arm   # native ARM64, so Native AOT doesn't need to cross-compile
     runs-on: ${{ matrix.runner }}
+    # Signing. The `release` environment only runs from v* tags, and Azure trusts only this repo's
+    # `release` environment, so nothing but a release tag can sign. Its variables are the signing
+    # identity's ids (not secrets). See RELEASING.md, "Code signing".
+    environment: release
+    permissions:
+      contents: read
+      id-token: write   # GitHub's sign-in token for Azure; no password is stored anywhere
     steps:
       - uses: actions/checkout@v7
 
@@ -62,13 +69,37 @@ jobs:
           # Without it the release just has no delta; everyone downloads the full package.
           if ($LASTEXITCODE) { Write-Warning "No previous release to build a delta from."; exit 0 }
 
-      - name: Package
+      - name: Sign in to Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Signs our binaries and Setup.exe with Azure Artifact Signing (tools\signing.json), leaving
+      # files that are already signed (the Windows App SDK's) alone; see tools\Sign-File.ps1.
+      - name: Package and sign
         shell: pwsh
         run: |
+          $sign = "pwsh -NoProfile -ExecutionPolicy Bypass -File ${{ github.workspace }}\tools\Sign-File.ps1 {{file}}"
           vpk pack --packId KiwiGeek.AgentDock --packVersion ${{ steps.version.outputs.version }} `
             --packTitle "Agent Dock" --packAuthors KiwiGeek --packDir publish --mainExe AgentDock.exe `
             --icon src\AgentDock\Assets\AgentDock.ico --runtime ${{ matrix.rid }} --channel ${{ matrix.rid }} `
-            --shortcuts StartMenuRoot -o releases
+            --shortcuts StartMenuRoot --signTemplate $sign -o releases
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      # A release must never go out half signed.
+      - name: Check signatures
+        shell: pwsh
+        run: |
+          # What ships: Setup.exe, and every binary in the full package (vpk signs copies, not publish\).
+          $setup = Get-ChildItem releases\*-Setup.exe
+          $app = Join-Path $env:RUNNER_TEMP pkg
+          Expand-Archive (Get-ChildItem releases\*-full.nupkg)[0].FullName -DestinationPath $app
+          $unsigned = @($setup) + @(Get-ChildItem $app -Recurse -Include *.exe, *.dll) |
+            Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' }
+          if ($unsigned) { $unsigned.FullName | ForEach-Object { "::error::Not signed: $_" }; exit 1 }
+          "Signed as: " + (Get-AuthenticodeSignature $setup.FullName).SignerCertificate.Subject
 
       - uses: actions/upload-artifact@v7
         with:
