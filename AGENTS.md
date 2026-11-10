@@ -283,7 +283,16 @@ sources still to find, #17.
   commit, both architectures built and published in about 7 minutes, and the deltas are 5.7 MB (x64)
   and 6.0 MB (ARM64). **v1.1.0** (2026-11-03, Junie) kept to that shape: PR #42 after CI passed in
   2m50s, the tag from the merge commit, both architectures published in 5m23s, deltas 5.5 MB (x64)
-  and 5.8 MB (ARM64). Still to do: code signing and winget. (The Windows App SDK's unused AI
+  and 5.8 MB (ARM64). **Code signing** (#6, 2026-11-10): Azure Artifact Signing, account
+  `webclient-signing`, profile `JoshuaPenman`, from the release workflow's `release` environment
+  through OIDC (no secret); details and recovery in `RELEASING.md`, "Code signing". vpk 1.2.161's
+  own `--azureTrustedSignFile` re-signed 26 of the Windows App SDK's Microsoft-signed DLLs with our
+  certificate, so `tools\Sign-File.ps1` (vpk's `--signTemplate`) skips anything already signed;
+  drop it for `--azureTrustedSignFile tools\signing.json` once on Velopack 1.3, which skips them
+  itself. Verified locally the same day: every binary in the package and `Setup.exe` valid and
+  timestamped, ours as Joshua Penman and Microsoft's untouched. **Not yet verified:** a signed
+  release from the workflow, the ARM64 runner signing (vpk's x64 signtool under emulation), and
+  SmartScreen's reaction. Still to do: winget. (The Windows App SDK's unused AI
   runtime and other languages went in #11: see "Unpackaged, self-contained" under Hard constraints.)
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
   overview row; the new Cursor, Grok and Copilot drawers; drag to reorder (including with the
@@ -978,8 +987,9 @@ At the repo root:
 | `tools/Build-AppIcons.ps1` | Builds `Assets/AppIcons/ico/*.ico` from the sources (crop, sizes, sharpen) |
 | `tools/Build-Portraits.ps1` | Builds `Assets/AppIcons/portraits/*.jpg` (the About page's slideshow) from the waifu sources |
 | `tools/Build-And-Run.ps1` | Stop, build and relaunch the Debug copy |
+| `tools/Sign-File.ps1`, `tools/signing.json` | Release signing (vpk's `--signTemplate`): Azure Artifact Signing, skipping files already signed |
 | `.github/workflows/ci.yml` | On a push to master or a PR: Debug build and Native AOT publish (x64), warnings as errors; no release |
-| `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack`, GitHub release |
+| `.github/workflows/release.yml` | On a `v*` tag: Native AOT x64 and ARM64, `vpk pack` with signing, GitHub release |
 | `README.md`, `RELEASING.md` | User docs; step-by-step release process |
 | `BUILDING.md` | The dev loop: the Debug build, `tools/Build-And-Run.ps1`, the assets, troubleshooting |
 | `LICENSE` | GPL-3.0 (see README's "Licence" for the copyright line and third-party marks) |

@@ -95,10 +95,52 @@ took about 6 minutes from tag to published.
 - **A bad release went out:** don't delete it (copies that already updated need a newer version to
   move to). Fix the problem and release a higher version.
 
+## Code signing
+
+Releases are signed with **Azure Artifact Signing** as *Joshua Penman* (an individual, validated
+identity). The release workflow does it by itself; there's nothing to do when you tag. What it
+signs: `AgentDock.exe`, Velopack's own exes and `Setup.exe`. The Windows App SDK's DLLs already
+carry Microsoft's signature and are left alone (`tools\Sign-File.ps1` skips anything already
+signed). The **Check signatures** step fails the release if anything that ships isn't signed.
+
+SmartScreen trusts the name, not the certificate (which Azure replaces every few days), so the
+"Windows protected your PC" warning fades over the first releases rather than at once.
+
+### What's where
+
+| Piece | Where |
+|---|---|
+| Signing account | `webclient-signing` (East US, `https://eus.codesigning.azure.net/`), resource group `webclient`, subscription *Visual Studio Enterprise*, tenant *joshua penman* |
+| Certificate profile | `JoshuaPenman` (Public Trust) |
+| The repo's copy of those names | `tools\signing.json` |
+| What GitHub signs as | App registration **AgentDock release signing** (no secret). It trusts only GitHub tokens from `KiwiGeek/AgentDock`'s `release` environment, and has the *Artifact Signing Certificate Profile Signer* role on `JoshuaPenman` only |
+| GitHub side | Settings → Environments → `release`: runs only from `v*` tags, and holds the variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` |
+
+### Signing on your own PC
+
+You only need this to test signing. Your own Azure account has the signer role too. Sign the
+Azure CLI in to the signing tenant (it asks for MFA):
+
+```powershell
+az login --tenant 279c7e63-9394-4a0f-9376-85fc754d5506
+```
+
+Then add this to a `vpk pack` command, as the workflow does:
+
+```powershell
+--signTemplate "pwsh -NoProfile -ExecutionPolicy Bypass -File W:\AgentDock\tools\Sign-File.ps1 {{file}}"
+```
+
+### If signing fails in a release
+
+- **`azure/login` fails ("no matching federated identity" or similar):** the run didn't come from
+  the `release` environment, or a tag outside `v*`. Check the environment's tag rule.
+- **403 while signing:** the app registration lost its role on the `JoshuaPenman` profile.
+- **The identity validation expired:** Azure asks you to renew it once a year; renew it in the
+  portal (signing account → Identity validations), then re-run the failed release job.
+- Fix it, then re-run the failed jobs from the Actions tab (no need to move the tag).
+
 ## Not set up yet
 
-- **Code signing.** Releases are unsigned, so Windows SmartScreen warns on first run. Options:
-  SignPath Foundation (free for open source) or Azure Trusted Signing (about $10 a month). `vpk pack`
-  signs everything once given the details.
 - **winget.** The first submission to `microsoft/winget-pkgs` is by hand; after that the
   `winget-releaser` action can open the update PR for each release.
