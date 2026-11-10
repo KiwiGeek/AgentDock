@@ -285,7 +285,7 @@ sources still to find, #17.
   2m50s, the tag from the merge commit, both architectures published in 5m23s, deltas 5.5 MB (x64)
   and 5.8 MB (ARM64). **Code signing** (#6, 2026-11-10): Azure Artifact Signing, account
   `webclient-signing`, profile `JoshuaPenman`, from the release workflow's `release` environment
-  through OIDC (no secret); details and recovery in `RELEASING.md`, "Code signing". vpk 1.2.161's
+  through OIDC (no secret, trusting the repo by id); details and recovery in `RELEASING.md`, "Code signing". vpk 1.2.161's
   own `--azureTrustedSignFile` re-signed 26 of the Windows App SDK's Microsoft-signed DLLs with our
   certificate, so `tools\Sign-File.ps1` (vpk's `--signTemplate`) skips anything already signed;
   drop it for `--azureTrustedSignFile tools\signing.json` once on Velopack 1.3, which skips them
