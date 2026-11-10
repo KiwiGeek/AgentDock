@@ -113,7 +113,7 @@ SmartScreen trusts the name, not the certificate (which Azure replaces every few
 | Signing account | `webclient-signing` (East US, `https://eus.codesigning.azure.net/`), resource group `webclient`, subscription *Visual Studio Enterprise*, tenant *joshua penman* |
 | Certificate profile | `JoshuaPenman` (Public Trust) |
 | The repo's copy of those names | `tools\signing.json` |
-| What GitHub signs as | App registration **AgentDock release signing** (no secret). It trusts only GitHub tokens from `KiwiGeek/AgentDock`'s `release` environment, and has the *Artifact Signing Certificate Profile Signer* role on `JoshuaPenman` only |
+| What GitHub signs as | App registration **AgentDock release signing** (no secret). It trusts only GitHub tokens from `KiwiGeek/AgentDock`'s `release` environment (subject `repo:KiwiGeek@22453722/AgentDock@1421009224:environment:release`: GitHub names the owner and repo by id as well, so a re-created repo of the same name doesn't match), and has the *Artifact Signing Certificate Profile Signer* role on `JoshuaPenman` only |
 | GitHub side | Settings → Environments → `release`: runs only from `v*` tags, and holds the variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` |
 
 ### Signing on your own PC
@@ -134,7 +134,10 @@ Then add this to a `vpk pack` command, as the workflow does:
 ### If signing fails in a release
 
 - **`azure/login` fails ("no matching federated identity" or similar):** the run didn't come from
-  the `release` environment, or a tag outside `v*`. Check the environment's tag rule.
+  the `release` environment, or a tag outside `v*`. Check the environment's tag rule. The error
+  quotes the subject GitHub presented; it has to match the app registration's federated credential
+  (Entra ID → App registrations → AgentDock release signing → Certificates & secrets → Federated
+  credentials) exactly. Moving or renaming the repo changes it.
 - **403 while signing:** the app registration lost its role on the `JoshuaPenman` profile.
 - **The identity validation expired:** Azure asks you to renew it once a year; renew it in the
   portal (signing account → Identity validations), then re-run the failed release job.

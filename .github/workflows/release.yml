@@ -19,6 +19,7 @@ env:
 jobs:
   build:
     strategy:
+      fail-fast: false   # one architecture failing shouldn't hide whether the other works
       matrix:
         include:
           - rid: win-x64
@@ -95,7 +96,9 @@ jobs:
           # What ships: Setup.exe, and every binary in the full package (vpk signs copies, not publish\).
           $setup = Get-ChildItem releases\*-Setup.exe
           $app = Join-Path $env:RUNNER_TEMP pkg
-          Expand-Archive (Get-ChildItem releases\*-full.nupkg)[0].FullName -DestinationPath $app
+          # This version's package by name: releases\ also holds the previous release's (for the delta).
+          $full = "releases\KiwiGeek.AgentDock-${{ steps.version.outputs.version }}-${{ matrix.rid }}-full.nupkg"
+          Expand-Archive $full -DestinationPath $app
           $unsigned = @($setup) + @(Get-ChildItem $app -Recurse -Include *.exe, *.dll) |
             Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' }
           if ($unsigned) { $unsigned.FullName | ForEach-Object { "::error::Not signed: $_" }; exit 1 }
