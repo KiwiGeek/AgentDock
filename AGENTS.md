@@ -295,8 +295,11 @@ sources still to find, #17.
   version's package by name (`releases\` holds the previous one's for the delta); and vpk's x64-only
   signing tools fail on the `windows-11-arm` runner (signtool exit 3, no output). So the workflow
   publishes on each architecture's runner, then packs and signs **both on x64** (vpk packs ARM64
-  from x64; checked locally: an `AA64` Setup.exe). x64 signing passed in the workflow (beta.3 and
-  .4). **Not yet verified:** a release with both signed and published, and SmartScreen's reaction. Still to do: winget. (The Windows App SDK's unused AI
+  from x64; checked locally: an `AA64` Setup.exe). **Verified** with `v1.1.1-beta.5`, published
+  through the workflow and downloaded from GitHub: both `Setup.exe` files valid, timestamped and
+  signed as Joshua Penman (x64 `8664`, ARM64 `AA64`), our 3 exes in each package ours, Microsoft's
+  32 files still Microsoft's. The beta releases, their tags and failed runs were deleted afterwards.
+  **Not yet verified:** SmartScreen's reaction. Still to do: winget. (The Windows App SDK's unused AI
   runtime and other languages went in #11: see "Unpackaged, self-contained" under Hard constraints.)
 - **Not yet verified by eye:** the usage overview's look, hovering between agents, clicking an
   overview row; the new Cursor, Grok and Copilot drawers; drag to reorder (including with the
